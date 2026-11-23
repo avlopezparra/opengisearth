@@ -104,6 +104,18 @@
     for (const y of years) sel.append(new Option(y < 0 ? `${(-y).toLocaleString(en ? 'en' : 'es')} ${en ? 'BC' : 'a. C.'}` : String(y), y));
     sel.value = cur;
   };
+  // Arrows step through the years (like GeaCron); typing a year jumps to the closest one available.
+  const pick = (i) => { i = Math.max(0, Math.min(sel.options.length - 1, i)); if (i !== sel.selectedIndex) { sel.selectedIndex = i; sel.dispatchEvent(new Event('change')); } };
+  $('histPrev').onclick = () => pick(sel.selectedIndex - 1);
+  $('histNext').onclick = () => pick(sel.selectedIndex + 1);
+  $('histGo').onchange = (e) => {
+    if (e.target.value === '') return;
+    const y = +e.target.value;
+    let best = 1;
+    for (let i = 2; i < sel.options.length; i++) if (Math.abs(sel.options[i].value - y) < Math.abs(sel.options[best].value - y)) best = i;
+    e.target.value = '';
+    pick(best);
+  };
   fill(YEARS); // fallback list; replaced by the live file list of the fork, so new files show up without rebuilding
   fetch('https://api.github.com/repos/avlopezparra/historical-basemaps/contents/geojson').then((r) => (r.ok ? r.json() : [])).then((files) => {
     const ys = files.map((f) => /^world_(bc)?(\d+)\.geojson$/.exec(f.name)).filter(Boolean).map((m) => (m[1] ? -m[2] : +m[2])).sort((x, y) => x - y);

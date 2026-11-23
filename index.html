@@ -43,7 +43,9 @@
     <li><label><input id="fillAdmin1" type="checkbox"> Colorear provincias y regiones</label></li>
     <li><label><input id="layerNames" type="checkbox" checked> Nombres de países</label></li>
     <li><label><input id="fillCountries" type="checkbox"> Colorear países</label></li>
-    <li><label>Países históricos <select id="historyYear" title="Fronteras y nombres de un año histórico (historical-basemaps)"><option value="">No mostrar</option></select></label></li>
+    <li><label>Países históricos <select id="historyYear" title="Fronteras y nombres de un año histórico (historical-basemaps)"><option value="">No mostrar</option></select></label>
+      <button id="histPrev" class="mini" title="Año anterior">◀</button><button id="histNext" class="mini" title="Año siguiente">▶</button>
+      <input id="histGo" type="number" placeholder="Año" title="Escribe un año (negativo = a. C.) y pulsa Enter: va al más cercano" style="width:5em"></li>
     <li><label><input id="fillHistory" type="checkbox"> Colorear países históricos</label></li>
     <li><label><input id="layerRanges" type="checkbox"> Cadenas montañosas</label></li>
     <li><label><input id="layerRoads" type="checkbox"> Calles, ciudades y regiones (OSM)</label></li>
