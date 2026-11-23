@@ -44,7 +44,7 @@
   // the ones on the far side of the globe are hidden by hand every frame.
   const clean = (s) => String(s ?? '').replace(/\0/g, '').trim();
   function labelSet(color, px) {
-    const labels = viewer.scene.primitives.add(new C.LabelCollection());
+    const labels = viewer.scene.primitives.add(new C.BillboardCollection());
     const occluder = new C.EllipsoidalOccluder(C.Ellipsoid.WGS84, viewer.camera.positionWC);
     viewer.scene.preRender.addEventListener(() => {
       if (!labels.show) return;
@@ -52,8 +52,7 @@
       for (let i = 0; i < labels.length; i++) { const l = labels.get(i); l.show = occluder.isPointVisible(l.position); }
     });
     labels.put = (lon, lat, text, near, far) => labels.add({
-      position: C.Cartesian3.fromDegrees(lon, lat), text,
-      font: `600 ${px}px sans-serif`, fillColor: color, outlineColor: C.Color.BLACK, outlineWidth: 2, style: C.LabelStyle.FILL_AND_OUTLINE,
+      position: C.Cartesian3.fromDegrees(lon, lat), image: OGE.textImage(text, `600 ${px}px sans-serif`, color), scale: 0.5,
       horizontalOrigin: C.HorizontalOrigin.CENTER, verticalOrigin: C.VerticalOrigin.CENTER,
       distanceDisplayCondition: new C.DistanceDisplayCondition(near, far), disableDepthTestDistance: Number.POSITIVE_INFINITY,
     });

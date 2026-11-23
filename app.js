@@ -220,6 +220,10 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
     $('statusbar').textContent = s + 'ojo a ' + (eye > 10000 ? Math.round(eye / 1000).toLocaleString('es') + ' km' : Math.round(eye) + ' m');
   });
 
+  // Map text drawn on our own canvas (at 2x, shown at scale 0.5): Cesium's SDF label outlines render as noise on some GPUs.
+  OGE.textImage = (text, font, color) => C.writeTextToCanvas(text, { font: font.replace(/(\d+)px/, (m, n) => n * 2 + 'px'),
+    fillColor: color, stroke: true, strokeColor: C.Color.BLACK, strokeWidth: 5, padding: 4 });
+
   // ---------- View screenshot ----------
   $('shotBtn').onclick = () => { viewer.render(); scene.canvas.toBlob((b) => OGE.download('OpenGISEarth.png', b)); };
 
