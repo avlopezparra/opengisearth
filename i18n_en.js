@@ -3,7 +3,7 @@
 (() => {
   const t = (s) => (window.T ? window.T(s) : s);
   const kinds = (s) => s.replace(/polígonos/g, 'polygons').replace(/líneas/g, 'lines').replace(/puntos/g, 'points').replace(/objetos/g, 'features').replace(/ o /g, ' or ');
-  const WHAT = { 'los edificios': 'the buildings', 'las fronteras': 'the borders', 'los nombres de países': 'the country names', 'las áreas en disputa': 'the disputed areas', 'las cadenas montañosas': 'the mountain ranges', 'los límites regionales': 'the regional boundaries' };
+  const WHAT = { 'los edificios': 'the buildings', 'las áreas de los países': 'the country areas', 'las áreas de provincias y regiones': 'the province and region areas', 'las fronteras': 'the borders', 'los nombres de países': 'the country names', 'las áreas en disputa': 'the disputed areas', 'las cadenas montañosas': 'the mountain ranges', 'los límites regionales': 'the regional boundaries' };
   const KIND = { marca: 'placemark', trazado: 'path', 'polígono': 'polygon', 'imagen superpuesta': 'image overlay', objeto: 'feature' };
 
   const exact = {
@@ -250,6 +250,10 @@
     'Río': 'River',
     'Límites regionales (estados y provincias)': 'Regional boundaries (states and provinces)',
     'Países históricos': 'Historical countries',
+    'Colorear países': 'Color countries',
+    'Colorear provincias y regiones': 'Color provinces and regions',
+    'Colorear países históricos': 'Color historical countries',
+    'Cargando las áreas de provincias y regiones (21 MB)…': 'Loading the province and region areas (21 MB)…',
     'Fronteras y nombres de un año histórico (historical-basemaps)': 'Borders and names for a historical year (historical-basemaps)',
     'No mostrar': 'Do not show',
     'Cargando el mapa histórico…': 'Loading the historical map…',
