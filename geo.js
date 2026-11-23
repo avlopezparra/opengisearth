@@ -16,7 +16,7 @@
   const PIN = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="36"><path d="M12 1C6 1 1 6 1 12c0 9 11 23 11 23s11-14 11-23C23 6 18 1 12 1z" fill="#fff" stroke="#000" stroke-opacity=".55"/><circle cx="12" cy="12" r="4.5" fill="#000" fill-opacity=".45"/></svg>');
   const DEF = { stroke: '#ffd400', strokeOpacity: 1, width: 3, fill: '#ffd400', fillOpacity: 0.35, color: '#e53935', marker: 'pin', opacity: 0.7, rotation: 0 };
   const NEAR = 5e5; // under 500 km it is not clipped against the terrain; from afar the globe does hide what is on the other side
-  const labelStyle = (text) => ({ text, font: '600 14px sans-serif', fillColor: C.Color.WHITE, outlineColor: C.Color.BLACK, outlineWidth: 3,
+  const labelStyle = (text) => ({ text, font: '600 14px sans-serif', fillColor: C.Color.WHITE, outlineColor: C.Color.BLACK, outlineWidth: 2,
     style: C.LabelStyle.FILL_AND_OUTLINE, heightReference: C.HeightReference.CLAMP_TO_GROUND, disableDepthTestDistance: NEAR });
   const pinLabel = (text) => ({ ...labelStyle(text), pixelOffset: new C.Cartesian2(0, -44) });
 
