@@ -46,7 +46,7 @@
           attributes: { color: C.ColorGeometryInstanceAttribute.fromColor(BROWN.withAlpha(0.8)) } }));
       }
       const c = turf.centerOfMass(f).geometry.coordinates;
-      labels.add({ position: C.Cartesian3.fromDegrees(c[0], c[1]), text: name, font: 'italic 600 13px sans-serif', fillColor: BROWN, outlineColor: C.Color.BLACK, outlineWidth: 3,
+      labels.add({ position: C.Cartesian3.fromDegrees(c[0], c[1]), text: name, font: 'italic 600 13px sans-serif', fillColor: BROWN, outlineColor: C.Color.BLACK, outlineWidth: 2,
         style: C.LabelStyle.FILL_AND_OUTLINE, distanceDisplayCondition: new C.DistanceDisplayCondition(0, 9e6), disableDepthTestDistance: Number.POSITIVE_INFINITY });
     }
     const occluder = new C.EllipsoidalOccluder(C.Ellipsoid.WGS84, viewer.camera.positionWC); // hide labels on the far side of the globe
@@ -100,7 +100,7 @@
         }
         const name = f.properties.NAME || f.properties.name;
         if (name && biggest) labels.add({ position: C.Cartesian3.fromDegrees((biggest[0] + biggest[2]) / 2, (biggest[1] + biggest[3]) / 2), text: name, font: '600 13px sans-serif', fillColor: PINK,
-          outlineColor: C.Color.BLACK, outlineWidth: 3, style: C.LabelStyle.FILL_AND_OUTLINE, disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          outlineColor: C.Color.BLACK, outlineWidth: 2, style: C.LabelStyle.FILL_AND_OUTLINE, disableDepthTestDistance: Number.POSITIVE_INFINITY,
           distanceDisplayCondition: new C.DistanceDisplayCondition(0, Math.max(1.5e6, Math.min(2e7, Math.sqrt(size) * 6e5))) }); // small states appear when zooming in
       }
       const occluder = new C.EllipsoidalOccluder(C.Ellipsoid.WGS84, viewer.camera.positionWC);

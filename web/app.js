@@ -220,15 +220,6 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
     $('statusbar').textContent = s + 'ojo a ' + (eye > 10000 ? Math.round(eye / 1000).toLocaleString('es') + ' km' : Math.round(eye) + ' m');
   });
 
-  // ---------- First run: the user decides which imagery to use (changed later in Layers → Imagery) ----------
-  if (localStorage.getItem('oge.ui.baseImagery') === null) setTimeout(async () => {
-    const sel = $('baseImagery');
-    const v = await OGE.ask({ title: '¿Qué imágenes satelitales quieres usar?', help: 'Puedes cambiarlo cuando quieras en Capas → Imágenes.',
-      fields: [{ id: 'img', label: 'Imágenes', type: 'select', value: sel.value, options: [...sel.options].map((o) => [o.value, o.textContent]) }] });
-    sel.value = v ? v.img : sel.value;
-    sel.dispatchEvent(new Event('change')); // also saves the choice
-  }, 1500);
-
   // ---------- View screenshot ----------
   $('shotBtn').onclick = () => { viewer.render(); scene.canvas.toBlob((b) => OGE.download('OpenGISEarth.png', b)); };
 

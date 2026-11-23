@@ -53,7 +53,7 @@
     });
     labels.put = (lon, lat, text, near, far) => labels.add({
       position: C.Cartesian3.fromDegrees(lon, lat), text,
-      font: `600 ${px}px sans-serif`, fillColor: color, outlineColor: C.Color.BLACK, outlineWidth: 3, style: C.LabelStyle.FILL_AND_OUTLINE,
+      font: `600 ${px}px sans-serif`, fillColor: color, outlineColor: C.Color.BLACK, outlineWidth: 2, style: C.LabelStyle.FILL_AND_OUTLINE,
       horizontalOrigin: C.HorizontalOrigin.CENTER, verticalOrigin: C.VerticalOrigin.CENTER,
       distanceDisplayCondition: new C.DistanceDisplayCondition(near, far), disableDepthTestDistance: Number.POSITIVE_INFINITY,
     });
