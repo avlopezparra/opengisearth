@@ -1,7 +1,7 @@
 // Flight simulator in the style of Earth's: cockpit view with HUD, mouse or keyboard control and two aircraft.
 // Mouse: a click grabs or releases the stick; the cursor relative to the center moves it (down = pull = nose up).
 // Keyboard: arrows stick · PgUp/PgDn (or W/S) throttle · Shift+←/→ (or Q/E) rudder · F / Shift+F flaps · G gear ·
-// , . (or B) brakes · Home/End trim · C center · Space pause · H HUD · Esc exit.
+// , . (or B) brakes · Home/End trim · C center · Space pause · H HUD · Esc exit. Starship: X or right click fires.
 (() => {
   const C = Cesium, { viewer, $ } = OGE;
   const scene = viewer.scene, rad = C.Math.toRadians, deg = C.Math.toDegrees, clamp = C.Math.clamp;
@@ -10,15 +10,38 @@
   const PLANES = {
     sr22: { name: 'SR22 — avioneta de hélice, lenta y dócil', vStall: 31, vMax: 95, thrust: 3.2, roll: rad(45), pitch: rad(22), yaw: rad(12), agl: 600, v0: 70 },
     f16: { name: 'F-16 — caza a reacción, rápido y nervioso', vStall: 72, vMax: 420, thrust: 22, roll: rad(130), pitch: rad(38), yaw: rad(10), agl: 1500, v0: 220 },
+    // ship: no stall and no gravity (it hovers and climbs to space), bounces off the ground instead of crashing, and fires
+    ship: { name: 'Starship — nave muy rápida con láseres; flota y sube al espacio', ship: true, vStall: 0, vMax: 8000, thrust: 400, roll: rad(160), pitch: rad(50), yaw: rad(25), agl: 3000, v0: 600 },
   };
   const hud = $('hud'), g = hud.getContext('2d');
   let on = false, paused = false, mouseCtl = false, showHud = true, A = null, s = null, last = 0;
   const keys = new Set(), stick = { x: 0, y: 0 };
 
+  // ---------- Starship lasers: bolts on the HUD, a flash where the aim hits the ground, and a short sound ----------
+  let shots = [], audio = null;
+  function fire() {
+    const t = performance.now();
+    if (!on || paused || !A.ship || (shots.length && t - shots[shots.length - 1] < 110)) return;
+    shots.push(t);
+    const hit = scene.globe.pick(viewer.camera.getPickRay(new C.Cartesian2(hud.clientWidth / 2, hud.clientHeight / 2)), scene);
+    if (hit && C.Cartesian3.distance(hit, viewer.camera.positionWC) < 4e5) {
+      const e = viewer.entities.add({ position: hit, point: { pixelSize: 16, color: C.Color.ORANGE, outlineColor: C.Color.YELLOW, outlineWidth: 4, disableDepthTestDistance: Number.POSITIVE_INFINITY } });
+      e._tmp = true; // not a user feature: never saved
+      setTimeout(() => viewer.entities.remove(e), 450);
+    }
+    try {
+      audio = audio || new AudioContext();
+      const o = audio.createOscillator(), v = audio.createGain(), now = audio.currentTime;
+      o.type = 'sawtooth'; o.frequency.setValueAtTime(1100, now); o.frequency.exponentialRampToValueAtTime(180, now + 0.16);
+      v.gain.setValueAtTime(0.06, now); v.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+      o.connect(v).connect(audio.destination); o.start(now); o.stop(now + 0.17);
+    } catch { /* no audio device: the lasers still work */ }
+  }
+
   async function open() {
     if (on) return stop();
     const v = await OGE.ask({ title: 'Simulador de vuelo', ok: 'Iniciar vuelo',
-      help: 'Arranca en el aire sobre el punto que estás mirando. Mouse: clic toma o suelta la palanca. Teclado: flechas, RePág/AvPág para el gas, G tren, F flaps, Espacio pausa, Esc salir.',
+      help: 'Arranca en el aire sobre el punto que estás mirando. Mouse: clic toma o suelta la palanca. Teclado: flechas, RePág/AvPág para el gas, G tren, F flaps, Espacio pausa, Esc salir. Starship: X o clic derecho dispara.',
       fields: [{ id: 'plane', label: 'Avión', type: 'select', options: Object.entries(PLANES).map(([k, p]) => [k, p.name]) },
         { id: 'mouse', label: 'Controlar con el mouse (como en Earth)', type: 'checkbox', value: true }] });
     if (v) start(v.plane, v.mouse);
@@ -64,7 +87,8 @@
   // ---------- Simplified physics ----------
   function step(dt) {
     controls(dt);
-    const stallV = A.vStall * (1 - 0.1 * s.flaps), q = clamp(s.v / (1.4 * A.vStall), 0, 1); // q: control effectiveness with speed
+    const stallV = A.vStall * (1 - 0.1 * s.flaps), q = A.ship ? 1 : clamp(s.v / (1.4 * A.vStall), 0, 1); // q: control effectiveness with speed
+    const grav = A.ship ? 0 : G;
     const elev = clamp(s.elev + s.trim, -1, 1), ground = scene.globe.getHeight(new C.Cartographic(s.lon, s.lat)) || 0;
     const drag = A.thrust * (s.v / A.vMax) ** 2 * (1 + 0.35 * s.flaps + (s.gear ? 0.15 : 0)); // at full throttle and level, vMax is reached
     if (s.ground) { // taxiing: rudder steers, brakes brake; takeoff by pulling with enough speed
@@ -78,14 +102,15 @@
     } else {
       const pr = elev * A.pitch * q * dt; // pulling the stick raises the nose in the aircraft's axis: when banked, it turns
       s.roll = C.Math.negativePiToPi(s.roll + s.ail * A.roll * q * dt);
-      s.pitch += pr * Math.cos(s.roll) - (1 - Math.cos(s.roll)) * (G / Math.max(s.v, 20)) * dt; // when banked it loses lift: the nose drops
+      s.pitch += pr * Math.cos(s.roll) - (1 - Math.cos(s.roll)) * (grav / Math.max(s.v, 20)) * dt; // when banked it loses lift: the nose drops
       s.heading += pr * Math.sin(s.roll) + ((G * Math.sin(s.roll)) / Math.max(s.v, 20)) * dt + s.rud * A.yaw * q * dt;
       if (s.v < stallV) s.pitch -= rad(18) * dt; // stall
       s.pitch = clamp(s.pitch, rad(-89), rad(89));
-      s.v = clamp(s.v + (s.throttle * A.thrust - drag - G * Math.sin(s.pitch)) * dt, 0, A.vMax * 1.3);
+      s.v = clamp(s.v + (s.throttle * A.thrust - drag - grav * Math.sin(s.pitch)) * dt, 0, A.vMax * 1.3);
       s.vs = s.v * Math.sin(s.pitch);
       s.alt += s.vs * dt;
-      if (s.alt <= ground + GEAR_H) { // soft touchdown with the gear down, or crash
+      if (A.ship && s.alt <= ground + 30) { s.alt = ground + 30; s.pitch = Math.max(s.pitch, rad(2)); } // the starship skims the ground
+      else if (s.alt <= ground + GEAR_H) { // soft touchdown with the gear down, or crash
         if (!(s.gear && s.vs > -4 && Math.abs(s.roll) < rad(12) && s.pitch > rad(-6))) {
           return stop(`Accidente a ${Math.round(s.v * KT)} nudos.` + (s.gear ? '' : ' El tren estaba arriba (G lo baja).'), true);
         }
@@ -114,6 +139,13 @@
     if (paused) text(T('PAUSA — Espacio para seguir'), cx, cy - r - 46, 16);
     else if (s.ground) text(T('EN TIERRA'), cx, cy - r - 46, 16);
     else if (s.v < A.vStall * (1 - 0.1 * s.flaps)) text(T('PÉRDIDA — baja la nariz y da gas'), cx, cy - r - 46, 16);
+    shots = shots.filter((t0) => performance.now() - t0 < 220);
+    for (const t0 of shots) { // two bolts converging on the aim point
+      const a = (performance.now() - t0) / 220, b = Math.min(1, a + 0.3);
+      g.save(); g.strokeStyle = '#ff3b30'; g.shadowColor = '#ff3b30'; g.shadowBlur = 12; g.lineWidth = 5 * (1 - a) + 1; g.lineCap = 'round';
+      for (const sx of [cx - w * 0.38, cx + w * 0.38]) line(sx + (cx - sx) * a, h + (cy - h) * a, sx + (cx - sx) * b, h + (cy - h) * b);
+      g.restore();
+    }
     if (!showHud) return;
     const ppd = h / deg(viewer.camera.frustum.fovy || rad(60)), p0 = deg(s.pitch); // pixels per degree of the view
 
@@ -187,6 +219,7 @@
     stick.y = clamp((e.clientY - b.top - b.height / 2) / (b.height * 0.3), -1, 1);
   });
   hud.addEventListener('click', () => { mouseCtl = !mouseCtl; stick.x = stick.y = 0; });
+  hud.addEventListener('contextmenu', (e) => { e.preventDefault(); fire(); });
   document.addEventListener('keydown', (e) => {
     if (!on || document.querySelector('dialog[open]')) return;
     const k = e.key.toLowerCase();
@@ -196,6 +229,7 @@
     else if (k === 'g') s.gear = !s.gear;
     else if (k === 'f' || k === ']' || k === '[') s.flaps = clamp(s.flaps + (e.shiftKey || k === '[' ? -1 : 1), 0, 2);
     else if (k === 'c') { stick.x = stick.y = 0; s.trim = 0; }
+    else if (k === 'x') fire();
     else keys.add(k);
     e.preventDefault(); e.stopPropagation();
   }, true);

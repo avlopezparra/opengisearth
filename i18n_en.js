@@ -269,8 +269,9 @@
     // ----- flightsim.js (dialog and HUD drawn on the canvas) -----
     'SR22 — avioneta de hélice, lenta y dócil': 'SR22 — propeller light aircraft, slow and docile',
     'F-16 — caza a reacción, rápido y nervioso': 'F-16 — jet fighter, fast and twitchy',
+    'Starship — nave muy rápida con láseres; flota y sube al espacio': 'Starship — very fast ship with lasers; hovers and climbs to space',
     'Iniciar vuelo': 'Start flight',
-    'Arranca en el aire sobre el punto que estás mirando. Mouse: clic toma o suelta la palanca. Teclado: flechas, RePág/AvPág para el gas, G tren, F flaps, Espacio pausa, Esc salir.': 'Starts in the air above the point you are looking at. Mouse: click grabs or releases the stick. Keyboard: arrows, PgUp/PgDn for throttle, G gear, F flaps, Space pause, Esc exit.',
+    'Arranca en el aire sobre el punto que estás mirando. Mouse: clic toma o suelta la palanca. Teclado: flechas, RePág/AvPág para el gas, G tren, F flaps, Espacio pausa, Esc salir. Starship: X o clic derecho dispara.': 'Starts in the air above the point you are looking at. Mouse: click grabs or releases the stick. Keyboard: arrows, PgUp/PgDn for throttle, G gear, F flaps, Space pause, Esc exit. Starship: X or right click fires.',
     'Avión': 'Aircraft',
     'Controlar con el mouse (como en Earth)': 'Control with the mouse (as in Earth)',
     'PAUSA — Espacio para seguir': 'PAUSED — Space to resume',
