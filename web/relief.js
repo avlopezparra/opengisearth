@@ -3,9 +3,36 @@
   const C = Cesium, { viewer, geo, $ } = OGE;
   const FORK = 'https://raw.githubusercontent.com/avlopezparra/natural-earth-vector/master/';
 
-  // ---------- Area fills: translucent polygons draped on the terrain, one color per territory ----------
-  const TINTS = ['#e57373', '#64b5f6', '#81c784', '#ffd54f', '#ba68c8', '#4db6ac', '#ff8a65', '#f06292', '#9575cd', '#dce775', '#4dd0e1', '#a1887f'].map((c) => C.ColorGeometryInstanceAttribute.fromColor(C.Color.fromCssColorString(c).withAlpha(0.4)));
-  const ring = (r) => C.Cartesian3.fromDegreesArray(r.flatMap((c) => [c[0], c[1]]));
+  // ---------- Area fills: translucent polygons drawn as an imagery layer, so they drape on the terrain like the base map ----------
+  // (ground primitives slid away from their boundary lines in tilted views)
+  const TINTS = ['#e57373', '#64b5f6', '#81c784', '#ffd54f', '#ba68c8', '#4db6ac', '#ff8a65', '#f06292', '#9575cd', '#dce775', '#4dd0e1', '#a1887f'];
+  // items: [GeoJSON Polygon or MultiPolygon geometry, color number]. Returns an imagery layer (has .show).
+  function fillLayer(items) {
+    const scheme = new C.GeographicTilingScheme(), TS = 256, deg = C.Math.toDegrees, polys = []; // one entry per polygon: { box, rings, color }
+    for (const [g, n] of items) for (const rings of !g ? [] : g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : []) {
+      if (rings[0].length > 3) polys.push({ box: turf.bbox({ type: 'Polygon', coordinates: rings }), rings, color: TINTS[Math.abs(n) % TINTS.length] });
+    }
+    const layer = viewer.imageryLayers.addImageryProvider({
+      tilingScheme: scheme, rectangle: scheme.rectangle, tileWidth: TS, tileHeight: TS, minimumLevel: 0, maximumLevel: 12,
+      hasAlphaChannel: true, errorEvent: new C.Event(), credit: undefined, tileDiscardPolicy: undefined, proxy: undefined,
+      getTileCredits: () => undefined, pickFeatures: () => undefined,
+      requestImage(x, y, level) {
+        const cv = document.createElement('canvas'), ctx = cv.getContext('2d'), r = scheme.tileXYToRectangle(x, y, level);
+        cv.width = cv.height = TS;
+        const w = deg(r.west), e = deg(r.east), s = deg(r.south), n = deg(r.north), kx = TS / (e - w), ky = TS / (n - s);
+        for (const p of polys) {
+          if (p.box[0] > e || p.box[2] < w || p.box[1] > n || p.box[3] < s) continue;
+          ctx.beginPath();
+          for (const ring of p.rings) { ring.forEach((c, i) => (i ? ctx.lineTo((c[0] - w) * kx, (n - c[1]) * ky) : ctx.moveTo((c[0] - w) * kx, (n - c[1]) * ky))); ctx.closePath(); }
+          ctx.fillStyle = p.color;
+          ctx.fill('evenodd'); // holes stay empty
+        }
+        return Promise.resolve(cv);
+      },
+    });
+    layer.alpha = 0.45;
+    return layer;
+  }
   // Greedy coloring: each territory takes the color least used by the earlier ones whose bounding box touches its own,
   // so neighbors differ wherever the palette allows.
   function colorize(geoms) {
@@ -19,18 +46,6 @@
     });
     return out;
   }
-  // items: [GeoJSON Polygon or MultiPolygon geometry, color number]
-  function fillPrimitive(items) {
-    const inst = [];
-    for (const [g, n] of items) for (const rings of !g ? [] : g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : []) {
-      if (rings[0].length < 4 || rings[0].some((c) => c[1] < -89)) continue; // Antarctica reaches the pole and cannot be triangulated
-      inst.push(new C.GeometryInstance({ attributes: { color: TINTS[Math.abs(n) % TINTS.length] }, geometry: new C.PolygonGeometry({
-        polygonHierarchy: new C.PolygonHierarchy(ring(rings[0]), rings.slice(1).filter((h) => h.length > 3).map((h) => new C.PolygonHierarchy(ring(h)))) }) }));
-    }
-    const p = viewer.scene.groundPrimitives.add(new C.GroundPrimitive({ geometryInstances: inst, appearance: new C.PerInstanceColorAppearance({ flat: true, translucent: true }) }));
-    viewer.scene.groundPrimitives.lowerToBottom(p); // boundary lines stay on top
-    return p;
-  }
   // Loads a fill the first time its checkbox is ticked; if it fails, it is retried when ticked again.
   function lazyFill(cb, load, what) {
     let prim = null, busy = false;
@@ -38,7 +53,7 @@
       if (prim) prim.show = cb.checked;
       if (!cb.checked || prim || busy) return;
       busy = true;
-      try { prim = fillPrimitive(await load()); prim.show = cb.checked; } catch (e) { OGE.toast(`No se pudieron cargar ${what}: ${e.message}`, true); }
+      try { prim = fillLayer(await load()); prim.show = cb.checked; } catch (e) { OGE.toast(`No se pudieron cargar ${what}: ${e.message}`, true); }
       busy = false;
     };
     cb.addEventListener('change', sync);
@@ -137,14 +152,14 @@
   const cbH = $('fillHistory');
   const syncHistFill = () => {
     if (!hist) return;
-    if (cbH.checked && !hist.fill) hist.fill = fillPrimitive(colorize(hist.gj.features.map((f) => f.geometry)));
+    if (cbH.checked && !hist.fill) hist.fill = fillLayer(colorize(hist.gj.features.map((f) => f.geometry)));
     if (hist.fill) hist.fill.show = cbH.checked;
   };
   cbH.addEventListener('change', syncHistFill);
   function clearHist() {
     if (!hist) return;
     viewer.scene.groundPrimitives.remove(hist.lines);
-    if (hist.fill) viewer.scene.groundPrimitives.remove(hist.fill);
+    if (hist.fill) viewer.imageryLayers.remove(hist.fill);
     viewer.scene.primitives.remove(hist.labels);
     viewer.scene.preRender.removeEventListener(hist.tick);
     hist = null;
