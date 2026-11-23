@@ -3,6 +3,46 @@
   const C = Cesium, { viewer, geo, $ } = OGE;
   const FORK = 'https://raw.githubusercontent.com/avlopezparra/natural-earth-vector/master/';
 
+  // ---------- Area fills: translucent polygons draped on the terrain, one color per territory ----------
+  const TINTS = ['#e57373', '#64b5f6', '#81c784', '#ffd54f', '#ba68c8', '#4db6ac', '#ff8a65', '#f06292'].map((c) => C.ColorGeometryInstanceAttribute.fromColor(C.Color.fromCssColorString(c).withAlpha(0.4)));
+  const ring = (r) => C.Cartesian3.fromDegreesArray(r.flatMap((c) => [c[0], c[1]]));
+  const hash = (s) => { let h = 0; for (const ch of String(s)) h = (h * 31 + ch.charCodeAt(0)) | 0; return h; };
+  // items: [GeoJSON Polygon or MultiPolygon geometry, color number]
+  function fillPrimitive(items) {
+    const inst = [];
+    for (const [g, n] of items) for (const rings of !g ? [] : g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : []) {
+      if (rings[0].length < 4 || rings[0].some((c) => c[1] < -89)) continue; // Antarctica reaches the pole and cannot be triangulated
+      inst.push(new C.GeometryInstance({ attributes: { color: TINTS[Math.abs(n) % TINTS.length] }, geometry: new C.PolygonGeometry({
+        polygonHierarchy: new C.PolygonHierarchy(ring(rings[0]), rings.slice(1).filter((h) => h.length > 3).map((h) => new C.PolygonHierarchy(ring(h)))) }) }));
+    }
+    const p = viewer.scene.groundPrimitives.add(new C.GroundPrimitive({ geometryInstances: inst, appearance: new C.PerInstanceColorAppearance({ flat: true, translucent: true }) }));
+    viewer.scene.groundPrimitives.lowerToBottom(p); // boundary lines stay on top
+    return p;
+  }
+  // Loads a fill the first time its checkbox is ticked; if it fails, it is retried when ticked again.
+  function lazyFill(cb, load, what) {
+    let prim = null, busy = false;
+    const sync = async () => {
+      if (prim) prim.show = cb.checked;
+      if (!cb.checked || prim || busy) return;
+      busy = true;
+      try { prim = fillPrimitive(await load()); prim.show = cb.checked; } catch (e) { OGE.toast(`No se pudieron cargar ${what}: ${e.message}`, true); }
+      busy = false;
+    };
+    cb.addEventListener('change', sync);
+    sync();
+  }
+  const buf = (path) => fetch(FORK + path).then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); });
+  lazyFill($('fillCountries'), async () => { // MAPCOLOR7 gives neighbors different colors
+    const [s, d] = await Promise.all([buf('50m_cultural/ne_50m_admin_0_countries.shp'), buf('50m_cultural/ne_50m_admin_0_countries.dbf')]);
+    return shp.combine([shp.parseShp(s), shp.parseDbf(d)]).features.map((f) => [f.geometry, f.properties.MAPCOLOR7 || 0]);
+  }, 'las áreas de los países');
+  lazyFill($('fillAdmin1'), async () => {
+    OGE.toast('Cargando las áreas de provincias y regiones (21 MB)…');
+    // simplified to ~1 km: the full detail is over a million vertices; the .dbf is not needed
+    return shp.parseShp(await buf('10m_cultural/ne_10m_admin_1_states_provinces.shp')).map((g, i) => [g && turf.simplify(g, { tolerance: 0.01, mutate: true }), i * 7919]);
+  }, 'las áreas de provincias y regiones');
+
   // ---------- Watershed: click a point, get the basin that drains to it, plus its rivers ----------
   let picking = null;
   const stop = () => { if (picking) { picking.destroy(); picking = null; } $('watershedBtn').classList.remove('active'); };
@@ -69,10 +109,18 @@
     const ys = files.map((f) => /^world_(bc)?(\d+)\.geojson$/.exec(f.name)).filter(Boolean).map((m) => (m[1] ? -m[2] : +m[2])).sort((x, y) => x - y);
     if (ys.length) fill(ys);
   }).catch(() => {});
-  let hist = null, token = 0; // hist: { lines, labels, tick } of the year on screen
+  let hist = null, token = 0; // hist: { lines, labels, tick, gj, fill } of the year on screen
+  const cbH = $('fillHistory');
+  const syncHistFill = () => {
+    if (!hist) return;
+    if (cbH.checked && !hist.fill) hist.fill = fillPrimitive(hist.gj.features.map((f) => [f.geometry, hash(f.properties.NAME || f.properties.name)]));
+    if (hist.fill) hist.fill.show = cbH.checked;
+  };
+  cbH.addEventListener('change', syncHistFill);
   function clearHist() {
     if (!hist) return;
     viewer.scene.groundPrimitives.remove(hist.lines);
+    if (hist.fill) viewer.scene.groundPrimitives.remove(hist.fill);
     viewer.scene.primitives.remove(hist.labels);
     viewer.scene.preRender.removeEventListener(hist.tick);
     hist = null;
@@ -106,7 +154,8 @@
       const occluder = new C.EllipsoidalOccluder(C.Ellipsoid.WGS84, viewer.camera.positionWC);
       const tick = () => { occluder.cameraPosition = viewer.camera.positionWC; for (let i = 0; i < labels.length; i++) { const l = labels.get(i); l.show = occluder.isPointVisible(l.position); } };
       viewer.scene.preRender.addEventListener(tick);
-      hist = { lines: viewer.scene.groundPrimitives.add(new C.GroundPolylinePrimitive({ geometryInstances: inst, appearance: new C.PolylineColorAppearance() })), labels: viewer.scene.primitives.add(labels), tick };
+      hist = { lines: viewer.scene.groundPrimitives.add(new C.GroundPolylinePrimitive({ geometryInstances: inst, appearance: new C.PolylineColorAppearance() })), labels: viewer.scene.primitives.add(labels), tick, gj };
+      syncHistFill();
       OGE.toast(`Mapa histórico de ${sel.selectedOptions[0].textContent}: ${gj.features.length} territorios. Los nombres vienen en inglés.`);
     } catch (e) { OGE.toast('No se pudo cargar el mapa histórico: ' + e.message, true); }
   });
