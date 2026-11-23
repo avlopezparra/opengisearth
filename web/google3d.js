@@ -1,5 +1,5 @@
-// Ciudades 3D fotorrealistas de Google (Map Tiles API), la vía oficial: requiere la clave propia del usuario
-// de Google Maps Platform (cuota gratuita y luego pago). La clave se guarda solo en este equipo.
+// Google's photorealistic 3D cities (Map Tiles API), the official route: requires the user's own
+// Google Maps Platform key (free quota, then paid). The key is stored only on this computer.
 (() => {
   const { viewer, $ } = OGE;
   const KEY = 'oge.googleKey', cb = $('layerGoogle3d');
@@ -11,7 +11,7 @@
     if (!v) return null;
     const k = v.k.trim();
     if (k) localStorage.setItem(KEY, k); else localStorage.removeItem(KEY);
-    if (tileset) { viewer.scene.primitives.remove(tileset); tileset = null; } // usar la clave nueva
+    if (tileset) { viewer.scene.primitives.remove(tileset); tileset = null; } // use the new key
     return k || null;
   }
   async function show(on) {

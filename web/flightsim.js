@@ -1,12 +1,12 @@
-// Simulador de vuelo al estilo del de Earth: vista de cabina con HUD, control por mouse o teclado y dos aviones.
-// Mouse: clic toma o suelta la palanca; el cursor respecto del centro la mueve (hacia abajo = tirar = nariz arriba).
-// Teclado: flechas palanca · RePág/AvPág (o W/S) gas · Mayús+←/→ (o Q/E) timón · F / Mayús+F flaps · G tren ·
-// , . (o B) frenos · Inicio/Fin compensador · C centrar · Espacio pausa · H HUD · Esc salir.
+// Flight simulator in the style of Earth's: cockpit view with HUD, mouse or keyboard control and two aircraft.
+// Mouse: a click grabs or releases the stick; the cursor relative to the center moves it (down = pull = nose up).
+// Keyboard: arrows stick · PgUp/PgDn (or W/S) throttle · Shift+←/→ (or Q/E) rudder · F / Shift+F flaps · G gear ·
+// , . (or B) brakes · Home/End trim · C center · Space pause · H HUD · Esc exit.
 (() => {
   const C = Cesium, { viewer, $ } = OGE;
   const scene = viewer.scene, rad = C.Math.toRadians, deg = C.Math.toDegrees, clamp = C.Math.clamp;
   const G = 9.81, R = 6371000, KT = 1.94384, FT = 3.28084, GEAR_H = 1.8;
-  // vStall/vMax en m/s; thrust: aceleración a pleno gas (m/s²); roll/pitch/yaw: velocidades angulares máximas; agl y v0: arranque
+  // vStall/vMax in m/s; thrust: acceleration at full throttle (m/s²); roll/pitch/yaw: maximum angular rates; agl and v0: start
   const PLANES = {
     sr22: { name: 'SR22 — avioneta de hélice, lenta y dócil', vStall: 31, vMax: 95, thrust: 3.2, roll: rad(45), pitch: rad(22), yaw: rad(12), agl: 600, v0: 70 },
     f16: { name: 'F-16 — caza a reacción, rápido y nervioso', vStall: 72, vMax: 420, thrust: 22, roll: rad(130), pitch: rad(38), yaw: rad(10), agl: 1500, v0: 220 },
@@ -25,7 +25,7 @@
   }
   function start(plane, useMouse) {
     A = PLANES[plane];
-    const la = OGE.lookAt(), c = la ? la.carto : viewer.camera.positionCartographic; // sobre el punto mirado, no desde la órbita
+    const la = OGE.lookAt(), c = la ? la.carto : viewer.camera.positionCartographic; // above the look-at point, not from orbit
     const ground = scene.globe.getHeight(c) || 0;
     s = { lon: c.longitude, lat: c.latitude, alt: ground + A.agl, heading: viewer.camera.heading, pitch: 0, roll: 0, v: A.v0, vs: 0,
       throttle: 0.7, flaps: 0, gear: false, brake: false, ail: 0, elev: 0, rud: 0, trim: 0, ground: false, agl: A.agl };
@@ -43,11 +43,11 @@
     document.body.classList.remove('flying');
     hud.hidden = true;
     $('flyBtn').classList.remove('active');
-    viewer.camera.setView({ orientation: { heading: viewer.camera.heading, pitch: Math.min(viewer.camera.pitch, rad(-20)), roll: 0 } }); // vista nivelada mirando al suelo
+    viewer.camera.setView({ orientation: { heading: viewer.camera.heading, pitch: Math.min(viewer.camera.pitch, rad(-20)), roll: 0 } }); // level view looking at the ground
     if (msg) OGE.toast(msg, error);
   }
 
-  // ---------- Mandos ----------
+  // ---------- Controls ----------
   function controls(dt) {
     const k = (x) => keys.has(x), ease = Math.min(1, 6 * dt), shift = k('shift');
     const lr = (k('arrowright') ? 1 : 0) - (k('arrowleft') ? 1 : 0), ud = (k('arrowdown') ? 1 : 0) - (k('arrowup') ? 1 : 0);
@@ -61,13 +61,13 @@
     s.brake = k(',') || k('.') || k('b');
   }
 
-  // ---------- Física simplificada ----------
+  // ---------- Simplified physics ----------
   function step(dt) {
     controls(dt);
-    const stallV = A.vStall * (1 - 0.1 * s.flaps), q = clamp(s.v / (1.4 * A.vStall), 0, 1); // q: eficacia de los mandos con la velocidad
+    const stallV = A.vStall * (1 - 0.1 * s.flaps), q = clamp(s.v / (1.4 * A.vStall), 0, 1); // q: control effectiveness with speed
     const elev = clamp(s.elev + s.trim, -1, 1), ground = scene.globe.getHeight(new C.Cartographic(s.lon, s.lat)) || 0;
-    const drag = A.thrust * (s.v / A.vMax) ** 2 * (1 + 0.35 * s.flaps + (s.gear ? 0.15 : 0)); // a pleno gas y nivelado se llega a vMax
-    if (s.ground) { // rodaje: timón dirige, frenos frenan; se despega tirando con velocidad suficiente
+    const drag = A.thrust * (s.v / A.vMax) ** 2 * (1 + 0.35 * s.flaps + (s.gear ? 0.15 : 0)); // at full throttle and level, vMax is reached
+    if (s.ground) { // taxiing: rudder steers, brakes brake; takeoff by pulling with enough speed
       const canFly = s.v > stallV * 1.1;
       s.roll *= 1 - Math.min(1, 5 * dt);
       s.heading += s.rud * 0.6 * Math.min(1, s.v / 15) * dt;
@@ -76,16 +76,16 @@
       s.alt = ground + GEAR_H; s.vs = 0;
       if (canFly && s.pitch > rad(4)) s.ground = false;
     } else {
-      const pr = elev * A.pitch * q * dt; // tirar de la palanca sube la nariz en el eje del avión: alabeado, vira
+      const pr = elev * A.pitch * q * dt; // pulling the stick raises the nose in the aircraft's axis: when banked, it turns
       s.roll = C.Math.negativePiToPi(s.roll + s.ail * A.roll * q * dt);
-      s.pitch += pr * Math.cos(s.roll) - (1 - Math.cos(s.roll)) * (G / Math.max(s.v, 20)) * dt; // alabeado pierde sustentación: baja la nariz
+      s.pitch += pr * Math.cos(s.roll) - (1 - Math.cos(s.roll)) * (G / Math.max(s.v, 20)) * dt; // when banked it loses lift: the nose drops
       s.heading += pr * Math.sin(s.roll) + ((G * Math.sin(s.roll)) / Math.max(s.v, 20)) * dt + s.rud * A.yaw * q * dt;
-      if (s.v < stallV) s.pitch -= rad(18) * dt; // pérdida
+      if (s.v < stallV) s.pitch -= rad(18) * dt; // stall
       s.pitch = clamp(s.pitch, rad(-89), rad(89));
       s.v = clamp(s.v + (s.throttle * A.thrust - drag - G * Math.sin(s.pitch)) * dt, 0, A.vMax * 1.3);
       s.vs = s.v * Math.sin(s.pitch);
       s.alt += s.vs * dt;
-      if (s.alt <= ground + GEAR_H) { // toma de tierra suave con el tren abajo, o accidente
+      if (s.alt <= ground + GEAR_H) { // soft touchdown with the gear down, or crash
         if (!(s.gear && s.vs > -4 && Math.abs(s.roll) < rad(12) && s.pitch > rad(-6))) {
           return stop(`Accidente a ${Math.round(s.v * KT)} nudos.` + (s.gear ? '' : ' El tren estaba arriba (G lo baja).'), true);
         }
@@ -115,9 +115,9 @@
     else if (s.ground) text(T('EN TIERRA'), cx, cy - r - 46, 16);
     else if (s.v < A.vStall * (1 - 0.1 * s.flaps)) text(T('PÉRDIDA — baja la nariz y da gas'), cx, cy - r - 46, 16);
     if (!showHud) return;
-    const ppd = h / deg(viewer.camera.frustum.fovy || rad(60)), p0 = deg(s.pitch); // píxeles por grado de la vista
+    const ppd = h / deg(viewer.camera.frustum.fovy || rad(60)), p0 = deg(s.pitch); // pixels per degree of the view
 
-    // Escalera de cabeceo y aguja de alabeo: giran con el horizonte
+    // Pitch ladder and bank pointer: they rotate with the horizon
     g.save(); g.translate(cx, cy); g.rotate(-s.roll);
     for (let a = -90; a <= 90; a += 10) {
       const y = (p0 - a) * ppd, half = a === 0 ? r * 0.95 : 62;
@@ -129,14 +129,14 @@
     g.setLineDash([]);
     g.beginPath(); g.moveTo(0, -r + 2); g.lineTo(-7, -r + 15); g.lineTo(7, -r + 15); g.closePath(); g.stroke();
     g.restore();
-    for (const a of [-60, -45, -30, -20, -10, 0, 10, 20, 30, 45, 60]) { // escala fija de alabeo
+    for (const a of [-60, -45, -30, -20, -10, 0, 10, 20, 30, 45, 60]) { // fixed bank scale
       const t = rad(a - 90), l = a % 30 === 0 ? 14 : 8;
       line(cx + r * Math.cos(t), cy + r * Math.sin(t), cx + (r + l) * Math.cos(t), cy + (r + l) * Math.sin(t));
     }
-    // Referencia del avión
+    // Aircraft reference
     line(cx - 34, cy, cx - 12, cy); line(cx + 12, cy, cx + 34, cy); line(cx - 12, cy, cx, cy + 9); line(cx, cy + 9, cx + 12, cy);
 
-    // Cinta de rumbo
+    // Heading tape
     const hd = deg(s.heading), sc = (w * 0.28) / 30;
     for (let a = Math.ceil((hd - 30) / 5) * 5; a <= hd + 30; a += 5) {
       const x = cx + (a - hd) * sc, n = ((a % 360) + 360) % 360;
@@ -146,14 +146,14 @@
     g.strokeRect(cx - 24, 52, 48, 20); text(String(Math.round(hd) % 360).padStart(3, '0'), cx, 63);
     line(cx, 46, cx, 52);
 
-    // Velocidad (nudos) a la izquierda, altitud (pies) a la derecha
+    // Speed (knots) on the left, altitude (feet) on the right
     const bx = Math.min(r + 70, cx - 60);
     g.strokeRect(cx - bx - 38, cy - 12, 76, 24); text(Math.round(s.v * KT) + ' KT', cx - bx, cy + 1, 14);
     g.strokeRect(cx + bx - 46, cy - 12, 92, 24); text(Math.round(s.alt * FT) + ' FT', cx + bx, cy + 1, 14);
     text((s.vs >= 0 ? '+' : '') + Math.round((s.vs * FT * 60) / 10) * 10 + ' FPM', cx + bx, cy + 26, 12);
     text(T('SUELO ') + Math.round(s.agl * FT) + ' FT', cx + bx, cy + 42, 12);
 
-    // Motor y configuración (abajo a la izquierda)
+    // Engine and configuration (bottom left)
     const x0 = 24, y0 = h - 40;
     g.strokeRect(x0, y0 - 100, 14, 100); g.fillRect(x0, y0 - 100 * s.throttle, 14, 100 * s.throttle);
     text(T('GAS ') + Math.round(s.throttle * 100) + '%', x0 + 24, y0 - 92, 12, 'left');
@@ -162,7 +162,7 @@
     if (s.brake) text(T('FRENOS'), x0 + 24, y0 - 38, 12, 'left');
     if (Math.abs(s.trim) > 0.01) text(T('COMP ') + (s.trim > 0 ? '+' : '') + s.trim.toFixed(2), x0 + 24, y0 - 20, 12, 'left');
 
-    // Posición de la palanca y del timón (abajo al centro)
+    // Stick and rudder position (bottom center)
     const jx = cx, jy = h - 76, js = 30;
     g.strokeRect(jx - js, jy - js, js * 2, js * 2);
     line(jx - 5 + s.ail * js, jy + s.elev * js, jx + 5 + s.ail * js, jy + s.elev * js); line(jx + s.ail * js, jy - 5 + s.elev * js, jx + s.ail * js, jy + 5 + s.elev * js);
@@ -179,7 +179,7 @@
     if (on) draw();
   });
 
-  // ---------- Entradas ----------
+  // ---------- Inputs ----------
   hud.addEventListener('mousemove', (e) => {
     if (!mouseCtl) return;
     const b = hud.getBoundingClientRect();

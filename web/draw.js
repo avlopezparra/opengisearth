@@ -1,9 +1,9 @@
-// OpenGISEarth — dibujo: marca, trazado, polígono, regla e imágenes superpuestas (archivo o URL).
+// OpenGISEarth — drawing: placemark, path, polygon, ruler and image overlays (file or URL).
 (() => {
   const C = Cesium, { viewer, geo, $ } = OGE;
   const scene = viewer.scene;
 
-  // ---------- Boceto en curso ----------
+  // ---------- Sketch in progress ----------
   let tool = null, pts = [], temp = [], nodes = [], lastSnap = null;
   const HINTS = {
     point: 'Clic en el mapa para poner la marca.',
@@ -19,7 +19,7 @@
     for (let i = 1; i < p.length; i++) d += new C.EllipsoidGeodesic(C.Cartographic.fromCartesian(p[i - 1]), C.Cartographic.fromCartesian(p[i])).surfaceDistance;
     return d;
   };
-  function measure() { // medida en vivo del boceto
+  function measure() { // live measurement of the sketch
     if (pts.length < 2) return '';
     let t = 'Longitud ' + OGE.fmtLen(lenM(tool === 'polygon' ? [...pts, pts[0]] : pts));
     const ll = pts.map(geo.toLL);
@@ -27,7 +27,7 @@
     if (tool === 'ruler') t += ' · rumbo del último tramo ' + Math.round((turf.bearing(ll[ll.length - 2], ll[ll.length - 1]) + 360) % 360) + '°';
     return t;
   }
-  function syncNodes() { // un nodo blanco por vértice, como en Earth
+  function syncNodes() { // one white node per vertex, as in Earth
     nodes.forEach((n) => viewer.entities.remove(n));
     nodes = pts.map((p) => tmp({ position: p, point: NODE }));
     const m = tool && tool !== 'point' && measure();
@@ -38,7 +38,7 @@
     temp = []; pts = []; lastSnap = null;
     syncNodes();
   }
-  // keep: conserva el boceto en pantalla (la regla deja a la vista lo medido hasta la siguiente acción)
+  // keep: leaves the sketch on screen (the ruler keeps the measurement visible until the next action)
   function activate(t, keep) {
     if (!keep) clearSketch();
     tool = t;
@@ -50,7 +50,7 @@
     if (tool === 'polygon') temp.push(tmp({ polygon: { material: C.Color.ORANGE.withAlpha(0.25),
       hierarchy: new C.CallbackProperty(() => (pts.length > 2 ? new C.PolygonHierarchy(pts) : undefined), false) } }));
   }
-  const setTool = (t) => activate(tool === t ? null : t); // el botón activo se apaga al pulsarlo otra vez
+  const setTool = (t) => activate(tool === t ? null : t); // the active button turns off when pressed again
 
   const feature = (geometry, oge) => ({ type: 'Feature', geometry, properties: {}, oge });
   function finish() {
@@ -66,27 +66,27 @@
     const ll = p.map(geo.toLL);
     const [e] = geo.add([feature(t === 'line' ? { type: 'LineString', coordinates: ll } : { type: 'Polygon', coordinates: [[...ll, ll[0]]] },
       { name: T(t === 'line' ? 'Trazado' : 'Polígono') })]);
-    activate(t); // listo para el siguiente
+    activate(t); // ready for the next one
     if (e) OGE.editProps(e, true); else OGE.toast('La figura no es válida (puntos repetidos).', true);
   }
 
-  // ---------- Eventos ----------
+  // ---------- Events ----------
   const h = new C.ScreenSpaceEventHandler(scene.canvas);
   h.setInputAction((ev) => {
     if (!tool) return;
-    const s = OGE.snapAt(ev.position); // nodo o borde cercano si el ajuste está activo
+    const s = OGE.snapAt(ev.position); // nearby node or edge if snapping is on
     if (!s) return;
     if (tool === 'point') {
       const [e] = geo.add([feature({ type: 'Point', coordinates: geo.toLL(s.pos) }, { name: T('Marca') })]);
       return OGE.editProps(e, true);
     }
-    // Dos clics seguidos sobre nodos del mismo borde lo siguen (como el editor de regiones de Making History).
+    // Two consecutive clicks on nodes of the same edge follow it (like the Making History region editor).
     if (s.i != null && lastSnap && lastSnap.e === s.e && lastSnap.r === s.r && lastSnap.i !== s.i) pts.push(...OGE.borderPath(s.e, s.r, lastSnap.i, s.i));
     lastSnap = s.i != null ? s : null;
     pts.push(s.pos);
     syncNodes();
   }, C.ScreenSpaceEventType.LEFT_CLICK);
-  // El doble clic llega después de dos LEFT_CLICK en el mismo sitio: se quita el punto duplicado.
+  // The double click arrives after two LEFT_CLICKs at the same spot: the duplicate point is removed.
   h.setInputAction(() => { if (tool && tool !== 'point') { pts.pop(); finish(); } }, C.ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
   h.setInputAction(() => { if (tool) { pts.pop(); lastSnap = null; syncNodes(); } }, C.ScreenSpaceEventType.RIGHT_CLICK);
 
@@ -97,12 +97,12 @@
     else if (e.key === 'Enter' && tool && tool !== 'point') finish();
   });
 
-  // ---------- Imágenes superpuestas ----------
-  // Se colocan centradas en la vista con la proporción de la imagen; luego se mueven y estiran en modo Editar.
+  // ---------- Image overlays ----------
+  // They are placed centered in the view with the image's aspect ratio; then moved and stretched in Edit mode.
   function addImage(url, name, w, hgt) {
     const b = OGE.viewBbox() || [-10, -10, 10, 10];
     const cx = (b[0] + b[2]) / 2, cy = (b[1] + b[3]) / 2, kx = Math.max(0.05, Math.cos((cy * Math.PI) / 180));
-    let dx = (b[2] - b[0]) / 4, dy = (dx * kx * hgt) / w; // semiancho y semialto en grados
+    let dx = (b[2] - b[0]) / 4, dy = (dx * kx * hgt) / w; // half-width and half-height in degrees
     const maxDy = (b[3] - b[1]) / 4;
     if (dy > maxDy) { dx *= maxDy / dy; dy = maxDy; }
     const [e] = geo.add([feature({ type: 'Polygon', coordinates: [[[cx - dx, cy - dy], [cx + dx, cy - dy], [cx + dx, cy + dy], [cx - dx, cy + dy], [cx - dx, cy - dy]]] },
@@ -120,7 +120,7 @@
     const f = e.target.files[0];
     e.target.value = '';
     if (!f) return;
-    const reader = new FileReader(); // data: URL para que la imagen se guarde con el proyecto (un blob: no sobrevive)
+    const reader = new FileReader(); // data: URL so the image is saved with the project (a blob: does not survive)
     reader.onload = () => loadImage(reader.result, f.name);
     reader.readAsDataURL(f);
   };

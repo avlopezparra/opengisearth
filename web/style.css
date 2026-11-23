@@ -13,7 +13,7 @@ h2 { font-size: 14px; margin: 6px 0; }
 ul { list-style: none; margin: 6px 0; padding: 0; }
 input, select, textarea { font: inherit; }
 
-/* Panel lateral: ancho ajustable (arrastrando el borde) y ocultable */
+/* Side panel: adjustable width (by dragging the edge) and hideable */
 #panel { width: var(--side); flex: none; overflow: auto; padding: 10px; box-sizing: border-box; }
 #panel h2 { margin: 12px 0 6px; border-top: 1px solid #555; padding-top: 10px; }
 #splitter { width: 5px; flex: none; cursor: col-resize; background: #34343a; }
@@ -26,7 +26,7 @@ body.noside #panel, body.noside #splitter { display: none; }
 .layers li { padding: 2px 0; }
 .layers select { max-width: 100%; }
 
-/* Árbol de Lugares */
+/* Places tree */
 .tree, .tree ul { list-style: none; margin: 0; padding: 0; }
 .tree ul { padding-left: 16px; }
 .node { display: flex; align-items: center; gap: 4px; padding: 2px 0; }
@@ -37,7 +37,7 @@ body.noside #panel, body.noside #splitter { display: none; }
 .node button:hover { background: var(--accent); }
 .tw { width: 12px; cursor: pointer; color: #aaa; flex: none; }
 
-/* Mapa y barras flotantes (cada una se pliega con su botón ▾) */
+/* Map and floating bars (each one collapses with its ▾ button) */
 #main { flex: 1; position: relative; min-width: 0; }
 #globe { position: absolute; inset: 0; }
 #sideBtn { position: absolute; top: 8px; left: 8px; z-index: 2; padding: 6px 9px; }
@@ -65,11 +65,11 @@ body.noside #panel, body.noside #splitter { display: none; }
 #toast.err { border-left-color: #e53935; }
 #statusbar { position: absolute; right: 8px; bottom: 4px; font: 12px ui-monospace, monospace; color: #fff; text-shadow: 0 0 3px #000, 0 0 3px #000; pointer-events: none; white-space: pre; z-index: 1; }
 
-/* Simulador de vuelo: HUD a pantalla completa y sin barras */
+/* Flight simulator: full-screen HUD and no bars */
 #hud { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 2; cursor: crosshair; }
 body.flying .bar, body.flying #right, body.flying #statusbar, body.flying #sideBtn, body.flying .cesium-viewer-toolbar { display: none; }
 
-/* Diálogos */
+/* Dialogs */
 dialog { background: #2b2b30; color: #eee; border: 1px solid #555; border-radius: 8px; width: 400px; max-width: 92vw; }
 dialog::backdrop { background: rgba(0, 0, 0, .35); }
 dialog label { display: block; margin: 8px 0; font-size: 13px; }

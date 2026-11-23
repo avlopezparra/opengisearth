@@ -1,6 +1,6 @@
-// OpenGISEarth — idioma de la interfaz. El código está en español; en inglés, los textos se traducen al vuelo
-// con el diccionario de i18n_en.js: exactos (OGE_EN.exact) y patrones para los que llevan números o nombres (OGE_EN.patterns).
-// T(texto) traduce a mano lo que no pasa por el DOM (lo dibujado en lienzos: HUD del vuelo, hoja de impresión).
+// OpenGISEarth — interface language. The UI strings in the code are in Spanish; in English, the texts are translated on the fly
+// with the i18n_en.js dictionary: exact ones (OGE_EN.exact) and patterns for those carrying numbers or names (OGE_EN.patterns).
+// T(text) translates by hand what does not go through the DOM (what is drawn on canvases: flight HUD, print sheet).
 (() => {
   const saved = localStorage.getItem('oge.lang'), lang = saved || ((navigator.language || 'es').toLowerCase().startsWith('es') ? 'es' : 'en');
   const D = window.OGE_EN || { exact: {}, patterns: [] };
@@ -24,7 +24,7 @@
     for (const a of ATTRS) if (n.hasAttribute(a)) { const v = tr(n.getAttribute(a)); if (v !== n.getAttribute(a)) n.setAttribute(a, v); }
     n.childNodes.forEach(walk);
   };
-  // Todo lo que la app escriba después (árbol, diálogos, avisos) pasa por aquí; un texto ya traducido no está en el diccionario y no se repite.
+  // Everything the app writes afterwards (tree, dialogs, notices) goes through here; an already translated text is not in the dictionary and is not repeated.
   new MutationObserver((ms) => ms.forEach((m) => (m.type === 'childList' ? m.addedNodes.forEach(walk) : walk(m.target))))
     .observe(document.documentElement, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ATTRS });
   document.addEventListener('DOMContentLoaded', () => walk(document.body));

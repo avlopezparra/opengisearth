@@ -1,11 +1,11 @@
-// Calles, ciudades y límites regionales de OpenStreetMap como capa vectorial transparente sobre el satélite (al estilo de Earth).
-// Lee las teselas vectoriales oficiales de OSM (esquema Shortbread, formato MVT) y las dibuja en un lienzo por tesela.
+// OpenStreetMap streets, cities and regional boundaries as a transparent vector layer over the satellite imagery (Earth style).
+// Reads the official OSM vector tiles (Shortbread schema, MVT format) and draws them on one canvas per tile.
 (() => {
   const C = Cesium, { viewer, $ } = OGE;
   const URL_MVT = 'https://vector.openstreetmap.org/shortbread_v1/';
   const MAXZ = 14, TS = 512;
 
-  // ---------- Decodificador MVT mínimo (protobuf): { capa: [{ type, props, geom: [[[x, y], …], …] }] } ----------
+  // ---------- Minimal MVT decoder (protobuf): { layer: [{ type, props, geom: [[[x, y], …], …] }] } ----------
   function decode(buf) {
     const u8 = new Uint8Array(buf), dv = new DataView(buf), td = new TextDecoder();
     let pos = 0;
@@ -36,7 +36,7 @@
         else if (f === 4) { const len = varint(), e = pos + len; g = []; while (pos < e) g.push(varint()); }
         else skip(tag & 7);
       }
-      ft.tags = tags; // claves y valores pueden venir después en la capa: se resuelven al final
+      ft.tags = tags; // keys and values may come later in the layer: they are resolved at the end
       let x = 0, y = 0, ring = null;
       for (let i = 0; i < g.length;) {
         const cmd = g[i] & 7, cnt = g[i] >> 3;
@@ -68,7 +68,7 @@
     }
     return layers;
   }
-  // Fuente de teselas con caché LRU: urlOf(z, x, y) puede ser asíncrona. Devuelve Promise<capas | null>.
+  // Tile source with LRU cache: urlOf(z, x, y) may be asynchronous. Returns Promise<layers | null>.
   function source(urlOf) {
     const cache = new Map();
     return (z, x, y) => {
@@ -83,7 +83,7 @@
     };
   }
   const tile = source((z, x, y) => `${URL_MVT}${z}/${x}/${y}.mvt`);
-  // OpenFreeMap (esquema OpenMapTiles): parques con nombre y edificios con altura. Su URL cambia con cada versión semanal: se lee del TileJSON.
+  // OpenFreeMap (OpenMapTiles schema): named parks and buildings with height. Its URL changes with every weekly release: it is read from the TileJSON.
   let ofmTpl = null;
   const ofmTile = source(async (z, x, y) => {
     if (!ofmTpl) { ofmTpl = fetch('https://tiles.openfreemap.org/planet').then((r) => r.json()).then((j) => j.tiles[0]); ofmTpl.catch(() => { ofmTpl = null; }); }
@@ -91,18 +91,18 @@
   });
   const lonLat = (z, x, y, px, py) => { const n = 2 ** z, fx = x + px / 4096, fy = y + py / 4096; return [(fx / n) * 360 - 180, (Math.atan(Math.sinh(Math.PI * (1 - (2 * fy) / n))) * 180) / Math.PI]; };
 
-  // ---------- Estilo: [nivel mínimo, ancho px, color] por tipo de vía ----------
+  // ---------- Style: [minimum level, width px, color] per road type ----------
   const ROAD = {
     motorway: [4, 3.2, '#ffa726'], trunk: [5, 2.8, '#ffb74d'], primary: [7, 2.4, '#ffd54f'], secondary: [8, 2, '#ffe082'],
     tertiary: [10, 1.6, '#ffffff'], unclassified: [11, 1.2, '#f2f2f2'], residential: [12, 1.2, '#f2f2f2'], living_street: [12, 1.1, '#f2f2f2'],
     pedestrian: [13, 1, '#e0e0e0'], service: [13, 0.8, '#e0e0e0'], track: [13, 0.8, '#d7ccc8'], rail: [9, 1.2, '#b0bec5'],
   };
-  const PLACE = { // [nivel mínimo, tamaño px, estilo]
+  const PLACE = { // [minimum level, size px, style]
     capital: [3, 15, '700'], state_capital: [4, 14, '700'], city: [5, 14, '700'], town: [8, 13, '600'], village: [10, 12, '600'],
     suburb: [10, 12, 'italic 600'], island: [9, 12, 'italic 600'], hamlet: [12, 11, '600'], quarter: [12, 11, 'italic 600'], neighbourhood: [13, 11, 'italic 600'],
   };
   const font = (px, style) => `${style} ${px}px sans-serif`;
-  const inside = (x, y, w, h) => [Math.max(w / 2 + 3, Math.min(TS - w / 2 - 3, x)), Math.max(h / 2 + 3, Math.min(TS - h / 2 - 3, y))]; // el lienzo no pinta fuera de su tesela
+  const inside = (x, y, w, h) => [Math.max(w / 2 + 3, Math.min(TS - w / 2 - 3, x)), Math.max(h / 2 + 3, Math.min(TS - h / 2 - 3, y))]; // the canvas does not paint outside its tile
 
   function draw(ctx, layers, level, k, ox, oy) {
     const X = (p) => p[0] * k - ox, Y = (p) => p[1] * k - oy;
@@ -112,14 +112,14 @@
       ctx.lineWidth = width; ctx.strokeStyle = color; ctx.setLineDash(dash || []); ctx.stroke();
     };
     ctx.lineJoin = ctx.lineCap = 'round';
-    // Límites regionales (admin_level 4): los internacionales ya los dibuja la capa de fronteras
+    // Regional boundaries (admin_level 4): the international ones are already drawn by the borders layer
     for (const f of layers.boundaries || []) if (f.props.admin_level === 4 && !f.props.maritime) stroke(f.geom, 1.3, 'rgba(255,255,255,.75)', [6, 4]);
-    // Vías: primero las menores; cada una con un borde oscuro para que se lea sobre el satélite
+    // Roads: minor ones first; each with a dark casing so it reads over the satellite imagery
     const roads = (layers.streets || []).map((f) => [f, ROAD[f.props.rail ? 'rail' : f.props.kind]]).filter(([, s]) => s && level >= s[0]).sort((a, b) => a[1][1] - b[1][1]);
     for (const [f, s] of roads) stroke(f.geom, s[1] + 1.6, 'rgba(0,0,0,.45)');
     for (const [f, s] of roads) stroke(f.geom, s[1], f.props.tunnel ? 'rgba(255,255,255,.35)' : s[2], f.props.rail ? [5, 4] : null);
 
-    // Rótulos con halo; se evita que se pisen dentro de la tesela
+    // Labels with halo; overlaps within the tile are avoided
     const boxes = [];
     const free = (x, y, w, h) => { const b = [x - w / 2 - 2, y - h / 2 - 2, x + w / 2 + 2, y + h / 2 + 2]; if (boxes.some((o) => b[0] < o[2] && o[0] < b[2] && b[1] < o[3] && o[1] < b[3])) return false; boxes.push(b); return true; };
     const text = (t, x, y, angle, color) => {
@@ -138,7 +138,7 @@
       if (!free(lx, ly, w, s[1])) continue;
       text(f.props.name, lx, ly, 0, '#fff');
     }
-    for (const f of layers.boundary_labels || []) { // nombres de regiones/estados
+    for (const f of layers.boundary_labels || []) { // names of regions/states
       if (f.props.admin_level !== 4 || !f.props.name || level < 4 || level > 8) continue;
       const x = X(f.geom[0][0]), y = Y(f.geom[0][0]);
       ctx.font = font(12, 'italic 600');
@@ -149,7 +149,7 @@
       text(f.props.name.toUpperCase(), lx, ly, 0, '#ffe9a8');
     }
     ctx.font = font(11, '600');
-    for (const f of layers.street_labels || []) { // nombre de la calle siguiendo su tramo más largo
+    for (const f of layers.street_labels || []) { // street name following its longest stretch
       const s = ROAD[f.props.kind], name = f.props.name || f.props.ref;
       if (!name || !s || level < s[0] + 2) continue;
       const line = f.geom[0];
@@ -158,14 +158,14 @@
       const w = ctx.measureText(name).width;
       if (!best || bl < w * 0.6) continue;
       const a = line[best - 1], b = line[best], x = (X(a) + X(b)) / 2, y = (Y(a) + Y(b)) / 2;
-      if (x < w / 2 || x > TS - w / 2 || y < w / 2 || y > TS - w / 2 || !free(x, y, w, w)) continue; // entero dentro de la tesela; caja cuadrada porque va girado
+      if (x < w / 2 || x > TS - w / 2 || y < w / 2 || y > TS - w / 2 || !free(x, y, w, w)) continue; // entirely inside the tile; square box because it is rotated
       let ang = Math.atan2(Y(b) - Y(a), X(b) - X(a));
-      if (ang > Math.PI / 2) ang -= Math.PI; else if (ang < -Math.PI / 2) ang += Math.PI; // nunca cabeza abajo
+      if (ang > Math.PI / 2) ang -= Math.PI; else if (ang < -Math.PI / 2) ang += Math.PI; // never upside down
       text(name, x, y, ang, '#fff');
     }
   }
 
-  // Parques nacionales y áreas protegidas (capa «park» de OpenFreeMap): área verde, borde y nombre.
+  // National parks and protected areas (OpenFreeMap "park" layer): green area, outline and name.
   function drawParks(ctx, layers, level, k, ox, oy) {
     const X = (p) => p[0] * k - ox, Y = (p) => p[1] * k - oy, labels = [];
     for (const f of layers.park || []) {
@@ -189,7 +189,7 @@
     }
   }
 
-  // ---------- Proveedor de imágenes para Cesium: un lienzo por tesela ----------
+  // ---------- Imagery provider for Cesium: one canvas per tile ----------
   const scheme = new C.WebMercatorTilingScheme();
   const provider = (src, drawFn, credit, minLevel) => ({
     tilingScheme: scheme, rectangle: scheme.rectangle, tileWidth: TS, tileHeight: TS, minimumLevel: 0, maximumLevel: 17,
@@ -199,14 +199,14 @@
       const cv = document.createElement('canvas');
       cv.width = cv.height = TS;
       if (level < minLevel) return Promise.resolve(cv);
-      const dz = Math.max(0, level - MAXZ), sub = 2 ** dz; // más allá del zoom 14 se amplía la tesela de datos
+      const dz = Math.max(0, level - MAXZ), sub = 2 ** dz; // beyond zoom 14 the data tile is enlarged
       return src(level - dz, Math.floor(x / sub), Math.floor(y / sub)).then((layers) => {
         if (layers) drawFn(cv.getContext('2d'), layers, level, (TS / 4096) * sub, (x % sub) * TS, (y % sub) * TS);
         return cv;
       }).catch(() => cv);
     },
   });
-  function toggle(cb, make) { // la capa se crea la primera vez que se enciende
+  function toggle(cb, make) { // the layer is created the first time it is switched on
     let layer = null;
     const sync = () => { if (cb.checked && !layer) layer = viewer.imageryLayers.addImageryProvider(make()); if (layer) layer.show = cb.checked; };
     cb.addEventListener('change', sync);
@@ -214,10 +214,10 @@
   }
   toggle($('layerParks'), () => provider(ofmTile, drawParks, '© OpenStreetMap · teselas de OpenFreeMap', 4));
   toggle($('layerRoads'), () => provider(tile, draw, '© OpenStreetMap (teselas vectoriales)', 3));
-  // ---------- Nubes: la imagen satelital diaria de la NASA (GIBS, VIIRS color real), de la que se conserva solo lo blanco ----------
-  // shortcut: la nieve y el hielo también son blancos y se ven como nube; no hay un producto abierto solo de nubes con transparencia.
+  // ---------- Clouds: NASA's daily satellite image (GIBS, VIIRS true color), of which only the white is kept ----------
+  // shortcut: snow and ice are also white and show up as cloud; there is no open cloud-only product with transparency.
   function cloudsProvider() {
-    const day = new Date(Date.now() - 36 * 3600e3).toISOString().slice(0, 10); // la de ayer: la de hoy aún se está armando
+    const day = new Date(Date.now() - 36 * 3600e3).toISOString().slice(0, 10); // yesterday's: today's is still being assembled
     return {
       tilingScheme: scheme, rectangle: scheme.rectangle, tileWidth: 256, tileHeight: 256, minimumLevel: 0, maximumLevel: 8,
       hasAlphaChannel: true, errorEvent: new C.Event(), credit: new C.Credit('Nubes: NASA GIBS, VIIRS NOAA-20 del ' + day), tileDiscardPolicy: undefined, proxy: undefined,
@@ -232,18 +232,18 @@
           ctx.drawImage(bmp, 0, 0);
           bmp.close();
           const img = ctx.getImageData(0, 0, 256, 256), p = img.data;
-          for (let i = 0; i < p.length; i += 4) { // blanco, con opacidad según lo claro y poco saturado del píxel
+          for (let i = 0; i < p.length; i += 4) { // white, with opacity according to how light and unsaturated the pixel is
             p[i + 3] = Math.max(0, Math.min(255, (Math.min(p[i], p[i + 1], p[i + 2]) - 120) * 2.4));
             p[i] = p[i + 1] = p[i + 2] = 255;
           }
           ctx.putImageData(img, 0, 0);
-        } catch { /* sin red: tesela vacía */ }
+        } catch { /* offline: empty tile */ }
         return cv;
       },
     };
   }
   let clouds = null;
-  const syncClouds = () => { // como en Earth, las nubes se desvanecen al acercarse al suelo
+  const syncClouds = () => { // as in Earth, the clouds fade out when approaching the ground
     const on = $('layerClouds').checked;
     if (on && !clouds) clouds = viewer.imageryLayers.addImageryProvider(cloudsProvider());
     if (clouds) { clouds.show = on; clouds.alpha = C.Math.clamp((viewer.camera.positionCartographic.height - 2e5) / 1.5e6, 0, 0.9); }
