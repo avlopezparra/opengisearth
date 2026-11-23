@@ -36,7 +36,7 @@
   async function loadRanges() {
     const [shpBuf, dbfBuf] = await Promise.all(['.shp', '.dbf'].map((x) => fetch(FORK + '10m_physical/ne_10m_geography_regions_polys' + x).then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })));
     const gj = shp.combine([shp.parseShp(shpBuf), shp.parseDbf(dbfBuf)]), inst = [], BROWN = C.Color.fromCssColorString('#d7a86e');
-    const labels = viewer.scene.primitives.add(new C.LabelCollection()), clean = (s) => String(s ?? '').replace(/\0/g, '').trim();
+    const labels = viewer.scene.primitives.add(new C.BillboardCollection()), clean = (s) => String(s ?? '').replace(/\0/g, '').trim();
     for (const f of gj.features) {
       const p = f.properties;
       if (!/range|mtn/i.test(clean(p.FEATURECLA || p.featurecla)) || !f.geometry) continue;
@@ -46,8 +46,8 @@
           attributes: { color: C.ColorGeometryInstanceAttribute.fromColor(BROWN.withAlpha(0.8)) } }));
       }
       const c = turf.centerOfMass(f).geometry.coordinates;
-      labels.add({ position: C.Cartesian3.fromDegrees(c[0], c[1]), text: name, font: 'italic 600 13px sans-serif', fillColor: BROWN, outlineColor: C.Color.BLACK, outlineWidth: 2,
-        style: C.LabelStyle.FILL_AND_OUTLINE, distanceDisplayCondition: new C.DistanceDisplayCondition(0, 9e6), disableDepthTestDistance: Number.POSITIVE_INFINITY });
+      labels.add({ position: C.Cartesian3.fromDegrees(c[0], c[1]), image: OGE.textImage(name, 'italic 600 13px sans-serif', BROWN), scale: 0.5,
+        distanceDisplayCondition: new C.DistanceDisplayCondition(0, 9e6), disableDepthTestDistance: Number.POSITIVE_INFINITY });
     }
     const occluder = new C.EllipsoidalOccluder(C.Ellipsoid.WGS84, viewer.camera.positionWC); // hide labels on the far side of the globe
     viewer.scene.preRender.addEventListener(() => { if (!labels.show) return; occluder.cameraPosition = viewer.camera.positionWC; for (let i = 0; i < labels.length; i++) { const l = labels.get(i); l.show = occluder.isPointVisible(l.position); } });
@@ -87,7 +87,7 @@
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const gj = await res.json();
       if (mine !== token) return; // another year was chosen meanwhile
-      const PINK = C.Color.fromCssColorString('#ff80ab'), inst = [], labels = new C.LabelCollection();
+      const PINK = C.Color.fromCssColorString('#ff80ab'), inst = [], labels = new C.BillboardCollection();
       for (const f of gj.features) {
         if (!f.geometry) continue;
         let biggest = null, size = 0; // the label goes on the largest part
@@ -99,8 +99,8 @@
           if (a > size) { size = a; biggest = b; }
         }
         const name = f.properties.NAME || f.properties.name;
-        if (name && biggest) labels.add({ position: C.Cartesian3.fromDegrees((biggest[0] + biggest[2]) / 2, (biggest[1] + biggest[3]) / 2), text: name, font: '600 13px sans-serif', fillColor: PINK,
-          outlineColor: C.Color.BLACK, outlineWidth: 2, style: C.LabelStyle.FILL_AND_OUTLINE, disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        if (name && biggest) labels.add({ position: C.Cartesian3.fromDegrees((biggest[0] + biggest[2]) / 2, (biggest[1] + biggest[3]) / 2), image: OGE.textImage(name, '600 13px sans-serif', PINK), scale: 0.5,
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
           distanceDisplayCondition: new C.DistanceDisplayCondition(0, Math.max(1.5e6, Math.min(2e7, Math.sqrt(size) * 6e5))) }); // small states appear when zooming in
       }
       const occluder = new C.EllipsoidalOccluder(C.Ellipsoid.WGS84, viewer.camera.positionWC);
