@@ -526,7 +526,7 @@
   function render(filter = '') {
     const q = norm(filter);
     $('toolList').replaceChildren(...GROUPS.map((gname) => {
-      const ts = TOOLS.filter((t) => t.g === gname && (!q || norm(`${t.n} ${t.q || ''} ${t.a || ''}`).includes(q)));
+      const ts = TOOLS.filter((t) => t.g === gname && (!q || norm(`${t.n} ${window.T(t.n)} ${t.q || ''} ${t.a || ''}`).includes(q)));
       if (!ts.length) return '';
       return el('details', { open: !!q }, el('summary', { textContent: `${gname} (${ts.length})` }), ...ts.map((t) => {
         const b = el('button', { className: 'tool', textContent: t.n, title: [t.h, t.q && 'QGIS: ' + t.q, t.a && 'ArcGIS: ' + t.a].filter(Boolean).join('\n') });

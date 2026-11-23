@@ -111,9 +111,9 @@
     g.textAlign = 'center'; g.textBaseline = 'middle';
     const text = (t, x, y, size = 13, align = 'center') => { g.font = `600 ${size}px ui-monospace, monospace`; g.textAlign = align; g.fillText(t, x, y); };
     const line = (x1, y1, x2, y2) => { g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke(); };
-    if (paused) text('PAUSA — Espacio para seguir', cx, cy - r - 46, 16);
-    else if (s.ground) text('EN TIERRA', cx, cy - r - 46, 16);
-    else if (s.v < A.vStall * (1 - 0.1 * s.flaps)) text('PÉRDIDA — baja la nariz y da gas', cx, cy - r - 46, 16);
+    if (paused) text(T('PAUSA — Espacio para seguir'), cx, cy - r - 46, 16);
+    else if (s.ground) text(T('EN TIERRA'), cx, cy - r - 46, 16);
+    else if (s.v < A.vStall * (1 - 0.1 * s.flaps)) text(T('PÉRDIDA — baja la nariz y da gas'), cx, cy - r - 46, 16);
     if (!showHud) return;
     const ppd = h / deg(viewer.camera.frustum.fovy || rad(60)), p0 = deg(s.pitch); // píxeles por grado de la vista
 
@@ -141,7 +141,7 @@
     for (let a = Math.ceil((hd - 30) / 5) * 5; a <= hd + 30; a += 5) {
       const x = cx + (a - hd) * sc, n = ((a % 360) + 360) % 360;
       line(x, 46, x, a % 10 === 0 ? 36 : 41);
-      if (a % 10 === 0) text(n % 90 === 0 ? 'NESO'[n / 90] : String(n / 10).padStart(2, '0'), x, 24);
+      if (a % 10 === 0) text(n % 90 === 0 ? (OGE_LANG === 'en' ? 'NESW' : 'NESO')[n / 90] : String(n / 10).padStart(2, '0'), x, 24);
     }
     g.strokeRect(cx - 24, 52, 48, 20); text(String(Math.round(hd) % 360).padStart(3, '0'), cx, 63);
     line(cx, 46, cx, 52);
@@ -151,23 +151,23 @@
     g.strokeRect(cx - bx - 38, cy - 12, 76, 24); text(Math.round(s.v * KT) + ' KT', cx - bx, cy + 1, 14);
     g.strokeRect(cx + bx - 46, cy - 12, 92, 24); text(Math.round(s.alt * FT) + ' FT', cx + bx, cy + 1, 14);
     text((s.vs >= 0 ? '+' : '') + Math.round((s.vs * FT * 60) / 10) * 10 + ' FPM', cx + bx, cy + 26, 12);
-    text('SUELO ' + Math.round(s.agl * FT) + ' FT', cx + bx, cy + 42, 12);
+    text(T('SUELO ') + Math.round(s.agl * FT) + ' FT', cx + bx, cy + 42, 12);
 
     // Motor y configuración (abajo a la izquierda)
     const x0 = 24, y0 = h - 40;
     g.strokeRect(x0, y0 - 100, 14, 100); g.fillRect(x0, y0 - 100 * s.throttle, 14, 100 * s.throttle);
-    text('GAS ' + Math.round(s.throttle * 100) + '%', x0 + 24, y0 - 92, 12, 'left');
-    text('FLAPS ' + s.flaps + '/2', x0 + 24, y0 - 74, 12, 'left');
-    text('TREN ' + (s.gear ? 'ABAJO' : 'ARRIBA'), x0 + 24, y0 - 56, 12, 'left');
-    if (s.brake) text('FRENOS', x0 + 24, y0 - 38, 12, 'left');
-    if (Math.abs(s.trim) > 0.01) text('COMP ' + (s.trim > 0 ? '+' : '') + s.trim.toFixed(2), x0 + 24, y0 - 20, 12, 'left');
+    text(T('GAS ') + Math.round(s.throttle * 100) + '%', x0 + 24, y0 - 92, 12, 'left');
+    text(T('FLAPS ') + s.flaps + '/2', x0 + 24, y0 - 74, 12, 'left');
+    text(T('TREN ') + T(s.gear ? 'ABAJO' : 'ARRIBA'), x0 + 24, y0 - 56, 12, 'left');
+    if (s.brake) text(T('FRENOS'), x0 + 24, y0 - 38, 12, 'left');
+    if (Math.abs(s.trim) > 0.01) text(T('COMP ') + (s.trim > 0 ? '+' : '') + s.trim.toFixed(2), x0 + 24, y0 - 20, 12, 'left');
 
     // Posición de la palanca y del timón (abajo al centro)
     const jx = cx, jy = h - 76, js = 30;
     g.strokeRect(jx - js, jy - js, js * 2, js * 2);
     line(jx - 5 + s.ail * js, jy + s.elev * js, jx + 5 + s.ail * js, jy + s.elev * js); line(jx + s.ail * js, jy - 5 + s.elev * js, jx + s.ail * js, jy + 5 + s.elev * js);
     line(jx - js, jy + js + 8, jx + js, jy + js + 8); g.fillRect(jx + s.rud * js - 3, jy + js + 4, 6, 8);
-    text(mouseCtl ? 'MOUSE: clic suelta la palanca' : 'TECLADO: clic para volar con el mouse', cx, h - 22, 12);
+    text(T(mouseCtl ? 'MOUSE: clic suelta la palanca' : 'TECLADO: clic para volar con el mouse'), cx, h - 22, 12);
     text(A.name.split(' — ')[0], w - 60, h - 22, 12);
   }
 

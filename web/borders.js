@@ -66,7 +66,7 @@
     for (const f of gj.features) {
       const p = f.properties;
       // los países más chicos aparecen al acercarse (LABELRANK 2 = grande … 10 = muy chico); muy de cerca estorban
-      if (p.LABEL_X != null) labels.put(p.LABEL_X, p.LABEL_Y, clean(p.NAME_ES) || clean(p.NAME), 1.5e5, 2.2e7 / Math.max(1, (p.LABELRANK || 5) - 1));
+      if (p.LABEL_X != null) labels.put(p.LABEL_X, p.LABEL_Y, clean(OGE_LANG === 'en' ? p.NAME_EN : p.NAME_ES) || clean(p.NAME), 1.5e5, 2.2e7 / Math.max(1, (p.LABELRANK || 5) - 1));
     }
     return labels;
   }, 'los nombres de países');
@@ -78,10 +78,10 @@
     ds.isLayer = true; // no aparece en Lugares ni se guarda
     const pos = (r) => C.Cartesian3.fromDegreesArray(r.flatMap((c) => [c[0], c[1]]));
     for (const f of gj.features) {
-      const p = f.properties, name = clean(p.NAME_ES) || clean(p.BRK_NAME) || clean(p.NAME);
-      const note = clean(p.NOTE_BRK).replace(/Admin\. by/gi, 'Administrado por').replace(/Claimed by/gi, 'reclamado por').replace(/\band\b/gi, 'y').replace(/under survey/gi, 'en estudio');
+      const p = f.properties, name = clean(OGE_LANG === 'en' ? p.NAME_EN : p.NAME_ES) || clean(p.BRK_NAME) || clean(p.NAME);
+      const note = OGE_LANG === 'en' ? clean(p.NOTE_BRK) : clean(p.NOTE_BRK).replace(/Admin\. by/gi, 'Administrado por').replace(/Claimed by/gi, 'reclamado por').replace(/\band\b/gi, 'y').replace(/under survey/gi, 'en estudio');
       const sov = clean(p.SOVEREIGNT), own = [clean(p.BRK_NAME), clean(p.NAME)].includes(sov); // a veces la «soberanía» es el nombre de la propia área
-      const description = `<p><b>${name}</b></p><p>${note || 'Área en disputa'}.</p>${own ? '' : `<p>Soberanía según Natural Earth: ${sov}.</p>`}`;
+      const description = `<p><b>${name}</b></p><p>${note || T('Área en disputa')}.</p>${own ? '' : `<p>${T('Soberanía según Natural Earth:')} ${sov}.</p>`}`;
       for (const rings of f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates) {
         if (rings[0].length < 4) continue;
         ds.entities.add({ name, description,

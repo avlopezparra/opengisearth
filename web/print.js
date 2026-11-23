@@ -58,19 +58,19 @@
       box(x - 4 * mm, y - 8 * mm, len + 8 * mm, 13 * mm);
       g.fillRect(x, y, len, 1.2 * mm); g.fillStyle = '#fff'; g.fillRect(x + len / 2, y + 0.25 * mm, len / 2 - 0.25 * mm, 0.7 * mm); g.fillStyle = '#111';
       g.font = `${3 * mm}px sans-serif`; g.textAlign = 'center';
-      g.fillText((nice >= 1000 ? nice / 1000 + ' km' : nice + ' m') + ' (aprox. al centro)', x + len / 2, y - 2.5 * mm); g.textAlign = 'left';
+      g.fillText((nice >= 1000 ? nice / 1000 + ' km' : nice + ' m') + T(' (aprox. al centro)'), x + len / 2, y - 2.5 * mm); g.textAlign = 'left';
     }
     const groups = visible().slice(0, 14);
     if (v.legend && groups.length) {
       g.font = `${3.2 * mm}px sans-serif`;
       const lw = Math.min(fw * 0.4, Math.max(...groups.map((d) => g.measureText(d.name).width)) + 14 * mm), lh = (groups.length * 5.5 + 9) * mm, x = fx + 4 * mm, y = fy + fh - lh - 4 * mm;
       box(x, y, lw, lh);
-      g.font = `700 ${3.4 * mm}px sans-serif`; g.fillText('Leyenda', x + 3 * mm, y + 5.5 * mm);
+      g.font = `700 ${3.4 * mm}px sans-serif`; g.fillText(T('Leyenda'), x + 3 * mm, y + 5.5 * mm);
       g.font = `${3.2 * mm}px sans-serif`;
-      groups.forEach((d, i) => { const yy = y + (11 + i * 5.5) * mm; g.fillStyle = colorOf(d); g.fillRect(x + 3 * mm, yy - 3 * mm, 5 * mm, 3.4 * mm); g.strokeRect(x + 3 * mm, yy - 3 * mm, 5 * mm, 3.4 * mm); g.fillStyle = '#111'; g.fillText(d.name, x + 10 * mm, yy, lw - 12 * mm); });
+      groups.forEach((d, i) => { const yy = y + (11 + i * 5.5) * mm; g.fillStyle = colorOf(d); g.fillRect(x + 3 * mm, yy - 3 * mm, 5 * mm, 3.4 * mm); g.strokeRect(x + 3 * mm, yy - 3 * mm, 5 * mm, 3.4 * mm); g.fillStyle = '#111'; g.fillText(T(d.name), x + 10 * mm, yy, lw - 12 * mm); });
     }
     g.font = `${2.6 * mm}px sans-serif`; g.fillStyle = '#444';
-    g.fillText('Fuentes: Sentinel-2 cloudless (EOX) · AWS Terrain Tiles · © OpenStreetMap · Natural Earth', m, H - 6 * mm, fw * 0.7);
+    g.fillText(T('Fuentes: Sentinel-2 cloudless (EOX) · AWS Terrain Tiles · © OpenStreetMap · Natural Earth'), m, H - 6 * mm, fw * 0.7);
     g.textAlign = 'right'; g.fillText('OpenGISEarth · ' + new Date().toLocaleDateString('es'), W - m, H - 6 * mm); g.textAlign = 'left';
     return { cv, wPt: (pw * 72) / 25.4, hPt: (ph * 72) / 25.4 };
   }
@@ -108,7 +108,7 @@
 
   async function layout() {
     const v = await OGE.ask({ title: 'Diseño de impresión', ok: 'Crear', help: 'Compone la vista actual del mapa en una hoja. El SVG es vectorial: lleva las capas visibles (sin la imagen satelital) y se puede abrir en Inkscape.',
-      fields: [{ id: 'title', label: 'Título', value: 'Mapa' }, { id: 'sub', label: 'Subtítulo' },
+      fields: [{ id: 'title', label: 'Título', value: T('Mapa') }, { id: 'sub', label: 'Subtítulo' },
         { id: 'fmt', label: 'Formato', type: 'select', options: [['pdf', 'PDF'], ['png', 'PNG (imagen)'], ['svg', 'SVG vectorial (solo capas)']] },
         { id: 'paper', label: 'Papel (PDF/PNG)', type: 'select', options: Object.keys(PAPER) }, { id: 'orient', label: 'Orientación', type: 'select', options: [['h', 'Horizontal'], ['v', 'Vertical']] },
         { id: 'legend', label: 'Leyenda de capas', type: 'checkbox', value: true }, { id: 'scale', label: 'Barra de escala', type: 'checkbox', value: true },

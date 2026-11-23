@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <title>OpenGISEarth</title>
+<script src="i18n_en.js"></script>
+<script src="i18n.js"></script>
 <script src="cesium/Cesium.js"></script>
 <link href="cesium/Widgets/widgets.css" rel="stylesheet">
 <link href="style.css" rel="stylesheet">
@@ -24,7 +26,7 @@
   <ul class="layers">
     <li><label>Mapa base <select id="baseImagery">
       <option value="s2">Sentinel-2: satélite libre, 10 m (borroso de cerca)</option>
-      <option value="esri">Esri World Imagery (alta resolución; sujeta a los términos de Esri)</option>
+      <option value="esri" selected>Esri World Imagery (alta resolución; sujeta a los términos de Esri)</option>
       <option value="topo">OpenTopoMap (mapa de relieve)</option>
       <option value="osm">OpenStreetMap estándar</option>
       <option value="cyclosm">CyclOSM (ciclista)</option>
@@ -37,7 +39,10 @@
     <li><label><input id="layerSun" type="checkbox"> Luz del sol (día y noche)</label></li>
     <li><label><input id="borders" type="checkbox" checked> Fronteras internacionales</label></li>
     <li><label><input id="layerDisputed" type="checkbox" checked> Límites de áreas en disputa</label></li>
+    <li><label><input id="layerAdmin1" type="checkbox"> Límites regionales (estados y provincias)</label></li>
     <li><label><input id="layerNames" type="checkbox" checked> Nombres de países</label></li>
+    <li><label>Países históricos <select id="historyYear" title="Fronteras y nombres de un año histórico (historical-basemaps)"><option value="">No mostrar</option></select></label></li>
+    <li><label><input id="layerRanges" type="checkbox"> Cadenas montañosas</label></li>
     <li><label><input id="layerRoads" type="checkbox"> Calles, ciudades y regiones (OSM)</label></li>
     <li><label><input id="layerParks" type="checkbox"> Parques y áreas protegidas (OSM)</label></li>
     <li><label><input id="layerWiki" type="checkbox"> Wikipedia</label></li>
@@ -47,6 +52,7 @@
       <button id="googleKeyBtn" class="mini" title="Poner o cambiar tu clave de Google Maps Platform">🔑 Clave</button></li>
   </ul>
   <div id="layerStatus" class="small"></div>
+  <p class="small"><label>Idioma / Language <select id="langSel" onchange="OGE_SETLANG(this.value)"><option value="es">Español</option><option value="en">English</option></select></label></p>
   <p id="credits" class="small">OpenGISEarth · creado por Alejandro Víctor López Parra (<a href="https://github.com/avlopezparra" target="_blank" rel="noopener">@avlopezparra</a> en GitHub)<br>Apoya el proyecto: <a class="btn donate" href="https://paypal.me/alopcl" target="_blank" rel="noopener" title="Donar por PayPal (abre el navegador)">Donar</a></p>
 </aside>
 <div id="splitter" title="Arrastra para cambiar el ancho · doble clic para ocultar el panel"></div>
@@ -68,6 +74,7 @@
     <button id="topoBtn" class="active" title="Topología (T): los nodos compartidos se mueven juntos">🔗 Topología</button>
     <span class="sep"></span>
     <button id="toolboxBtn" title="Caja de herramientas avanzadas (QGIS / ArcGIS)">🧰 Avanzado</button>
+    <button id="watershedBtn" title="Cuenca hidrográfica: haz clic en un punto y se calcula la cuenca que drena hasta ahí (mghydro.com)">💧 Cuenca</button>
     <button id="flyBtn" title="Simulador de vuelo">✈ Volar</button>
     <button id="printBtn" title="Diseño de impresión: exporta el mapa a PDF, PNG o SVG vectorial, con título, leyenda, escala y norte">🖨 Mapa</button>
     <button id="shotBtn" title="Guardar la vista como imagen PNG">📷</button>
@@ -136,6 +143,7 @@
 <script src="vendor/shp.min.js"></script>
 <script src="vendor/shpwrite.js"></script>
 <script src="vendor/sql-wasm.js"></script>
+<script>document.getElementById("langSel").value = OGE_LANG;</script>
 <script src="app.js"></script>
 <script src="geo.js"></script>
 <script src="draw.js"></script>
@@ -148,6 +156,7 @@
 <script src="tools.js"></script>
 <script src="db.js"></script>
 <script src="print.js"></script>
+<script src="relief.js"></script>
 <script src="flightsim.js"></script>
 <script src="google3d.js"></script>
 </body>

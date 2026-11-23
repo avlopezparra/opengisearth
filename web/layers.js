@@ -31,14 +31,14 @@
     const la = OGE.lookAt();
     if (!la || la.dist > 1.5e5) return status('Acércate (a menos de 150 km) para ver artículos de Wikipedia.');
     status('Buscando artículos de Wikipedia…');
-    const url = `https://es.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${deg(la.carto.latitude)}|${deg(la.carto.longitude)}&gsradius=10000&gslimit=100&format=json&origin=*`;
+    const url = `https://${OGE_LANG}.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${deg(la.carto.latitude)}|${deg(la.carto.longitude)}&gsradius=10000&gslimit=100&format=json&origin=*`;
     const js = await (await fetch(url)).json();
     for (const a of js.query.geosearch) {
       if (seenWiki.has(a.pageid)) continue;
       seenWiki.add(a.pageid);
       const e = wiki.entities.add({ name: a.title, position: C.Cartesian3.fromDegrees(a.lon, a.lat),
         billboard: { image: wikiIcon, scale: 0.8, heightReference: C.HeightReference.CLAMP_TO_GROUND, disableDepthTestDistance: 5e5 },
-        description: `<p><a href="https://es.wikipedia.org/?curid=${a.pageid}" target="_blank">Abrir en Wikipedia</a></p>` });
+        description: `<p><a href="https://${OGE_LANG}.wikipedia.org/?curid=${a.pageid}" target="_blank">${T('Abrir en Wikipedia')}</a></p>` });
       e.wikiId = a.pageid;
     }
     status(seenWiki.size + ' artículos de Wikipedia cargados.');
@@ -47,10 +47,10 @@
     if (!e || !e.wikiId || e.wikiLoaded) return;
     e.wikiLoaded = true;
     try {
-      const js = await (await fetch(`https://es.wikipedia.org/w/api.php?action=query&prop=extracts|pageimages&exintro=1&explaintext=1&pithumbsize=300&pageids=${e.wikiId}&format=json&origin=*`)).json();
+      const js = await (await fetch(`https://${OGE_LANG}.wikipedia.org/w/api.php?action=query&prop=extracts|pageimages&exintro=1&explaintext=1&pithumbsize=300&pageids=${e.wikiId}&format=json&origin=*`)).json();
       const p = js.query.pages[e.wikiId];
       e.description = (p.thumbnail ? `<img src="${p.thumbnail.source}" style="float:right;max-width:45%;margin:0 0 6px 8px">` : '') +
-        `<p>${esc(p.extract || '')}</p><p><a href="https://es.wikipedia.org/?curid=${e.wikiId}" target="_blank">Seguir leyendo en Wikipedia</a></p>`;
+        `<p>${esc(p.extract || '')}</p><p><a href="https://${OGE_LANG}.wikipedia.org/?curid=${e.wikiId}" target="_blank">${T('Seguir leyendo en Wikipedia')}</a></p>`;
     } catch { /* se queda con el enlace */ }
   });
 
@@ -123,7 +123,7 @@
         const w = deg(r.west), e = deg(r.east), s = deg(r.south), n = deg(r.north), st = STEP[Math.min(level, STEP.length - 1)];
         g.font = '600 11px sans-serif'; g.fillStyle = '#fff'; g.shadowColor = '#000'; g.shadowBlur = 3;
         const line = (x1, y1, x2, y2, main) => { g.strokeStyle = main ? 'rgba(255,235,59,.9)' : 'rgba(255,255,255,.6)'; g.lineWidth = main ? 1.6 : 1; g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke(); };
-        for (let k = Math.ceil(w / st - 1e-9); k * st <= e + 1e-9; k++) { const lon = k * st, px = ((lon - w) / (e - w)) * TS; line(px, 0, px, TS, Math.abs(lon) < 1e-9); if (px < TS - 30) g.fillText(fmt(lon, 'E', 'O'), px + 3, 12); }
+        for (let k = Math.ceil(w / st - 1e-9); k * st <= e + 1e-9; k++) { const lon = k * st, px = ((lon - w) / (e - w)) * TS; line(px, 0, px, TS, Math.abs(lon) < 1e-9); if (px < TS - 30) g.fillText(fmt(lon, 'E', OGE_LANG === 'en' ? 'W' : 'O'), px + 3, 12); }
         for (let k = Math.ceil(s / st - 1e-9); k * st <= n + 1e-9; k++) { const lat = k * st, py = ((n - lat) / (n - s)) * TS; line(0, py, TS, py, Math.abs(lat) < 1e-9); if (py > 26) g.fillText(fmt(lat, 'N', 'S'), 3, py - 3); }
         return Promise.resolve(cv);
       },

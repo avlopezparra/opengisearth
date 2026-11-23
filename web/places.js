@@ -69,7 +69,7 @@
   viewer.dataSources.dataSourceAdded.addEventListener((_, ds) => { watch(ds); later(); save(); });
   viewer.dataSources.dataSourceRemoved.addEventListener(() => { later(); save(); });
   $('newGroup').onclick = async () => {
-    const v = await OGE.ask({ title: 'Nueva capa', fields: [{ id: 'name', label: 'Nombre', value: 'Capa nueva' }] });
+    const v = await OGE.ask({ title: 'Nueva capa', fields: [{ id: 'name', label: 'Nombre', value: T('Capa nueva') }] });
     if (v && v.name.trim()) { OGE.setTarget(geo.addGroup(v.name.trim())); later(); }
   };
 
