@@ -4,9 +4,21 @@
   const FORK = 'https://raw.githubusercontent.com/avlopezparra/natural-earth-vector/master/';
 
   // ---------- Area fills: translucent polygons draped on the terrain, one color per territory ----------
-  const TINTS = ['#e57373', '#64b5f6', '#81c784', '#ffd54f', '#ba68c8', '#4db6ac', '#ff8a65', '#f06292'].map((c) => C.ColorGeometryInstanceAttribute.fromColor(C.Color.fromCssColorString(c).withAlpha(0.4)));
+  const TINTS = ['#e57373', '#64b5f6', '#81c784', '#ffd54f', '#ba68c8', '#4db6ac', '#ff8a65', '#f06292', '#9575cd', '#dce775', '#4dd0e1', '#a1887f'].map((c) => C.ColorGeometryInstanceAttribute.fromColor(C.Color.fromCssColorString(c).withAlpha(0.4)));
   const ring = (r) => C.Cartesian3.fromDegreesArray(r.flatMap((c) => [c[0], c[1]]));
-  const hash = (s) => { let h = 0; for (const ch of String(s)) h = (h * 31 + ch.charCodeAt(0)) | 0; return h; };
+  // Greedy coloring: each territory takes the color least used by the earlier ones whose bounding box touches its own,
+  // so neighbors differ wherever the palette allows.
+  function colorize(geoms) {
+    const boxes = geoms.map((g) => (g ? turf.bbox(g) : null)), out = [];
+    geoms.forEach((g, i) => {
+      const used = new Array(TINTS.length).fill(0), a = boxes[i];
+      if (a) for (let j = 0; j < i; j++) { const b = boxes[j]; if (b && a[0] <= b[2] && b[0] <= a[2] && a[1] <= b[3] && b[1] <= a[3]) used[out[j][1]]++; }
+      let best = i % TINTS.length; // rotating start: the whole palette gets used
+      for (let k = 0, c = best; k < TINTS.length; k++, c = (c + 1) % TINTS.length) if (used[c] < used[best]) best = c;
+      out.push([g, best]);
+    });
+    return out;
+  }
   // items: [GeoJSON Polygon or MultiPolygon geometry, color number]
   function fillPrimitive(items) {
     const inst = [];
@@ -40,7 +52,7 @@
   lazyFill($('fillAdmin1'), async () => {
     OGE.toast('Cargando las áreas de provincias y regiones (21 MB)…');
     // simplified to ~1 km: the full detail is over a million vertices; the .dbf is not needed
-    return shp.parseShp(await buf('10m_cultural/ne_10m_admin_1_states_provinces.shp')).map((g, i) => [g && turf.simplify(g, { tolerance: 0.01, mutate: true }), i * 7919]);
+    return colorize(shp.parseShp(await buf('10m_cultural/ne_10m_admin_1_states_provinces.shp')).map((g) => g && turf.simplify(g, { tolerance: 0.01, mutate: true })));
   }, 'las áreas de provincias y regiones');
 
   // ---------- Watershed: click a point, get the basin that drains to it, plus its rivers ----------
@@ -125,7 +137,7 @@
   const cbH = $('fillHistory');
   const syncHistFill = () => {
     if (!hist) return;
-    if (cbH.checked && !hist.fill) hist.fill = fillPrimitive(hist.gj.features.map((f) => [f.geometry, hash(f.properties.NAME || f.properties.name)]));
+    if (cbH.checked && !hist.fill) hist.fill = fillPrimitive(colorize(hist.gj.features.map((f) => f.geometry)));
     if (hist.fill) hist.fill.show = cbH.checked;
   };
   cbH.addEventListener('change', syncHistFill);
