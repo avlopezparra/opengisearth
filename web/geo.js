@@ -1,0 +1,262 @@
+// OpenGISEarth — geometría: entidades de Cesium ⇄ GeoJSON, estilos y capas (grupos de Lugares).
+// Todas las posiciones se guardan a altura 0; el relieve se aplica al dibujar (clampToGround).
+(() => {
+  const C = Cesium, { viewer } = OGE;
+  const now = () => viewer.clock.currentTime;
+  const val = (p, d) => (p && p.getValue ? p.getValue(now()) : p) ?? d;
+  const r9 = (v) => Math.round(v * 1e9) / 1e9; // ~0,1 mm: estabiliza la igualdad de vértices compartidos
+  const toLL = (c) => { const k = C.Cartographic.fromCartesian(c); return [r9(C.Math.toDegrees(k.longitude)), r9(C.Math.toDegrees(k.latitude))]; };
+  const fromLL = (ll) => C.Cartesian3.fromDegrees(ll[0], ll[1]);
+  const flat = (c) => fromLL(toLL(c));
+  const same = (a, b) => C.Cartesian3.equalsEpsilon(a, b, 0, 1e-3);
+  const css = (hexColor, a = 1) => C.Color.fromCssColorString(hexColor || '#ffffff').withAlpha(a);
+  const hex = (c) => c.withAlpha(1).toCssHexString();
+
+  // Marca blanca que se tiñe con billboard.color.
+  const PIN = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="36"><path d="M12 1C6 1 1 6 1 12c0 9 11 23 11 23s11-14 11-23C23 6 18 1 12 1z" fill="#fff" stroke="#000" stroke-opacity=".55"/><circle cx="12" cy="12" r="4.5" fill="#000" fill-opacity=".45"/></svg>');
+  const DEF = { stroke: '#ffd400', strokeOpacity: 1, width: 3, fill: '#ffd400', fillOpacity: 0.35, color: '#e53935', marker: 'pin', opacity: 0.7, rotation: 0 };
+  const NEAR = 5e5; // a menos de 500 km no se recorta contra el relieve; de lejos el globo sí tapa lo del otro lado
+  const labelStyle = (text) => ({ text, font: '600 14px sans-serif', fillColor: C.Color.WHITE, outlineColor: C.Color.BLACK, outlineWidth: 3,
+    style: C.LabelStyle.FILL_AND_OUTLINE, heightReference: C.HeightReference.CLAMP_TO_GROUND, disableDepthTestDistance: NEAR });
+  const pinLabel = (text) => ({ ...labelStyle(text), pixelOffset: new C.Cartesian2(0, -44) });
+
+  // ---------- Tipo y geometría de una entidad ----------
+  const isImage = (e) => !!e.rectangle && e.rectangle.material instanceof C.ImageMaterialProperty;
+  const kind = (e) => (e.polygon ? 'polygon' : isImage(e) ? 'image' : e.polyline ? 'line' : e.position && (e.billboard || e.point) ? 'point' : null);
+
+  // Anillos de posiciones: polígono [exterior, ...huecos] (sin repetir el primer vértice), línea [posiciones], punto [[posición]].
+  function rings(e) {
+    if (e.polygon) {
+      const h = val(e.polygon.hierarchy);
+      if (!h || !h.positions) return [];
+      return [h.positions, ...(h.holes || []).map((x) => x.positions)].map((r) => (r.length > 3 && same(r[0], r[r.length - 1]) ? r.slice(0, -1) : r.slice()));
+    }
+    if (e.polyline) return [(val(e.polyline.positions) || []).slice()];
+    const p = val(e.position);
+    return p ? [[p]] : [];
+  }
+  const center = (ps) => C.Ellipsoid.WGS84.scaleToGeodeticSurface(C.BoundingSphere.fromPoints(ps).center) || ps[0];
+  function setRings(e, rs) {
+    e._bs = null;
+    if (e.polygon) {
+      e.polygon.hierarchy = new C.PolygonHierarchy(rs[0], rs.slice(1).map((p) => new C.PolygonHierarchy(p)));
+      if (e.polyline) e.polyline.positions = [...rs[0], rs[0][0]]; // el borde acompaña al relleno
+      if (e.position) e.position = center(rs[0]);
+    } else if (e.polyline) {
+      e.polyline.positions = rs[0];
+      if (e.position) e.position = center(rs[0]);
+    } else e.position = rs[0][0];
+  }
+  // Esfera envolvente en caché para descartar rápido objetos lejanos (se invalida en setRings).
+  const sphere = (e) => e._bs || (e._bs = C.BoundingSphere.fromPoints(rings(e).flat()));
+
+  // ---------- Estilo ----------
+  const col = (p, d) => { const m = val(p); const c = m && (m.red !== undefined ? m : m.color); return c ? C.Color.clone(c) : css(d); };
+  function getStyle(e) {
+    const k = kind(e), s = {};
+    if (k === 'polygon') {
+      const f = col(e.polygon.material, DEF.fill), on = !!e.polyline && val(e.polyline.show, true);
+      const c = on ? col(e.polyline.material, DEF.stroke) : f;
+      Object.assign(s, { fill: hex(f), fillOpacity: f.alpha, stroke: hex(c), strokeOpacity: on ? c.alpha : 1, width: on ? val(e.polyline.width, 2) : 0 });
+    } else if (k === 'line') {
+      const c = col(e.polyline.material, DEF.stroke);
+      Object.assign(s, { stroke: hex(c), strokeOpacity: c.alpha, width: val(e.polyline.width, 2) });
+    } else if (k === 'point') {
+      s.marker = e.billboard ? 'pin' : 'dot';
+      s.color = hex(val(e.billboard ? e.billboard.color : e.point.color, C.Color.WHITE));
+    } else if (k === 'image') {
+      const m = val(e.rectangle.material) || {};
+      s.opacity = m.color ? m.color.alpha : 1;
+      s.url = typeof m.image === 'string' ? m.image : (m.image && (m.image.url || m.image.src)) || '';
+      s.rotation = Math.round(C.Math.toDegrees(val(e.rectangle.rotation, 0)) * 100) / 100;
+    }
+    return s;
+  }
+  function setStyle(e, s) {
+    const k = kind(e);
+    if (k === 'polygon') {
+      e.polygon.material = css(s.fill, s.fillOpacity);
+      if (s.width > 0) {
+        if (!e.polyline) { const r = rings(e)[0]; e.polyline = new C.PolylineGraphics({ positions: [...r, r[0]], clampToGround: true }); }
+        e.polyline.material = css(s.stroke, s.strokeOpacity); e.polyline.width = s.width; e.polyline.show = true;
+      } else if (e.polyline) e.polyline.show = false;
+    } else if (k === 'line') {
+      e.polyline.material = css(s.stroke, s.strokeOpacity); e.polyline.width = s.width || 1;
+    } else if (k === 'point') {
+      if (e.billboard) e.billboard.color = css(s.color); else e.point.color = css(s.color);
+    } else if (k === 'image') {
+      const color = C.Color.WHITE.withAlpha(s.opacity ?? 1);
+      if (s.url && s.url !== getStyle(e).url) e.rectangle.material = new C.ImageMaterialProperty({ image: s.url, transparent: true, color });
+      else e.rectangle.material.color = color;
+      e.rectangle.rotation = e.rectangle.stRotation = C.Math.toRadians(s.rotation || 0);
+    }
+  }
+
+  // ---------- Entidad → Feature GeoJSON ----------
+  const dedupe = (r) => r.filter((c, i) => i === 0 || c[0] !== r[i - 1][0] || c[1] !== r[i - 1][1]);
+  function props(e) {
+    const p = e.properties ? { ...e.properties.getValue(now()) } : {};
+    const x = e.kml && e.kml.extendedData; // atributos de un KML (ExtendedData)
+    if (x) for (const k in x) if (!(k in p)) p[k] = x[k].value;
+    return p;
+  }
+  function desc(e) { // Cesium envuelve la descripción al leer KML: se devuelve el texto original
+    const d = val(e.description, '');
+    const m = typeof d === 'string' && d.match(/^<div class="cesium-infoBox-description-lighter"[^>]*>([\s\S]*)<\/div>$/);
+    return m ? m[1] : d || '';
+  }
+  // El Feature lleva en «oge» lo que GeoJSON no tiene (nombre, estilo, tipo) y, sin serializar, la entidad de origen.
+  function toFeature(e) {
+    const k = kind(e);
+    if (!k) return null;
+    let geometry;
+    if (k === 'image') {
+      const r = val(e.rectangle.coordinates);
+      const [w, s, ea, n] = [r.west, r.south, r.east, r.north].map((v) => r9(C.Math.toDegrees(v)));
+      geometry = { type: 'Polygon', coordinates: [[[w, s], [ea, s], [ea, n], [w, n], [w, s]]] };
+    } else {
+      const rs = rings(e).map((r) => dedupe(r.map(toLL)));
+      if (!rs.length) return null;
+      if (k === 'point') geometry = { type: 'Point', coordinates: rs[0][0] };
+      else if (k === 'line') { if (rs[0].length < 2) return null; geometry = { type: 'LineString', coordinates: rs[0] }; }
+      else { if (rs[0].length < 3) return null; geometry = { type: 'Polygon', coordinates: rs.filter((r) => r.length >= 3).map((r) => [...r, r[0]]) }; }
+    }
+    const f = { type: 'Feature', geometry, properties: props(e), oge: { kind: k, name: e.name || '', desc: desc(e), show: e.show, style: getStyle(e) } };
+    if (e.label) { const t = val(e.label.text, ''); if (k !== 'point' || t !== (e.name || '')) f.oge.label = t; } // etiqueta distinta del nombre
+    Object.defineProperty(f, 'entity', { value: e });
+    return f;
+  }
+
+  // ---------- Feature GeoJSON → opciones de entidad (una por parte simple) ----------
+  function parts(g) {
+    if (!g) return [];
+    switch (g.type) {
+      case 'Point': case 'LineString': case 'Polygon': return [g];
+      case 'MultiPoint': return g.coordinates.map((c) => ({ type: 'Point', coordinates: c }));
+      case 'MultiLineString': return g.coordinates.map((c) => ({ type: 'LineString', coordinates: c }));
+      case 'MultiPolygon': return g.coordinates.map((c) => ({ type: 'Polygon', coordinates: c }));
+      case 'GeometryCollection': return g.geometries.flatMap(parts);
+      default: return [];
+    }
+  }
+  const ok = (c) => Array.isArray(c) && Number.isFinite(c[0]) && Number.isFinite(c[1]);
+  const path = (cs, closed) => { // coordenadas → posiciones sin repetidos (y sin el cierre si es anillo)
+    const o = [];
+    for (const c of cs) { if (!ok(c)) continue; const p = fromLL(c); if (!o.length || !same(o[o.length - 1], p)) o.push(p); }
+    if (closed && o.length > 1 && same(o[0], o[o.length - 1])) o.pop();
+    return o;
+  };
+  const SIMPLE = { stroke: 'stroke', 'stroke-width': 'width', 'stroke-opacity': 'strokeOpacity', fill: 'fill', 'fill-opacity': 'fillOpacity', 'marker-color': 'color' };
+  // base: { name, style } por defecto para lo que el Feature no traiga.
+  function fromFeature(f, base = {}) {
+    const o = f.oge || {}, p = { ...(f.properties || {}) }, ext = {};
+    if (!f.oge) { // GeoJSON externo: nombre, descripción y estilo simplestyle salen de las propiedades
+      for (const k in SIMPLE) if (p[k] != null && p[k] !== '') { ext[SIMPLE[k]] = /width|opacity/.test(k) ? +p[k] : p[k]; delete p[k]; }
+    }
+    const first = (...ks) => { for (const k of ks) if (p[k] != null && p[k] !== '') { const v = String(p[k]); if (!f.oge) delete p[k]; return v; } };
+    const name = o.name ?? first('name', 'title', 'Name', 'NAME', 'nombre', 'NOMBRE') ?? base.name ?? '';
+    const description = (o.desc ?? first('description')) || undefined;
+    const st = { ...DEF, ...base.style, ...ext, ...o.style };
+    const gs = parts(f.geometry);
+    return gs.map((g, i) => {
+      const common = { name: gs.length > 1 && name ? `${name} ${i + 1}` : name, description, show: o.show !== false, properties: Object.keys(p).length ? p : undefined };
+      if (o.kind === 'image') {
+        const xs = g.coordinates[0].map((c) => c[0]), ys = g.coordinates[0].map((c) => c[1]), rot = C.Math.toRadians(st.rotation || 0);
+        return { ...common, properties: undefined, rectangle: { coordinates: C.Rectangle.fromDegrees(Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)),
+          material: new C.ImageMaterialProperty({ image: st.url, transparent: true, color: C.Color.WHITE.withAlpha(st.opacity) }), rotation: rot, stRotation: rot } };
+      }
+      if (g.type === 'Point') {
+        if (!ok(g.coordinates)) return null;
+        const position = fromLL(g.coordinates);
+        const text = o.label ?? common.name;
+        if (st.marker === 'dot') return { ...common, position, point: { pixelSize: 8, color: css(st.color), outlineColor: C.Color.BLACK, outlineWidth: 1,
+          heightReference: C.HeightReference.CLAMP_TO_GROUND, disableDepthTestDistance: NEAR }, label: o.label ? labelStyle(o.label) : undefined };
+        return { ...common, position, billboard: { image: PIN, color: css(st.color), verticalOrigin: C.VerticalOrigin.BOTTOM,
+          heightReference: C.HeightReference.CLAMP_TO_GROUND, disableDepthTestDistance: NEAR }, label: text ? pinLabel(text) : undefined };
+      }
+      const labeled = (ps) => (o.label ? { position: center(ps), label: labelStyle(o.label) } : {});
+      if (g.type === 'LineString') {
+        const positions = path(g.coordinates, false);
+        if (positions.length < 2) return null;
+        return { ...common, ...labeled(positions), polyline: { positions, width: st.width || 2, material: css(st.stroke, st.strokeOpacity), clampToGround: true } };
+      }
+      const rs = g.coordinates.map((r) => path(r, true));
+      if (!rs[0] || rs[0].length < 3) return null;
+      return { ...common, ...labeled(rs[0]),
+        polygon: { hierarchy: new C.PolygonHierarchy(rs[0], rs.slice(1).filter((r) => r.length >= 3).map((r) => new C.PolygonHierarchy(r))), material: css(st.fill, st.fillOpacity) },
+        polyline: { positions: [...rs[0], rs[0][0]], width: st.width || 1, material: css(st.stroke, st.strokeOpacity), clampToGround: true, show: st.width > 0 } };
+    }).filter(Boolean);
+  }
+
+  // ---------- Capas (grupos de Lugares) ----------
+  const groups = () => { const out = []; for (let i = 0; i < viewer.dataSources.length; i++) { const d = viewer.dataSources.get(i); if (!d.isLayer) out.push(d); } return out; };
+  const unique = (name) => {
+    const used = new Set(groups().map((d) => d.name));
+    if (!used.has(name)) return name;
+    let i = 2;
+    while (used.has(`${name} (${i})`)) i++;
+    return `${name} (${i})`;
+  };
+  function addGroup(name, feats = [], base = {}) {
+    const ds = new C.CustomDataSource(unique(name || 'Capa'));
+    ds.oge = true; // capa propia: se guarda como GeoJSON con estilo y atributos
+    ds.entities.suspendEvents();
+    for (const f of feats) for (const o of fromFeature(f, base)) ds.entities.add(o);
+    ds.entities.resumeEvents();
+    viewer.dataSources.add(ds);
+    return ds;
+  }
+  const features = (ds) => ds.entities.values.map(toFeature).filter(Boolean);
+
+  const mine = new C.CustomDataSource('Mis dibujos');
+  mine.oge = true;
+  viewer.dataSources.add(mine);
+  let target = mine; // capa donde cae lo que se dibuja
+  OGE.mine = mine;
+  OGE.target = () => (viewer.dataSources.contains(target) ? target : mine);
+  OGE.setTarget = (ds) => { target = ds; };
+
+  // Añade Features a una capa como una sola acción deshacible; devuelve las entidades creadas.
+  function add(feats, ds = OGE.target(), base) {
+    const es = feats.flatMap((f) => fromFeature(f, base)).map((o) => new C.Entity(o));
+    OGE.run({ do: () => es.forEach((e) => ds.entities.add(e)), undo: () => es.forEach((e) => ds.entities.remove(e)) });
+    return es;
+  }
+
+  // ---------- Proyección sobre una línea ----------
+  // turf.nearestPointOnLine se desvía decenas de metros en tramos largos; aquí se proyecta en el plano lon/lat
+  // (el mismo en que turf hace las operaciones booleanas), así el punto cae exactamente sobre el segmento.
+  function nearest(cs, c) { // → { point, dist (m), index (segmento), t (0..1 dentro del segmento) }
+    const kx = Math.max(1e-6, Math.cos((c[1] * Math.PI) / 180));
+    let best = null, bd = Infinity;
+    for (let i = 0; i < cs.length - 1; i++) {
+      const ax = (cs[i][0] - c[0]) * kx, ay = cs[i][1] - c[1], dx = (cs[i + 1][0] - cs[i][0]) * kx, dy = cs[i + 1][1] - cs[i][1], L = dx * dx + dy * dy;
+      const t = L ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / L)) : 0, px = ax + t * dx, py = ay + t * dy, d = px * px + py * py;
+      if (d < bd) { bd = d; best = { point: [r9(c[0] + px / kx), r9(c[1] + py)], index: i, t }; }
+    }
+    return best && { ...best, dist: Math.sqrt(bd) * 111320 };
+  }
+  function sliceLine(cs, p, q) { // tramo de la línea entre las proyecciones de p y q, orientado de p a q
+    const a = nearest(cs, p), b = nearest(cs, q), fwd = a.index + a.t <= b.index + b.t, [s, e] = fwd ? [a, b] : [b, a];
+    const out = [s.point, ...cs.slice(s.index + 1, e.index + 1), e.point];
+    return fwd ? out : out.reverse();
+  }
+
+  // ---------- Exportación ----------
+  function exportFC(ds) { // GeoJSON con nombre, descripción, atributos y estilo simplestyle
+    return { type: 'FeatureCollection', features: features(ds).filter((f) => f.oge.kind !== 'image').map((f) => {
+      const s = f.oge.style, p = { name: f.oge.name, ...(f.oge.desc ? { description: f.oge.desc } : {}), ...f.properties };
+      if (f.oge.kind === 'point') p['marker-color'] = s.color;
+      else Object.assign(p, { stroke: s.stroke, 'stroke-width': s.width, 'stroke-opacity': s.strokeOpacity });
+      if (f.oge.kind === 'polygon') Object.assign(p, { fill: s.fill, 'fill-opacity': s.fillOpacity });
+      return { type: 'Feature', geometry: f.geometry, properties: p };
+    }) };
+  }
+  const wkt = (g) => {
+    const pt = (c) => c[0] + ' ' + c[1], ring = (r) => '(' + r.map(pt).join(', ') + ')';
+    return g.type === 'Point' ? `POINT (${pt(g.coordinates)})` : g.type === 'LineString' ? 'LINESTRING ' + ring(g.coordinates) : 'POLYGON (' + g.coordinates.map(ring).join(', ') + ')';
+  };
+
+  OGE.geo = { toLL, fromLL, flat, kind, rings, setRings, sphere, center, getStyle, setStyle, toFeature, fromFeature, parts,
+    groups, addGroup, features, add, exportFC, wkt, pinLabel, labelStyle, nearest, sliceLine, DEF };
+})();

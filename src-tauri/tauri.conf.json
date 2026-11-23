@@ -1,0 +1,12 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "OpenGISEarth",
+  "version": "0.1.0",
+  "identifier": "org.opengisearth.app",
+  "build": { "frontendDist": "../web" },
+  "app": {
+    "windows": [{ "title": "OpenGISEarth", "width": 1400, "height": 900, "dragDropEnabled": false }],
+    "security": { "csp": null }
+  },
+  "bundle": { "active": true, "targets": ["nsis"], "icon": ["icons/icon.ico", "icons/icon.png"] }
+}
