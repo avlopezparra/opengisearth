@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>OpenGISEarth</title>
+<script src="cesium/Cesium.js"></script>
+<link href="cesium/Widgets/widgets.css" rel="stylesheet">
+<link href="style.css" rel="stylesheet">
+</head>
+<body>
+<aside id="panel">
+  <form id="search">
+    <input id="q" type="search" placeholder="Buscar lugar o «lat, lon»…" aria-label="Buscar lugar o coordenadas">
+    <button>Buscar</button>
+  </form>
+  <ul id="results"></ul>
+  <h2>Lugares</h2>
+  <div class="row">
+    <label class="btn" title="Abre KML, KMZ, GeoJSON, Shapefile (.zip o .shp), GeoPackage (.gpkg), trazados SVG, GPX o CSV con lat/lon. Para guardar usa 💾 en cada capa.">Abrir archivo<input id="open" type="file" accept=".kml,.kmz,.geojson,.json,.gpx,.zip,.shp,.csv,.gpkg,.svg" multiple hidden></label>
+    <button id="newGroup" title="Crea una capa vacía; lo que dibujes va a la capa marcada con ✏">＋ Capa</button>
+  </div>
+  <ul id="places" class="tree"></ul>
+  <h2>Capas</h2>
+  <ul class="layers">
+    <li><label>Mapa base <select id="baseImagery">
+      <option value="s2">Sentinel-2: satélite libre, 10 m (borroso de cerca)</option>
+      <option value="esri">Esri World Imagery (alta resolución; sujeta a los términos de Esri)</option>
+      <option value="topo">OpenTopoMap (mapa de relieve)</option>
+      <option value="osm">OpenStreetMap estándar</option>
+      <option value="cyclosm">CyclOSM (ciclista)</option>
+      <option value="hot">Humanitario</option>
+    </select></label></li>
+    <li class="small">Sentinel-2 tiene 10 m por píxel: de cerca se ve borrosa. Para ver calles y casas elige Esri World Imagery.</li>
+    <li><label><input id="layerTerrain" type="checkbox" checked> Relieve 3D</label></li>
+    <li class="small"><label>Exageración del relieve <input id="exaggeration" type="range" min="1" max="3" step="0.1" value="1"> <span id="exaggerationVal"></span></label></li>
+    <li><label><input id="layerClouds" type="checkbox"> Nubes (satélite de ayer, NASA)</label></li>
+    <li><label><input id="layerSun" type="checkbox"> Luz del sol (día y noche)</label></li>
+    <li><label><input id="borders" type="checkbox" checked> Fronteras internacionales</label></li>
+    <li><label><input id="layerDisputed" type="checkbox" checked> Límites de áreas en disputa</label></li>
+    <li><label><input id="layerNames" type="checkbox" checked> Nombres de países</label></li>
+    <li><label><input id="layerRoads" type="checkbox"> Calles, ciudades y regiones (OSM)</label></li>
+    <li><label><input id="layerParks" type="checkbox"> Parques y áreas protegidas (OSM)</label></li>
+    <li><label><input id="layerWiki" type="checkbox"> Wikipedia</label></li>
+    <li><label><input id="layerBuildings" type="checkbox"> Edificios 3D (OSM)</label></li>
+    <li><label><input id="layerGrid" type="checkbox"> Meridianos y paralelos</label></li>
+    <li><label><input id="layerGoogle3d" type="checkbox"> Ciudades 3D fotorrealistas (Google)</label>
+      <button id="googleKeyBtn" class="mini" title="Poner o cambiar tu clave de Google Maps Platform">🔑 Clave</button></li>
+  </ul>
+  <div id="layerStatus" class="small"></div>
+  <p id="credits" class="small">OpenGISEarth · creado por Alejandro Víctor López Parra (<a href="https://github.com/avlopezparra" target="_blank" rel="noopener">@avlopezparra</a> en GitHub)<br>Apoya el proyecto: <a class="btn donate" href="https://paypal.me/alopcl" target="_blank" rel="noopener" title="Donar por PayPal (abre el navegador)">Donar</a></p>
+</aside>
+<div id="splitter" title="Arrastra para cambiar el ancho · doble clic para ocultar el panel"></div>
+<main id="main">
+  <div id="globe"></div>
+  <canvas id="hud" hidden></canvas>
+  <button id="sideBtn" title="Mostrar u ocultar el panel lateral">☰</button>
+  <nav id="tools" class="bar" aria-label="Herramientas">
+    <button class="fold" title="Plegar o desplegar esta barra">▾</button>
+    <button data-tool="point" title="Marca: clic en el mapa">📍 Marca</button>
+    <button data-tool="line" title="Trazado: clics; doble clic o Enter termina; clic derecho borra el último punto">〰 Trazado</button>
+    <button data-tool="polygon" title="Polígono: clics; doble clic o Enter termina">⬠ Polígono</button>
+    <label class="btn" title="Superponer una imagen del PC sobre la vista actual">🖼 Imagen<input id="overlay" type="file" accept="image/*" hidden></label>
+    <button id="overlayUrl" title="Superponer una imagen desde una dirección web (URL)">🌐 Imagen URL</button>
+    <button data-tool="ruler" title="Regla: clics para medir; doble clic termina">📏 Regla</button>
+    <span class="sep"></span>
+    <button id="editBtn" title="Editar (E): clic selecciona; Ctrl o Mayús+clic agrega; arrastra nodos; Alt+clic borra un nodo">✎ Editar</button>
+    <button id="snapBtn" class="active" title="Ajuste a nodos y bordes cercanos (S)">🧲 Ajuste</button>
+    <button id="topoBtn" class="active" title="Topología (T): los nodos compartidos se mueven juntos">🔗 Topología</button>
+    <span class="sep"></span>
+    <button id="toolboxBtn" title="Caja de herramientas avanzadas (QGIS / ArcGIS)">🧰 Avanzado</button>
+    <button id="flyBtn" title="Simulador de vuelo">✈ Volar</button>
+    <button id="printBtn" title="Diseño de impresión: exporta el mapa a PDF, PNG o SVG vectorial, con título, leyenda, escala y norte">🖨 Mapa</button>
+    <button id="shotBtn" title="Guardar la vista como imagen PNG">📷</button>
+    <button id="undo" title="Deshacer (Ctrl+Z)">↶</button>
+    <button id="redo" title="Rehacer (Ctrl+Y)">↷</button>
+    <span id="hint"></span>
+  </nav>
+  <div id="right">
+    <aside id="editPanel" hidden>
+      <h2 id="selTitle">Selección</h2>
+      <div id="measure" class="small"></div>
+      <table id="attrs"></table>
+      <div class="row">
+        <button id="addAttr" title="Añadir un campo a este objeto">+ Atributo</button>
+        <button id="selProps" title="Nombre, descripción y estilo">✎ Propiedades</button>
+        <button id="selZoom" title="Acercar a la selección">🔍</button>
+        <button id="selDel" title="Borrar lo seleccionado (Supr)">🗑</button>
+      </div>
+    </aside>
+    <aside id="toolbox" hidden>
+      <div class="row"><h2>Caja de herramientas</h2><button id="toolboxClose" class="mini" title="Cerrar">✕</button></div>
+      <input id="toolSearch" type="search" placeholder="Buscar herramienta…" aria-label="Buscar herramienta">
+      <div id="toolList"></div>
+    </aside>
+  </div>
+  <nav id="ops" class="bar" aria-label="Operaciones de trayecto (como Inkscape)">
+    <button class="fold" title="Plegar o desplegar esta barra">▾</button>
+    <span class="small">Trayecto:</span>
+    <button data-op="union" title="Unión (Ctrl++): une los polígonos seleccionados en uno">⊕ Unión</button>
+    <button data-op="difference" title="Diferencia (Ctrl+-): al primero seleccionado le resta los demás">⊖ Diferencia</button>
+    <button data-op="intersect" title="Intersección (Ctrl+*): deja solo el área común">⊗ Intersección</button>
+    <button data-op="xor" title="Exclusión (Ctrl+^): deja lo que no se superpone">⊘ Exclusión</button>
+    <button data-op="divide" title="División (Ctrl+/): el segundo polígono corta al primero en piezas">✂ División</button>
+    <button data-op="split" title="Cortar con línea (Ctrl+Alt+/): un polígono y una línea que lo cruce de lado a lado">✂ Cortar con línea</button>
+    <button data-op="fill" title="Crea el polígono entre dos líneas; una tercera línea, opcional, cierra los extremos">▭ Entre líneas</button>
+    <button data-op="transfer" title="Transferir área: selecciona el que cede, el que recibe y la forma de corte">⇄ Transferir</button>
+    <button data-op="closeGaps" title="Cerrar huecos: pega los nodos del primero al borde de los vecinos">⧉ Cerrar huecos</button>
+  </nav>
+  <div id="toast" hidden></div>
+  <div id="statusbar"></div>
+</main>
+
+<dialog id="props">
+  <form method="dialog">
+    <h2 id="pTitle">Propiedades</h2>
+    <label>Nombre<input id="pName"></label>
+    <label>Descripción<textarea id="pDesc" rows="4" placeholder="Texto que aparece al hacer clic (admite HTML)"></textarea></label>
+    <div id="rStroke" class="cols"><label>Color de línea<input id="pStroke" type="color"></label><label>Ancho (px; 0 = sin borde)<input id="pWidth" type="number" min="0" max="30" step="0.5"></label></div>
+    <div id="rFill" class="cols"><label>Color de relleno<input id="pFill" type="color"></label><label>Opacidad del relleno<input id="pFillOp" type="range" min="0" max="100"></label></div>
+    <div id="rColor"><label>Color de la marca<input id="pColor" type="color"></label></div>
+    <div id="rImg">
+      <label>Imagen (URL; vacío = conservar la actual)<input id="pUrl" placeholder="https://…"></label>
+      <div class="cols"><label>Opacidad<input id="pOpacity" type="range" min="0" max="100"></label><label>Rotación (°)<input id="pRot" type="number" step="1"></label></div>
+    </div>
+    <div class="row end"><button type="button" id="pCancel">Cancelar</button><button value="ok">Aceptar</button></div>
+  </form>
+</dialog>
+<dialog id="ask"><form method="dialog"></form></dialog>
+<dialog id="table">
+  <div class="row"><h2 id="tableTitle"></h2><button id="tableCsv" title="Descargar como CSV">CSV</button><button id="tableClose" class="mini">✕</button></div>
+  <div id="tableNote" class="small"></div>
+  <div id="tableBody"></div>
+</dialog>
+
+<script src="vendor/turf.min.js"></script>
+<script src="vendor/shp.min.js"></script>
+<script src="vendor/shpwrite.js"></script>
+<script src="vendor/sql-wasm.js"></script>
+<script src="app.js"></script>
+<script src="geo.js"></script>
+<script src="draw.js"></script>
+<script src="edit.js"></script>
+<script src="places.js"></script>
+<script src="terrain.js"></script>
+<script src="borders.js"></script>
+<script src="osmvector.js"></script>
+<script src="layers.js"></script>
+<script src="tools.js"></script>
+<script src="db.js"></script>
+<script src="print.js"></script>
+<script src="flightsim.js"></script>
+<script src="google3d.js"></script>
+</body>
+</html>
