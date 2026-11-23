@@ -251,6 +251,7 @@
     'Límites regionales (estados y provincias)': 'Regional boundaries (states and provinces)',
     'Países históricos': 'Historical countries',
     'Colorear países': 'Color countries',
+    'Bordes de países históricos': 'Historical country borders',
     'Clima en ciudades (Open-Meteo)': 'Weather in cities (Open-Meteo)',
     'Despejado': 'Clear', 'Parcialmente nublado': 'Partly cloudy', 'Nublado': 'Overcast', 'Niebla': 'Fog', 'Llovizna': 'Drizzle', 'Lluvia': 'Rain', 'Nieve': 'Snow', 'Chubascos': 'Showers', 'Nevadas': 'Snow showers', 'Tormenta': 'Thunderstorm',
     'Año anterior': 'Previous year',

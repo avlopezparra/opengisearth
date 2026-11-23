@@ -204,13 +204,15 @@
     if (ys.length) fill(ys);
   }).catch(() => {});
   let hist = null, token = 0; // hist: { lines, labels, tick, gj, fill } of the year on screen
-  const cbH = $('fillHistory');
+  const cbH = $('fillHistory'), cbL = $('histLines');
   const syncHistFill = () => {
     if (!hist) return;
     if (cbH.checked && !hist.fill) hist.fill = fillLayer(colorize(hist.gj.features.map((f) => f.geometry)));
     if (hist.fill) hist.fill.show = cbH.checked;
+    hist.lines.show = cbL.checked;
   };
   cbH.addEventListener('change', syncHistFill);
+  cbL.addEventListener('change', syncHistFill);
   function clearHist() {
     if (!hist) return;
     viewer.scene.groundPrimitives.remove(hist.lines);
