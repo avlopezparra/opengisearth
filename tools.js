@@ -1,7 +1,7 @@
-// OpenGISEarth — caja de herramientas avanzadas: geoprocesos equivalentes a los de QGIS (Processing) y ArcGIS (ArcToolbox).
-// Cada herramienta declara su equivalente (q: QGIS, a: ArcGIS), sus parámetros y una función run(objetos, parámetros).
-// El resultado va a una capa nueva de Lugares (como en QGIS), salvo las que seleccionan, informan o editan atributos en sitio.
-// shortcut: todo se calcula en WGS84 con turf (lon/lat); no hay reproyección ni ráster propio (solo el relieve en línea).
+// OpenGISEarth — advanced toolbox: geoprocessing tools equivalent to those of QGIS (Processing) and ArcGIS (ArcToolbox).
+// Each tool declares its equivalent (q: QGIS, a: ArcGIS), its parameters and a run(objects, parameters) function.
+// The result goes to a new Places layer (as in QGIS), except for those that select, report or edit attributes in place.
+// shortcut: everything is computed in WGS84 with turf (lon/lat); there is no reprojection or raster of its own (only the online terrain).
 (() => {
   const C = Cesium, T = turf, { viewer, geo, $, el } = OGE;
   const now = () => viewer.clock.currentTime;
@@ -12,8 +12,8 @@
   const TYPE = { point: 'puntos', line: 'líneas', polygon: 'polígonos' };
   const need = (okd, msg) => { if (!okd) throw new Error(msg); };
 
-  // ---------- Utilidades de geometría ----------
-  // Resultado: geometría nueva que hereda nombre y atributos del objeto de origen.
+  // ---------- Geometry utilities ----------
+  // Result: new geometry that inherits name and attributes from the source object.
   const out = (f, g, extra) => ({ type: 'Feature', geometry: g.geometry || g, properties: { ...(f && f.properties), ...extra }, oge: { name: (f && f.oge && f.oge.name) || '' } });
   const named = (f, name) => { f.oge.name = String(name); return f; };
   const tint = (f, c) => { f.oge.style = { ...f.oge.style, stroke: c, fill: c, color: c }; return f; };
@@ -24,7 +24,7 @@
   const boxes = new WeakMap();
   const bb = (f) => { let b = boxes.get(f); if (!b) { b = T.bbox(f); boxes.set(f, b); } return b; };
   const hit = (a, b) => { const x = bb(a), y = bb(b); return x[0] <= y[2] && y[0] <= x[2] && x[1] <= y[3] && y[1] <= x[3]; };
-  const other = (f, g) => !f.entity || f.entity !== g.entity; // una capa comparada consigo misma no cruza un objeto con él mismo
+  const other = (f, g) => !f.entity || f.entity !== g.entity; // a layer compared with itself does not match an object against itself
   const ringsOf = (f) => (f.geometry.type === 'Polygon' ? f.geometry.coordinates : f.geometry.type === 'LineString' ? [f.geometry.coordinates] : []);
   const asLine = (f) => (isPoly(f) ? T.lineString(f.geometry.coordinates[0]) : f);
   const anchor = (f) => (f.geometry.type === 'Point' ? f.geometry.coordinates : T.centroid(f).geometry.coordinates);
@@ -35,19 +35,19 @@
   const view = () => { const b = OGE.viewBbox(); need(b, 'No se pudo determinar la zona visible.'); return b; };
   const viewKm2 = (b) => T.area(T.bboxPolygon(b)) / 1e6;
   const cmp = (a, b) => (Number.isFinite(+a) && Number.isFinite(+b) ? a - b : String(a ?? '').localeCompare(String(b ?? '')));
-  function clipTo(f, mask) { // parte de f dentro del polígono mask
+  function clipTo(f, mask) { // part of f inside the mask polygon
     if (isPoint(f)) return T.booleanPointInPolygon(f, mask) ? out(f, f) : null;
     if (isPoly(f)) { const x = inter(f, mask); return x && out(f, x); }
-    const parts = T.lineSplit(f, mask).features; // línea: se corta en el borde y se conservan los tramos interiores
+    const parts = T.lineSplit(f, mask).features; // line: cut at the edge and the inner stretches are kept
     return (parts.length ? parts : [f]).filter((s) => T.booleanPointInPolygon(T.along(s, T.length(s) / 2), mask)).map((s) => out(f, s));
   }
-  function eraseFrom(f, mask) { // parte de f fuera del polígono mask
+  function eraseFrom(f, mask) { // part of f outside the mask polygon
     if (isPoint(f)) return T.booleanPointInPolygon(f, mask) ? null : out(f, f);
     if (isPoly(f)) { const x = diff(f, [mask]); return x && out(f, x); }
     const parts = T.lineSplit(f, mask).features;
     return (parts.length ? parts : [f]).filter((s) => !T.booleanPointInPolygon(T.along(s, T.length(s) / 2), mask)).map((s) => out(f, s));
   }
-  const chaikin = (c, closed) => { // suavizado: corta cada esquina
+  const chaikin = (c, closed) => { // smoothing: cuts every corner
     const p = closed ? c.slice(0, -1) : c, n = p.length, o = [];
     for (let i = 0; i < (closed ? n : n - 1); i++) {
       const a = p[i], b = p[(i + 1) % n];
@@ -64,7 +64,7 @@
     }
     return o;
   };
-  function mergeLines(fs) { // une líneas que se tocan por sus extremos
+  function mergeLines(fs) { // joins lines that touch at their endpoints
     const segs = fs.map((f) => f.geometry.coordinates.slice()), res = [], eq = (a, b) => Math.abs(a[0] - b[0]) < 1e-9 && Math.abs(a[1] - b[1]) < 1e-9;
     while (segs.length) {
       let cur = segs.pop(), grown = true;
@@ -85,7 +85,7 @@
     }
     return res;
   }
-  function minCircle(f) { // círculo mínimo envolvente (Bădoiu–Clarkson: el centro se acerca al punto más lejano)
+  function minCircle(f) { // minimum enclosing circle (Bădoiu–Clarkson: the center moves toward the farthest point)
     const pts = T.coordAll(f);
     let c = T.center(f).geometry.coordinates;
     for (let k = 0; k < 300; k++) {
@@ -95,7 +95,7 @@
     }
     return T.circle(c, Math.max(...pts.map((q) => T.distance(c, q))), { steps: 72 });
   }
-  function orientedBox(f) { // rectángulo mínimo orientado: se prueba la orientación de cada lado de la envolvente convexa
+  function orientedBox(f) { // minimum oriented rectangle: the orientation of each side of the convex hull is tried
     const hull = T.convex(f);
     if (!hull) return null;
     const c = T.centroid(hull).geometry.coordinates, kx = Math.cos((c[1] * Math.PI) / 180);
@@ -110,7 +110,7 @@
     const back = best.r.map(([u, v]) => [(u * best.ca - v * best.sa) / kx + c[0], u * best.sa + v * best.ca + c[1]]);
     return T.polygon([[...back, back[0]]]);
   }
-  function fix(f) { // repara: quita vértices repetidos, separa autointersecciones y ordena los anillos
+  function fix(f) { // repairs: removes repeated vertices, splits self-intersections and orders the rings
     try {
       let g = T.cleanCoords(f);
       if (isPoly(g)) { const k = T.unkinkPolygon(g).features; g = T.rewind(k.length > 1 ? U(k) : k[0] || g); }
@@ -118,7 +118,7 @@
     } catch { return null; }
   }
 
-  // ---------- Estadística y color ----------
+  // ---------- Statistics and color ----------
   const nums = (fs, field) => fs.map((f) => Number(f.properties[field])).filter((v, i) => Number.isFinite(v) && fs[i].properties[field] !== '' && fs[i].properties[field] != null);
   function stats(v) {
     const n = v.length, s = v.slice().sort((a, b) => a - b), sum = v.reduce((a, b) => a + b, 0), mean = sum / n;
@@ -129,7 +129,7 @@
   const PALETTE = ['#e6194b', '#3cb44b', '#4363d8', '#f58231', '#911eb4', '#42d4f4', '#f032e6', '#bfef45', '#469990', '#9a6324', '#ffe119', '#800000', '#808000', '#000075', '#fabed4'];
   const RAMP = ['#440154', '#3b528b', '#21918c', '#5ec962', '#fde725'].map((h) => C.Color.fromCssColorString(h)); // viridis
   const ramp = (t) => { const x = Math.max(0, Math.min(1, t)) * (RAMP.length - 1), i = Math.min(RAMP.length - 2, Math.floor(x)); return C.Color.lerp(RAMP[i], RAMP[i + 1], x - i, new C.Color()).toCssHexString(); };
-  function colorer(values, graduated) { // valor → color: rampa continua o una categoría por valor distinto
+  function colorer(values, graduated) { // value → color: continuous ramp or one category per distinct value
     if (graduated) {
       const v = values.map(Number).filter(Number.isFinite), lo = v.reduce((a, b) => Math.min(a, b), Infinity), hi = v.reduce((a, b) => Math.max(a, b), -Infinity);
       return (x) => (x !== '' && x != null && Number.isFinite(Number(x)) ? ramp(hi > lo ? (Number(x) - lo) / (hi - lo) : 0.5) : '#888888');
@@ -138,7 +138,7 @@
     return (x) => PALETTE[cats.indexOf(String(x)) % PALETTE.length];
   }
   const valueOf = (f, field) => (field === 'nombre' ? f.oge.name : f.properties[field]);
-  // Expresión JavaScript sobre un objeto: los campos por su nombre, además de nombre, $area y $perimeter (m²/m), $length (m), $x, $y, $id.
+  // JavaScript expression over an object: fields by their name, plus nombre, $area and $perimeter (m²/m), $length (m), $x, $y, $id.
   function compile(src) {
     const fn = new Function('a', 'nombre', '$area', '$length', '$perimeter', '$x', '$y', '$id', 'with (a) { return (' + src + '); }');
     return (f, i) => {
@@ -161,21 +161,21 @@
     }
   }
 
-  // ---------- Cambios en sitio (deshacibles) ----------
-  function setProps(changes) { // [[entidad, atributosNuevos]]
+  // ---------- In-place changes (undoable) ----------
+  function setProps(changes) { // [[entity, newAttributes]]
     const before = changes.map(([e]) => [e, e.properties ? e.properties.getValue(now()) : null]);
     const put = (list) => list.forEach(([e, p]) => { e.properties = p && Object.keys(p).length ? new C.PropertyBag(p) : undefined; });
     OGE.run({ do: () => put(changes), undo: () => put(before) });
   }
-  function setStyles(changes) { // [[entidad, estiloNuevo]]
+  function setStyles(changes) { // [[entity, newStyle]]
     const before = changes.map(([e]) => [e, geo.getStyle(e)]);
     const put = (list) => list.forEach(([e, s]) => geo.setStyle(e, s));
     OGE.run({ do: () => put(changes), undo: () => put(before) });
   }
   const withProps = (fs, fn) => { setProps(fs.map((f, i) => [f.entity, { ...f.properties, ...fn(f, i) }])); return { msg: fs.length + ' objetos actualizados.' }; };
 
-  // ---------- Relieve (para las herramientas de terreno) ----------
-  function chart(xs, ys) { // gráfico de área simple
+  // ---------- Terrain (for the terrain tools) ----------
+  function chart(xs, ys) { // simple area chart
     const cv = el('canvas', { width: 1400, height: 440 }), g = cv.getContext('2d'), W = cv.width, H = cv.height, m = { l: 90, r: 20, t: 20, b: 50 };
     const lo = Math.min(...ys), hi = Math.max(...ys), span = hi - lo || 1, X = (v) => m.l + ((W - m.l - m.r) * v) / xs.at(-1), Y = (v) => H - m.b - ((H - m.t - m.b) * (v - lo)) / span;
     g.font = '22px sans-serif'; g.fillStyle = '#ccc'; g.strokeStyle = '#555'; g.lineWidth = 1;
@@ -185,11 +185,11 @@
     g.fillStyle = 'rgba(94, 201, 98, .45)'; g.fill(); g.strokeStyle = '#5ec962'; g.lineWidth = 3; g.stroke();
     return cv;
   }
-  async function terrainImage(mode) { // sombreado o pendiente de la vista actual, como imagen superpuesta
+  async function terrainImage(mode) { // hillshade or slope of the current view, as an image overlay
     const b = view(), lat = (b[1] + b[3]) / 2, nx = 360, ny = Math.max(60, Math.min(360, Math.round((360 * (b[3] - b[1])) / ((b[2] - b[0]) * Math.cos((lat * Math.PI) / 180)))));
     const g = await OGE.dem.grid(b, nx, ny), cv = el('canvas', { width: nx, height: ny }), ctx = cv.getContext('2d'), img = ctx.createImageData(nx, ny), z = (i, j) => g.z[Math.max(0, Math.min(ny - 1, j)) * nx + Math.max(0, Math.min(nx - 1, i))];
-    const zen = (45 * Math.PI) / 180, az = (135 * Math.PI) / 180; // sol al noroeste, a 45° de altura
-    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { // gradiente de Horn
+    const zen = (45 * Math.PI) / 180, az = (135 * Math.PI) / 180; // sun in the northwest, 45° high
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { // Horn gradient
       const dzdx = (z(i + 1, j - 1) + 2 * z(i + 1, j) + z(i + 1, j + 1) - z(i - 1, j - 1) - 2 * z(i - 1, j) - z(i - 1, j + 1)) / (8 * g.dx);
       const dzdy = (z(i - 1, j + 1) + 2 * z(i, j + 1) + z(i + 1, j + 1) - z(i - 1, j - 1) - 2 * z(i, j - 1) - z(i + 1, j - 1)) / (8 * g.dy);
       const slope = Math.atan(Math.hypot(dzdx, dzdy)), o = (j * nx + i) * 4;
@@ -200,7 +200,7 @@
     return { image: { bbox: b, url: cv.toDataURL('image/png'), name: mode === 'slope' ? 'Pendiente (0° violeta – 45° amarillo)' : 'Sombreado del relieve', opacity: 0.6 } };
   }
 
-  // ---------- Constructores de parámetros ----------
+  // ---------- Parameter builders ----------
   const N = (id, label, value, o) => ({ id, label, type: 'number', value, ...o });
   const S = (id, label, options, value) => ({ id, label, type: 'select', options, value });
   const B = (id, label, value = false) => ({ id, label, type: 'checkbox', value });
@@ -209,9 +209,9 @@
   const MODE = S('mode', 'Resultado', [['sel', 'Seleccionar en el mapa'], ['new', 'Extraer a una capa nueva']]);
   const selOrNew = (r, p) => (p.mode === 'sel' ? { select: r } : r.map((f) => out(f, f)));
 
-  // ---------- Catálogo ----------
+  // ---------- Catalog ----------
   const TOOLS = [
-    // ===== Geometría vectorial =====
+    // ===== Vector geometry =====
     { id: 'buffer', g: 'Geometría', n: 'Buffer (área de influencia)', q: 'native:buffer', a: 'Buffer', p: [N('d', 'Distancia (m; negativa encoge polígonos)', 1000), B('dis', 'Disolver el resultado')],
       run: (fs, p) => { const r = each(fs, (f) => { const b = T.buffer(f, km(p.d)); return b && out(f, b); }); return p.dis && r.length > 1 ? [out(null, U(r))] : r; } },
     { id: 'multiring', g: 'Geometría', n: 'Buffer de anillos múltiples', q: 'native:multiringconstantbuffer', a: 'MultipleRingBuffer', p: [N('d', 'Distancia entre anillos (m)', 500, { min: 0.01 }), N('n', 'Número de anillos', 3, { min: 1, max: 50, step: 1 })],
@@ -243,7 +243,7 @@
     { id: 'line2poly', g: 'Geometría', n: 'Líneas a polígonos', q: 'qgis:linestopolygons', a: 'FeatureToPolygon', in: ['line'],
       run: (fs) => each(fs, (f) => { const c = f.geometry.coordinates, closed = c[0][0] === c.at(-1)[0] && c[0][1] === c.at(-1)[1]; return c.length > 2 && out(f, T.polygon([closed ? c : [...c, c[0]]])); }) },
     { id: 'polygonize', g: 'Geometría', n: 'Poligonizar (áreas cerradas por líneas)', q: 'native:polygonize', a: 'FeatureToPolygon', in: ['line'],
-      run: (fs) => { // las líneas se cortan en sus cruces para que formen una red cerrada
+      run: (fs) => { // lines are cut at their crossings so they form a closed network
         const noded = fs.flatMap((f, i) => { let parts = [f]; fs.forEach((g, j) => { if (i !== j && hit(f, g)) parts = parts.flatMap((x) => { const s = T.lineSplit(x, g).features; return s.length ? s : [x]; }); }); return parts; });
         return T.polygonize(FC(noded.map((f) => T.truncate(T.lineString(f.geometry.coordinates), { precision: 8 })))).features.map((x) => out(null, x));
       } },
@@ -302,7 +302,7 @@
     { id: 'snapgrid', g: 'Geometría', n: 'Ajustar a rejilla', q: 'native:snappointstogrid', a: 'Integrate (XY tolerance)', p: [N('s', 'Espaciado (grados)', 0.001, { min: 1e-9 })],
       run: (fs, p) => each(fs, (f) => { const g = T.clone(f); T.coordEach(g, (c) => { c[0] = Math.round(c[0] / p.s) * p.s; c[1] = Math.round(c[1] / p.s) * p.s; }); return out(f, g); }) },
 
-    // ===== Superposición vectorial =====
+    // ===== Vector overlay =====
     { id: 'clip', g: 'Superposición', n: 'Recortar', q: 'native:clip', a: 'Clip', p: [LY('ov', 'Capa de recorte (polígonos)')],
       run: (fs, p) => { const mask = U(p.ov.filter(isPoly)); need(mask, 'La capa de recorte no tiene polígonos.'); return each(fs, (f) => clipTo(f, mask)); } },
     { id: 'erase', g: 'Superposición', n: 'Diferencia (borrar)', q: 'native:difference', a: 'Erase', p: [LY('ov', 'Capa que se resta (polígonos)')],
@@ -324,7 +324,7 @@
     { id: 'neighbors', g: 'Superposición', n: 'Vecinos de polígonos', q: '—', a: 'PolygonNeighbors', in: ['polygon'],
       run: (fs) => { const rows = []; for (let i = 0; i < fs.length; i++) for (let j = i + 1; j < fs.length; j++) if (hit(fs[i], fs[j]) && T.booleanIntersects(fs[i], fs[j])) { const x = inter(T.buffer(fs[i], 0.0005), fs[j]); rows.push([fs[i].oge.name, fs[j].oge.name, x ? +(T.area(x) / 0.5 / 1000).toFixed(3) : 0]); } return { table: [['Polígono', 'Vecino', 'Borde compartido aprox. (km)'], rows], note: `${rows.length} pares de polígonos que se tocan.` }; } },
 
-    // ===== Selección =====
+    // ===== Selection =====
     { id: 'selattr', g: 'Selección', n: 'Seleccionar por atributo', q: 'native:extractbyattribute', a: 'SelectLayerByAttribute / Select', p: [X('field', 'Campo («nombre» = el nombre del objeto)', 'nombre'), S('op', 'Operador', ['=', '≠', '>', '<', '≥', '≤', 'contiene', 'empieza con', 'está vacío']), X('v', 'Valor'), MODE],
       run: (fs, p) => selOrNew(fs.filter((f) => test(valueOf(f, p.field), p.op, p.v)), p) },
     { id: 'selexpr', g: 'Selección', n: 'Seleccionar por expresión', q: 'native:extractbyexpression', a: 'SelectLayerByAttribute (SQL)', p: [X('e', 'Expresión (JavaScript)', '$area > 1e6'), MODE],
@@ -340,7 +340,7 @@
     { id: 'bytype', g: 'Selección', n: 'Filtrar por tipo de geometría', q: 'native:filterbygeometry', a: 'Select (SHAPE)', p: [S('t', 'Tipo', [['point', 'Puntos'], ['line', 'Líneas'], ['polygon', 'Polígonos']]), MODE],
       run: (fs, p) => selOrNew(fs.filter((f) => kindOf(f) === p.t), p) },
 
-    // ===== Análisis =====
+    // ===== Analysis =====
     { id: 'countpts', g: 'Análisis', n: 'Contar puntos en polígonos', q: 'native:countpointsinpolygon', a: 'SpatialJoin (COUNT)', in: ['polygon'], p: [LY('ov', 'Capa de puntos'), X('field', 'Campo numérico a sumar (opcional)')],
       run: (fs, p) => { const pts = p.ov.filter(isPoint); return { features: fs.map((f) => { const inP = pts.filter((q) => T.booleanPointInPolygon(q, f)), ex = { NUMPOINTS: inP.length }; if (p.field) ex['suma_' + p.field] = inP.reduce((s, q) => s + (+q.properties[p.field] || 0), 0); return out(f, f, ex); }), colorBy: 'NUMPOINTS', graduated: true }; } },
     { id: 'joinloc', g: 'Análisis', n: 'Unir atributos por localización', q: 'native:joinattributesbylocation', a: 'SpatialJoin', p: [LY('ov', 'Capa con los atributos a traer')],
@@ -380,7 +380,7 @@
         for (let v = Math.ceil(lo / p.int) * p.int; v <= hi; v += p.int) br.push(+v.toFixed(9)); need(br.length && br.length <= 200, 'Ajusta la equidistancia: saldrían ' + br.length + ' curvas.');
         return { features: T.isolines(grid, br, { zProperty: 'v' }).features.filter((f) => f.geometry.coordinates.length).map((f) => named(out(null, f, { [p.field]: f.properties.v }), f.properties.v)), colorBy: p.field, graduated: true }; } },
 
-    // ===== Creación de vectores =====
+    // ===== Vector creation =====
     { id: 'grid', g: 'Creación', n: 'Crear rejilla (vista actual)', q: 'native:creategrid / regularpoints', a: 'CreateFishnet / GenerateTessellation', noIn: true, p: [S('t', 'Tipo', [['square', 'Cuadrados'], ['hex', 'Hexágonos'], ['triangle', 'Triángulos'], ['point', 'Puntos']]), N('cell', 'Tamaño de celda (km)', 10, { min: 0.001 })],
       run: (fs, p) => { const b = view(); need(viewKm2(b) / (p.cell * p.cell) < 20000, 'Demasiadas celdas: acércate o aumenta el tamaño.'); return { square: T.squareGrid, hex: T.hexGrid, triangle: T.triangleGrid, point: T.pointGrid }[p.t](b, p.cell, { units: 'kilometers' }).features.map((f, i) => out(null, f, { id: i + 1 })); } },
     { id: 'randext', g: 'Creación', n: 'Puntos aleatorios (vista actual)', q: 'native:randompointsinextent', a: 'CreateRandomPoints', noIn: true, p: [N('n', 'Cantidad', 100, { min: 1, max: 50000, step: 1 })],
@@ -398,7 +398,7 @@
         const sel = `["${key}"${val ? `="${val}"` : ''}]`, bbx = `${b[1]},${b[0]},${b[3]},${b[2]}`, js = await OGE.overpass(`[out:json][timeout:50];(node${sel}(${bbx});way${sel}(${bbx}););out tags geom 5000;`);
         return js.elements.map((e) => { const pr = { ...e.tags, osm_id: e.type + '/' + e.id }; if (e.type === 'node') return { type: 'Feature', geometry: { type: 'Point', coordinates: [e.lon, e.lat] }, properties: pr }; const c = e.geometry.map((q) => [q.lon, q.lat]), closed = c.length > 3 && c[0][0] === c.at(-1)[0] && c[0][1] === c.at(-1)[1] && !/^(highway|barrier|railway|waterway)$/.test(key); return { type: 'Feature', geometry: closed ? { type: 'Polygon', coordinates: [c] } : { type: 'LineString', coordinates: c }, properties: pr }; }); } },
 
-    // ===== Tabla de atributos =====
+    // ===== Attribute table =====
     { id: 'table', g: 'Atributos', n: 'Ver tabla de atributos', q: 'Tabla de atributos / exporttospreadsheet', a: 'Tabla de atributos / TableToExcel',
       run: (fs) => { const keys = [...new Set(fs.flatMap((f) => Object.keys(f.properties)))]; return { table: [['nombre', 'tipo', ...keys], fs.map((f) => [f.oge.name, TYPE[kindOf(f)], ...keys.map((k) => f.properties[k])])], rowEntities: fs.map((f) => f.entity), note: 'Clic en una fila para ir al objeto. El botón CSV la exporta.' }; } },
     { id: 'fieldcalc', g: 'Atributos', n: 'Calculadora de campos', q: 'native:fieldcalculator', a: 'CalculateField', p: [X('field', 'Campo a crear o actualizar', 'nuevo'), X('e', 'Expresión (JavaScript)', '$area / 1e6')],
@@ -413,7 +413,7 @@
     { id: 'renfield', g: 'Atributos', n: 'Renombrar campo', q: 'native:renametablefield', a: 'AlterField', p: [X('field', 'Campo actual'), X('to', 'Nombre nuevo')],
       run: (fs, p) => { need(p.to.trim(), 'Falta el nombre nuevo.'); setProps(fs.map((f) => { const q = {}; for (const [k, v] of Object.entries(f.properties)) q[k === p.field ? p.to.trim() : k] = v; return [f.entity, q]; })); return { msg: 'Campo renombrado.' }; } },
 
-    // ===== Terreno (relieve en línea) =====
+    // ===== Terrain (online elevation) =====
     { id: 'profile', g: 'Terreno', n: 'Perfil de elevación', q: 'Perfil de elevación / qgis:climbalongline', a: 'StackProfile / InterpolateShape', in: ['line'], net: true, h: 'Se usa la primera línea de la entrada.',
       run: async (fs) => { const f = fs[0], len = T.length(f), n = 300, pts = Array.from({ length: n }, (_, i) => T.along(f, (len * i) / (n - 1)).geometry.coordinates), z = await OGE.dem.sample(pts, OGE.dem.zoomFor((len * 1000) / n, pts[0][1])), xs = pts.map((_, i) => (len * i) / (n - 1));
         let up = 0, down = 0; for (let i = 1; i < n; i++) { const d = z[i] - z[i - 1]; if (d > 0) up += d; else down -= d; }
@@ -433,13 +433,13 @@
     { id: 'viewshed', g: 'Terreno', n: 'Cuenca visual', q: 'grass:r.viewshed', a: 'Viewshed (también en Earth Pro)', in: ['point'], net: true, p: [N('r', 'Radio (m)', 5000, { min: 100 }), N('h', 'Altura del observador sobre el suelo (m)', 2, { min: 0 })], h: 'Se usa el primer punto de la entrada. Lo verde es lo que se ve desde ahí.',
       run: async (fs, p) => { const c = fs[0].geometry.coordinates, n = 241, half = (n - 1) / 2, dLat = p.r / 110540, dLon = p.r / (111320 * Math.cos((c[1] * Math.PI) / 180)), b = [c[0] - dLon, c[1] - dLat, c[0] + dLon, c[1] + dLat];
         const g = await OGE.dem.grid(b, n, n), cell = (2 * p.r) / (n - 1), z0 = g.z[half * n + half] + p.h, vis = new Uint8Array(n * n);
-        const ray = (ti, tj) => { const di = ti - half, dj = tj - half, steps = Math.max(Math.abs(di), Math.abs(dj)); let maxT = -Infinity; // una celda se ve si su ángulo supera el de todas las anteriores del rayo
+        const ray = (ti, tj) => { const di = ti - half, dj = tj - half, steps = Math.max(Math.abs(di), Math.abs(dj)); let maxT = -Infinity; // a cell is visible if its angle exceeds that of all the previous ones on the ray
           for (let s = 1; s <= steps; s++) { const i = Math.round(half + (di * s) / steps), j = Math.round(half + (dj * s) / steps), d = Math.hypot(i - half, j - half) * cell; if (d > p.r) break; const t = (g.z[j * n + i] - ((d * d) / (2 * 6371000)) * 0.87 - z0) / d; if (t >= maxT) { vis[j * n + i] = 1; maxT = t; } } };
         for (let k = 0; k < n; k++) { ray(k, 0); ray(k, n - 1); ray(0, k); ray(n - 1, k); }
         const cv = el('canvas', { width: n, height: n }), ctx = cv.getContext('2d'), img = ctx.createImageData(n, n); for (let i = 0; i < n * n; i++) if (vis[i]) { img.data[i * 4 + 1] = 230; img.data[i * 4 + 2] = 80; img.data[i * 4 + 3] = 255; } ctx.putImageData(img, 0, 0);
         return { image: { bbox: b, url: cv.toDataURL('image/png'), name: 'Cuenca visual de ' + (fs[0].oge.name || 'punto'), opacity: 0.55 } }; } },
 
-    // ===== Cartografía =====
+    // ===== Cartography =====
     { id: 'classify', g: 'Cartografía', n: 'Simbología por categorías o graduada', q: 'Simbología categorizada / graduada', a: 'Simbología: Unique Values / Graduated Colors', p: [X('field', 'Campo («nombre» = el nombre)', 'nombre'), S('m', 'Modo', [['cat', 'Categorías (un color por valor)'], ['grad', 'Graduado (rampa de color por valor numérico)']])],
       run: (fs, p) => { const col = colorer(fs.map((f) => valueOf(f, p.field)), p.m === 'grad'); setStyles(fs.map((f) => { const c = col(valueOf(f, p.field)); return [f.entity, { ...f.oge.style, stroke: c, fill: c, color: c }]; })); return { msg: 'Colores aplicados a ' + fs.length + ' objetos según «' + p.field + '».' }; } },
     { id: 'label', g: 'Cartografía', n: 'Etiquetar por campo', q: 'Etiquetado de capa', a: 'Label Features', p: [X('field', 'Campo («nombre» = el nombre; vacío = quitar etiquetas)', 'nombre')],
@@ -451,7 +451,7 @@
         const col = new Array(n).fill(-1); for (const i of [...Array(n).keys()].sort((a, b) => adj[b].length - adj[a].length)) { const used = new Set(adj[i].map((j) => col[j])); let c = 0; while (used.has(c)) c++; col[i] = c; }
         setStyles(fs.map((f, i) => [f.entity, { ...f.oge.style, fill: PALETTE[col[i] % PALETTE.length], stroke: PALETTE[col[i] % PALETTE.length], fillOpacity: 0.55 }])); return { msg: `Coloreado con ${Math.max(...col) + 1} colores.` }; } },
 
-    // ===== Topología =====
+    // ===== Topology =====
     { id: 'coverage', g: 'Topología', n: 'Comprobar topología (huecos y solapes)', q: 'native:coveragevalidate / Comprobador de topología', a: 'Topología: Must Not Overlap / Must Not Have Gaps', in: ['polygon'],
       run: (fs) => { const r = []; for (let i = 0; i < fs.length; i++) for (let j = i + 1; j < fs.length; j++) if (hit(fs[i], fs[j])) { const x = inter(fs[i], fs[j]); if (x && T.area(x) > 0.01) r.push(named(out(null, x, { tipo: 'solape', entre: fs[i].oge.name + ' / ' + fs[j].oge.name, area_m2: +T.area(x).toFixed(2) }), 'Solape')); }
         const u = U(fs); if (u) for (const poly of T.flatten(u).features) for (const hole of poly.geometry.coordinates.slice(1)) { const h = T.polygon([hole]); r.push(named(out(null, h, { tipo: 'hueco', area_m2: +T.area(h).toFixed(2) }), 'Hueco')); }
@@ -460,18 +460,18 @@
       run: (fs, p) => { const big = fs.filter((f) => T.area(f) >= p.min).map((f) => ({ f, g: f })); let merged = 0; for (const s of fs.filter((f) => T.area(f) < p.min)) { let best = null, ba = 0; for (const b of big) { if (!hit(s, b.g)) continue; const x = inter(T.buffer(s, 0.001), b.g), a = x ? T.area(x) : 0; if (a > ba) { ba = a; best = b; } } if (best) { best.g = U([best.g, s]); merged++; } else big.push({ f: s, g: s }); }
         return { features: big.map((b) => out(b.f, b.g)), msg: merged + ' astillas fundidas con su vecino.' }; } },
 
-    // ===== Base de datos =====
+    // ===== Database =====
     { id: 'sql', g: 'Base de datos', n: 'Consulta SQL sobre una capa', q: 'qgis:executesql / Gestor de BBDD', a: 'MakeQueryTable / SQL', p: [{ id: 'q', label: 'Consulta (SQLite)', type: 'textarea', value: 'SELECT tipo, COUNT(*) AS cuenta, ROUND(SUM(area_m2) / 1e6, 2) AS km2 FROM capa GROUP BY tipo' }],
       h: 'Los objetos de la capa quedan en la tabla «capa», con las columnas nombre, tipo, area_m2, longitud_m, lon, lat y sus atributos.',
       run: async (fs, p) => ({ table: await OGE.db.query(fs, p.q), note: 'Resultado de: ' + p.q.replace(/\s+/g, ' ') }) },
   ];
   const GROUPS = [...new Set(TOOLS.map((t) => t.g))];
 
-  // ---------- Ejecución ----------
+  // ---------- Execution ----------
   const usable = (f) => f && f.oge.kind !== 'image';
   const featuresOf = (key) => (key === '@sel' ? OGE.selection() : (geo.groups().find((d) => d.name === key) || { entities: { values: [] } }).entities.values).map(geo.toFeature).filter(usable);
   let runs = 0;
-  // La capa ya fue añadida por addGroup (de forma asíncrona): deshacer la quita y rehacer la vuelve a poner.
+  // The layer was already added by addGroup (asynchronously): undo removes it and redo puts it back.
   function undoable(ds) {
     let inside = true;
     OGE.run({ do: () => { if (!inside) { viewer.dataSources.add(ds); inside = true; } }, undo: () => { viewer.dataSources.remove(ds, false); inside = false; } });
@@ -507,7 +507,7 @@
     const p = { ...values };
     for (const d of tool.p || []) if (d.type === 'layer') p[d.id] = featuresOf(values[d.id]);
     OGE.toast('Ejecutando «' + tool.n + '»…');
-    await new Promise((r) => setTimeout(r, 30)); // deja pintar el aviso antes de un cálculo largo
+    await new Promise((r) => setTimeout(r, 30)); // lets the notice paint before a long computation
     try { deliver(tool, await tool.run(fs, p)); } catch (e) { console.error(e); OGE.toast('«' + tool.n + '» no se pudo ejecutar: ' + e.message, true); }
   }
   async function open(tool) {
@@ -542,7 +542,7 @@
   render();
   show(!!localStorage.getItem('oge.toolbox'));
 
-  // ---------- Autoprueba: ejecuta cada herramienta sin red con datos de muestra y valores por defecto ----------
+  // ---------- Self-test: runs every tool offline with sample data and default values ----------
   async function selfTest() {
     const P = (c, name, props) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: c }, properties: props || {}, oge: { name } });
     const sq = (x, y, s, name, props) => ({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [[[x, y], [x + s, y], [x + s, y - s], [x, y - s], [x, y]]] }, properties: props || {}, oge: { name } });
@@ -571,7 +571,7 @@
     viewer.dataSources.remove(a, true); viewer.dataSources.remove(b, true);
     return results;
   }
-  // Catálogo en Markdown (para la documentación).
+  // Catalog in Markdown (for the documentation).
   const catalog = () => GROUPS.map((gname) => `### ${gname}\n\n| Herramienta | QGIS | ArcGIS |\n|---|---|---|\n` + TOOLS.filter((t) => t.g === gname).map((t) => `| ${t.n} | ${t.q || '—'} | ${t.a || '—'} |`).join('\n')).join('\n\n');
 
   OGE.tools = { list: TOOLS, open, exec, selfTest, catalog };

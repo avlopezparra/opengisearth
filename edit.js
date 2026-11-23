@@ -1,26 +1,26 @@
-// OpenGISEarth — edición: selección, nodos con ajuste y topología, imágenes, atributos y operaciones de trayecto.
-// shortcut: las operaciones trabajan en lon/lat (turf); los polígonos que cruzan el antimeridiano no se procesan bien.
+// OpenGISEarth — editing: selection, nodes with snapping and topology, images, attributes and path operations.
+// shortcut: the operations work in lon/lat (turf); polygons that cross the antimeridian are not processed correctly.
 (() => {
   const C = Cesium, T = turf, { viewer, geo, $, el } = OGE;
   const scene = viewer.scene;
   const now = () => viewer.clock.currentTime;
-  const SNAP_PX = 12;      // tolerancia de ajuste en píxeles de pantalla (como ArcGIS y QGIS)
-  const SAME_M = 0.5;      // nodos a menos de esto se consideran compartidos (topología)
-  const MAX_HANDLES = 500; // en objetos enormes solo se muestran los nodos a la vista
+  const SNAP_PX = 12;      // snapping tolerance in screen pixels (like ArcGIS and QGIS)
+  const SAME_M = 0.5;      // nodes closer than this are considered shared (topology)
+  const MAX_HANDLES = 500; // on huge objects only the nodes in view are shown
 
   let editMode = false, snap = true, topo = true;
   let sel = [], handles = [], marks = [], drag = null, bigSel = false;
   const tmp = (o) => { const e = viewer.entities.add(o); e._tmp = true; return e; };
   const alive = (e) => !!e.entityCollection && e.entityCollection.contains(e);
 
-  // Objetos editables: todo lo visible de las capas de Lugares.
+  // Editable objects: everything visible in the Places layers.
   function editables() {
     const out = [];
     for (const ds of geo.groups()) if (ds.show) for (const e of ds.entities.values) if (e.isShowing && geo.kind(e)) out.push(e);
     return out;
   }
 
-  // ---------- Selección: se marca con un contorno cian, sin tocar el estilo del objeto ----------
+  // ---------- Selection: marked with a cyan outline, without touching the object's style ----------
   const rectOf = (e) => e.rectangle.coordinates.getValue(now());
   const corners = (r) => [[r.west, r.south], [r.east, r.south], [r.east, r.north], [r.west, r.north]].map(([x, y]) => C.Cartesian3.fromRadians(x, y));
   function mark() {
@@ -40,9 +40,9 @@
     mark(); buildHandles(); renderPanel();
   }
   const refresh = () => select(sel);
-  OGE.onChange(refresh); // tras cada acción, deshacer o rehacer
+  OGE.onChange(refresh); // after every action, undo or redo
 
-  // ---------- Asas: nodos (blancos), puntos medios (grises, insertan un nodo) y esquinas de imagen (verdes) ----------
+  // ---------- Handles: nodes (white), midpoints (gray, insert a node) and image corners (green) ----------
   const H = (color, size) => ({ pixelSize: size, color, outlineColor: C.Color.BLACK, outlineWidth: 2,
     heightReference: C.HeightReference.CLAMP_TO_GROUND, disableDepthTestDistance: Number.POSITIVE_INFINITY });
   function clearHandles() { handles.forEach((h) => viewer.entities.remove(h)); handles = []; }
@@ -52,7 +52,7 @@
     if (!editMode || sel.length !== 1 || drag) return;
     const e = sel[0], k = geo.kind(e);
     const add = (position, tag, style) => { const h = tmp({ position, point: style }); Object.assign(h, tag); handles.push(h); };
-    if (k === 'point') return; // el punto se arrastra directamente
+    if (k === 'point') return; // the point is dragged directly
     if (k === 'image') {
       const r = rectOf(e);
       corners(r).forEach((p, c) => add(p, { _img: { e, c } }, H(C.Color.LIME, 12)));
@@ -61,7 +61,7 @@
     const rs = geo.rings(e);
     let refs = rs.flatMap((ring, r) => ring.map((p, i) => ({ r, i, p })));
     const total = refs.length;
-    if (total > MAX_HANDLES) { // solo los nodos visibles más cercanos al centro de la pantalla
+    if (total > MAX_HANDLES) { // only the visible nodes closest to the center of the screen
       bigSel = true;
       const w = scene.canvas.clientWidth, hh = scene.canvas.clientHeight;
       refs = refs.map((v) => ({ ...v, s: scene.cartesianToCanvasCoordinates(v.p) }))
@@ -78,10 +78,10 @@
   }
   viewer.camera.moveEnd.addEventListener(() => { if (bigSel && !drag) buildHandles(); });
 
-  // ---------- Ajuste (snapping) en el terreno: primero a nodos, luego a bordes ----------
-  // Metros por píxel de pantalla a la distancia de p: la tolerancia se define en píxeles.
+  // ---------- Snapping on the terrain: first to nodes, then to edges ----------
+  // Meters per screen pixel at the distance of p: the tolerance is defined in pixels.
   const mpp = (p) => scene.camera.getPixelSize(new C.BoundingSphere(p, 0), scene.drawingBufferWidth, scene.drawingBufferHeight) * (scene.drawingBufferWidth / scene.canvas.clientWidth);
-  // Devuelve {pos} y, si se ajustó a un nodo, también {e, r, i}. skip(e, r, i) excluye nodos (los que se arrastran).
+  // Returns {pos} and, if it snapped to a node, also {e, r, i}. skip(e, r, i) excludes nodes (the ones being dragged).
   function snapAt(screenPos, skip) {
     const hit = OGE.pickGround(screenPos);
     if (!hit) return null;
@@ -117,7 +117,7 @@
     }
     return best || edge || { pos: g };
   }
-  // Nodos de e (anillo r) entre i y j por el camino más corto, sin incluir los extremos.
+  // Nodes of e (ring r) between i and j along the shortest path, excluding the endpoints.
   function borderPath(e, r, i, j) {
     const ring = geo.rings(e)[r], n = ring.length;
     if (geo.kind(e) !== 'polygon') { const mid = ring.slice(Math.min(i, j) + 1, Math.max(i, j)); return i < j ? mid : mid.reverse(); }
@@ -127,9 +127,9 @@
     return out;
   }
 
-  // ---------- Arrastre de nodos (con topología) ----------
+  // ---------- Node dragging (with topology) ----------
   const setAll = (map) => map.forEach((rs, e) => geo.setRings(e, rs.map((r) => r.slice())));
-  function coincident(p0) { // nodos de cualquier objeto en el mismo sitio que p0
+  function coincident(p0) { // nodes of any object at the same spot as p0
     const out = [];
     for (const o of editables()) {
       if (geo.kind(o) === 'image') continue;
@@ -170,7 +170,7 @@
       if (d.r1) OGE.run({ do: () => { d.img.rectangle.coordinates = d.r1; }, undo: () => { d.img.rectangle.coordinates = d.r0; } });
       else refresh();
     } else if (d.after) OGE.run({ do: () => setAll(d.after), undo: () => setAll(d.before) });
-    else { setAll(d.before); refresh(); } // clic sin mover: anula una inserción
+    else { setAll(d.before); refresh(); } // click without moving: cancels an insertion
   }
   function removeVertex(e, r, i) {
     const rs = geo.rings(e), min = geo.kind(e) === 'polygon' ? 3 : 2;
@@ -179,7 +179,7 @@
     OGE.run({ do: () => geo.setRings(e, after), undo: () => geo.setRings(e, rs) });
   }
 
-  // ---------- Imágenes: esquinas para estirar, centro para mover ----------
+  // ---------- Images: corners to stretch, center to move ----------
   function startImg(e, c, screenPos) {
     const g = OGE.pickGround(screenPos);
     drag = { img: e, c, r0: C.Rectangle.clone(rectOf(e)), g0: g && C.Cartographic.fromCartesian(g) };
@@ -194,7 +194,7 @@
     if (drag.c === 'm') {
       const dx = k.longitude - drag.g0.longitude, dy = k.latitude - drag.g0.latitude;
       r = new C.Rectangle(r0.west + dx, r0.south + dy, r0.east + dx, r0.north + dy);
-    } else { // esquinas 0 SO, 1 SE, 2 NE, 3 NO: la opuesta queda fija
+    } else { // corners 0 SW, 1 SE, 2 NE, 3 NW: the opposite one stays fixed
       const fx = drag.c === 0 || drag.c === 3 ? r0.east : r0.west, fy = drag.c < 2 ? r0.north : r0.south;
       r = new C.Rectangle(Math.min(fx, k.longitude), Math.min(fy, k.latitude), Math.max(fx, k.longitude), Math.max(fy, k.latitude));
     }
@@ -203,7 +203,7 @@
     drag.r1 = r;
   }
 
-  // ---------- Eventos del mouse ----------
+  // ---------- Mouse events ----------
   const hd = new C.ScreenSpaceEventHandler(scene.canvas);
   const active = () => editMode && !OGE.drawing();
   const pickHandle = (pos) => { const p = scene.pick(pos); return p && p.id && (p.id._v || p.id._m || p.id._img) ? p.id : null; };
@@ -219,7 +219,7 @@
     const h = pickHandle(ev.position);
     if (h && h._img) return startImg(h._img.e, h._img.c, ev.position);
     if (h && h._v) return startDrag(h._v.e, h._v.r, h._v.i);
-    if (h) { // punto medio: inserta un nodo y lo arrastra; deshacer vuelve a antes de la inserción
+    if (h) { // midpoint: inserts a node and drags it; undo goes back to before the insertion
       const { e, r, i } = h._m, rs = geo.rings(e), before = rs.map((x) => x.slice());
       rs[r].splice(i, 0, h.position.getValue(now()));
       geo.setRings(e, rs);
@@ -229,7 +229,7 @@
   }, C.ScreenSpaceEventType.LEFT_DOWN);
   hd.setInputAction((ev) => { if (drag) (drag.img ? moveImg : moveDrag)(ev.endPosition); }, C.ScreenSpaceEventType.MOUSE_MOVE);
   hd.setInputAction(() => { if (drag) endDrag(); }, C.ScreenSpaceEventType.LEFT_UP);
-  window.addEventListener('pointerup', () => setTimeout(() => { if (drag) endDrag(); })); // si se suelta fuera del mapa
+  window.addEventListener('pointerup', () => setTimeout(() => { if (drag) endDrag(); })); // if released outside the map
   const clickSel = (add) => (ev) => {
     if (!active() || pickHandle(ev.position)) return;
     const e = pickFeature(ev.position);
@@ -244,10 +244,10 @@
     const h = pickHandle(ev.position);
     if (h && h._v) removeVertex(h._v.e, h._v.r, h._v.i);
   }, C.ScreenSpaceEventType.LEFT_CLICK, C.KeyboardEventModifier.ALT);
-  // Al editar o dibujar no se abre el globo de información, y las asas nunca se seleccionan.
+  // While editing or drawing the info balloon does not open, and handles are never selected.
   viewer.selectedEntityChanged.addEventListener((e) => { if (e && (e._tmp || editMode || OGE.drawing())) viewer.selectedEntity = undefined; });
 
-  // ---------- Panel de la selección: medidas y atributos ----------
+  // ---------- Selection panel: measurements and attributes ----------
   function measure(f) {
     const k = f.oge.kind;
     if (k === 'point') return f.geometry.coordinates[1].toFixed(6) + ', ' + f.geometry.coordinates[0].toFixed(6);
@@ -283,7 +283,7 @@
     for (const [k, v] of Object.entries(fs[0] ? fs[0].properties : {})) row(k, v, (nk) => setProps(e, k, nk), (nv) => setProps(e, k, k, nv));
   }
   function rename(e, v) { e.name = v; if (e.label && geo.kind(e) === 'point') e.label.text = v; }
-  // Cambia un atributo: clave nueva vacía = borrar; valor numérico si lo parece.
+  // Changes an attribute: empty new key = delete; numeric value if it looks like one.
   function setProps(e, key, newKey, value) {
     const before = e.properties ? e.properties.getValue(now()) : {}, after = {};
     if (typeof value === 'string' && value.trim() !== '' && !Number.isNaN(Number(value))) value = Number(value);
@@ -303,11 +303,11 @@
   $('selZoom').onclick = () => viewer.flyTo(sel);
   $('selDel').onclick = () => doOp('delete');
 
-  // ---------- Operaciones de trayecto sobre la selección (como Inkscape); reemplazan los objetos en su capa ----------
+  // ---------- Path operations on the selection (like Inkscape); they replace the objects in their layer ----------
   const F = geo.toFeature, fc = (...fs) => T.featureCollection(fs);
   const polys = () => sel.filter((e) => geo.kind(e) === 'polygon');
   const lines = () => sel.filter((e) => geo.kind(e) === 'line');
-  // results: [[geometríaTurf, entidadBase], …]; cada resultado hereda nombre, estilo y atributos de su base.
+  // results: [[turfGeometry, baseEntity], …]; each result inherits name, style and attributes from its base.
   function put(olds, results, extraName) {
     const news = [];
     for (const [g, baseE] of results) {
@@ -323,7 +323,7 @@
       undo: () => { news.forEach((e) => target.remove(e)); olds.forEach((e, i) => owners[i].add(e)); } });
     select(news);
   }
-  // Corta un polígono con una línea: resta un corredor de 5 cm y luego cierra la ranura proyectando los bordes sobre la línea.
+  // Cuts a polygon with a line: subtracts a 5 cm corridor and then closes the slot by projecting the edges onto the line.
   function splitPolygon(pf, lf) {
     const cut = T.difference(fc(pf, T.buffer(lf, 0.00005, { units: 'kilometers', steps: 2 })));
     if (!cut || cut.geometry.type !== 'MultiPolygon') return null;
@@ -350,13 +350,13 @@
       need(p.length >= 2, 'Selecciona dos o más polígonos (Ctrl+clic).');
       put(p, [[T.intersect(fc(...p.map(F))), p[0]]]);
     },
-    xor() { // Exclusión: (A ∪ B) − (A ∩ B)
+    xor() { // Exclusion: (A ∪ B) − (A ∩ B)
       const p = polys();
       need(p.length === 2, 'Selecciona dos polígonos (Ctrl+clic).');
       const both = T.intersect(fc(...p.map(F))), all = T.union(fc(...p.map(F)));
       put(p, [[both ? T.difference(fc(all, both)) : all, p[0]]]);
     },
-    divide() { // División: el segundo corta al primero; quedan las piezas de dentro y de fuera
+    divide() { // Division: the second cuts the first; the pieces inside and outside remain
       const p = polys();
       need(p.length === 2, 'Selecciona el polígono a dividir y luego el que corta (Ctrl+clic).');
       const inside = T.intersect(fc(...p.map(F)));
@@ -370,29 +370,29 @@
       need(cut, 'La línea no atraviesa el polígono de lado a lado.');
       put([p[0]], [[cut, p[0]]]);
     },
-    fill() { // área entre dos líneas; una tercera, opcional, cierra los extremos siguiendo su trazado
+    fill() { // area between two lines; an optional third one closes the ends following its course
       const l = lines();
       need(l.length === 2 || l.length === 3, 'Selecciona dos líneas (y, si quieres, una tercera que cierre los extremos) con Ctrl+clic.');
       const [a, b0, lim] = l.map((e) => F(e).geometry.coordinates);
       const d2 = (p, q) => (p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2;
       const b = d2(a[0], b0[0]) + d2(a.at(-1), b0.at(-1)) > d2(a[0], b0.at(-1)) + d2(a.at(-1), b0[0]) ? b0.slice().reverse() : b0;
-      const along = (p, q) => (lim ? geo.sliceLine(lim, p, q) : []); // tramo de la línea límite entre las proyecciones de p y q
+      const along = (p, q) => (lim ? geo.sliceLine(lim, p, q) : []); // stretch of the boundary line between the projections of p and q
       const ring = [...a, ...along(a.at(-1), b.at(-1)), ...b.slice().reverse(), ...along(b[0], a[0])].filter((c, i, r) => i === 0 || d2(c, r[i - 1]) > 0);
       ring.push(ring[0]);
       need(ring.length >= 4, 'Las líneas no encierran un área.');
-      let pieces; // si el anillo se cruza consigo mismo, se separa en lóbulos y se unen
+      let pieces; // if the ring crosses itself, it is split into lobes and they are merged
       try { pieces = T.unkinkPolygon(T.polygon([ring])).features; } catch { pieces = [T.polygon([ring])]; }
       const geom = pieces.length > 1 ? T.union(T.featureCollection(pieces)) : pieces[0];
       put([], [[geom, null]], 'Área entre ' + (l[0].name || 'línea') + ' y ' + (l[1].name || 'línea'));
     },
-    transfer() { // el área de la forma de corte pasa de un polígono a otro, sin solapes
+    transfer() { // the area of the cutting shape moves from one polygon to another, without overlaps
       const p = polys();
       need(p.length === 3, 'Selecciona, en orden: el polígono que cede, el que recibe y la forma de corte (Ctrl+clic).');
       const [src, dst, cut] = p.map(F), moved = T.intersect(fc(src, cut));
       need(moved, 'La forma de corte no toca el polígono que cede.');
-      put(p, [[T.difference(fc(src, cut)), p[0]], [T.union(fc(dst, moved)), p[1]]]); // la forma de corte se consume
+      put(p, [[T.difference(fc(src, cut)), p[0]], [T.union(fc(dst, moved)), p[1]]]); // the cutting shape is consumed
     },
-    async closeGaps() { // pega los nodos del primer polígono al borde de los demás (cierra huecos y astillas)
+    async closeGaps() { // snaps the nodes of the first polygon to the edge of the others (closes gaps and slivers)
       const p = polys();
       need(p.length >= 2, 'Selecciona primero el polígono a ajustar y luego su(s) vecino(s) (Ctrl+clic).');
       const v = await OGE.ask({ title: 'Cerrar huecos', help: 'Los nodos del primer polígono que estén cerca del borde de los vecinos se pegan a ese borde.',
@@ -423,7 +423,7 @@
   }
   document.querySelectorAll('[data-op]').forEach((b) => { b.onclick = () => doOp(b.dataset.op); });
 
-  // ---------- Botones y teclas ----------
+  // ---------- Buttons and keys ----------
   const toggle = (btn, v) => { btn.classList.toggle('active', v); return v; };
   function setEdit(v) {
     editMode = toggle($('editBtn'), v);
@@ -433,7 +433,7 @@
   $('editBtn').onclick = () => setEdit(!editMode);
   $('snapBtn').onclick = () => { snap = toggle($('snapBtn'), !snap); };
   $('topoBtn').onclick = () => { topo = toggle($('topoBtn'), !topo); };
-  const INK = { '+': 'union', '-': 'difference', '*': 'intersect', '^': 'xor', '/': 'divide' }; // atajos del menú Trayecto de Inkscape
+  const INK = { '+': 'union', '-': 'difference', '*': 'intersect', '^': 'xor', '/': 'divide' }; // shortcuts of Inkscape's Path menu
   document.addEventListener('keydown', (e) => {
     if (OGE.typing(e)) return;
     if (e.ctrlKey) {

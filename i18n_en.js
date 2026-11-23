@@ -1,5 +1,5 @@
-// OpenGISEarth — diccionario inglés para i18n.js. exact: texto español exacto → inglés. patterns: [RegExp, reemplazo] para los textos
-// con números o nombres; el reemplazo puede ser una función que vuelve a pasar por T() las partes traducibles (nombres de herramienta, errores).
+// OpenGISEarth — English dictionary for i18n.js. exact: exact Spanish text → English. patterns: [RegExp, replacement] for the texts
+// with numbers or names; the replacement may be a function that runs the translatable parts back through T() (tool names, errors).
 (() => {
   const t = (s) => (window.T ? window.T(s) : s);
   const kinds = (s) => s.replace(/polígonos/g, 'polygons').replace(/líneas/g, 'lines').replace(/puntos/g, 'points').replace(/objetos/g, 'features').replace(/ o /g, ' or ');
@@ -7,7 +7,7 @@
   const KIND = { marca: 'placemark', trazado: 'path', 'polígono': 'polygon', 'imagen superpuesta': 'image overlay', objeto: 'feature' };
 
   const exact = {
-    // ----- index.html: panel lateral -----
+    // ----- index.html: side panel -----
     'Buscar lugar o «lat, lon»…': 'Search for a place or “lat, lon”…',
     'Buscar lugar o coordenadas': 'Search for a place or coordinates',
     'Buscar': 'Search',
@@ -48,7 +48,7 @@
     'Arrastra para cambiar el ancho · doble clic para ocultar el panel': 'Drag to resize · double-click to hide the panel',
     'Mostrar u ocultar el panel lateral': 'Show or hide the side panel',
 
-    // ----- index.html: barra de herramientas -----
+    // ----- index.html: toolbar -----
     'Herramientas': 'Tools',
     'Plegar o desplegar esta barra': 'Collapse or expand this bar',
     'Marca: clic en el mapa': 'Placemark: click on the map',
@@ -81,7 +81,7 @@
     'Deshacer (Ctrl+Z)': 'Undo (Ctrl+Z)',
     'Rehacer (Ctrl+Y)': 'Redo (Ctrl+Y)',
 
-    // ----- index.html: panel de selección y caja de herramientas -----
+    // ----- index.html: selection panel and toolbox -----
     'Selección': 'Selection',
     'Añadir un campo a este objeto': 'Add a field to this feature',
     '+ Atributo': '+ Attribute',
@@ -94,7 +94,7 @@
     'Buscar herramienta…': 'Search tool…',
     'Buscar herramienta': 'Search tool',
 
-    // ----- index.html: operaciones de trayecto -----
+    // ----- index.html: path operations -----
     'Operaciones de trayecto (como Inkscape)': 'Path operations (as in Inkscape)',
     'Trayecto:': 'Path:',
     'Unión (Ctrl++): une los polígonos seleccionados en uno': 'Union (Ctrl++): merges the selected polygons into one',
@@ -116,7 +116,7 @@
     'Cerrar huecos: pega los nodos del primero al borde de los vecinos': 'Close gaps: snaps the vertices of the first polygon to the edges of its neighbors',
     '⧉ Cerrar huecos': '⧉ Close gaps',
 
-    // ----- index.html: diálogos -----
+    // ----- index.html: dialogs -----
     'Propiedades': 'Properties',
     'Nombre': 'Name',
     'Descripción': 'Description',
@@ -145,7 +145,7 @@
     '© OpenStreetMap · estilo CyclOSM': '© OpenStreetMap · CyclOSM style',
     '© OpenStreetMap · estilo Humanitario (HOT)': '© OpenStreetMap · Humanitarian style (HOT)',
 
-    // ----- geo.js / draw.js: nombres por defecto y avisos -----
+    // ----- geo.js / draw.js: default names and notices -----
     'Mis dibujos': 'My drawings',
     'Capa': 'Layer',
     'Marca': 'Placemark',
@@ -255,7 +255,7 @@
     'Cargando el mapa histórico…': 'Loading the historical map…',
     'Cargando los límites regionales…': 'Loading the regional boundaries…',
 
-    // ----- flightsim.js (diálogo y HUD dibujado en el lienzo) -----
+    // ----- flightsim.js (dialog and HUD drawn on the canvas) -----
     'SR22 — avioneta de hélice, lenta y dócil': 'SR22 — propeller light aircraft, slow and docile',
     'F-16 — caza a reacción, rápido y nervioso': 'F-16 — jet fighter, fast and twitchy',
     'Iniciar vuelo': 'Start flight',
@@ -308,7 +308,7 @@
     'Este (longitud)': 'East (longitude)',
     'no se encontraron trazados': 'no paths were found',
 
-    // ----- tools.js: grupos -----
+    // ----- tools.js: groups -----
     'Geometría': 'Geometry',
     'Superposición': 'Overlay',
     'Análisis': 'Analysis',
@@ -319,7 +319,7 @@
     'Topología': 'Topology',
     'Base de datos': 'Database',
 
-    // ----- tools.js: comunes -----
+    // ----- tools.js: common -----
     'puntos': 'points',
     'líneas': 'lines',
     'polígonos': 'polygons',
@@ -339,7 +339,7 @@
     'Pendiente (0° violeta – 45° amarillo)': 'Slope (0° purple – 45° yellow)',
     'Sombreado del relieve': 'Hillshade',
 
-    // ----- tools.js: geometría -----
+    // ----- tools.js: geometry -----
     'Buffer (área de influencia)': 'Buffer',
     'Distancia (m; negativa encoge polígonos)': 'Distance (m; negative shrinks polygons)',
     'Disolver el resultado': 'Dissolve the result',
@@ -447,7 +447,7 @@
     'Ajustar a rejilla': 'Snap to grid',
     'Espaciado (grados)': 'Spacing (degrees)',
 
-    // ----- tools.js: superposición -----
+    // ----- tools.js: overlay -----
     'Recortar': 'Clip',
     'Capa de recorte (polígonos)': 'Clip layer (polygons)',
     'La capa de recorte no tiene polígonos.': 'The clip layer has no polygons.',
@@ -468,7 +468,7 @@
     'Vecino': 'Neighbor',
     'Borde compartido aprox. (km)': 'Approx. shared border (km)',
 
-    // ----- tools.js: selección -----
+    // ----- tools.js: selection -----
     'Seleccionar por atributo': 'Select by attribute',
     'Campo («nombre» = el nombre del objeto)': 'Field («nombre» = the feature’s name)',
     'Operador': 'Operator',
@@ -494,7 +494,7 @@
     'Líneas': 'Lines',
     'Polígonos': 'Polygons',
 
-    // ----- tools.js: análisis -----
+    // ----- tools.js: analysis -----
     'Contar puntos en polígonos': 'Count points in polygons',
     'Capa de puntos': 'Point layer',
     'Campo numérico a sumar (opcional)': 'Numeric field to sum (optional)',
@@ -547,7 +547,7 @@
     'Resolución de la rejilla (km)': 'Grid resolution (km)',
     'Demasiadas celdas: aumenta la resolución.': 'Too many cells: increase the grid resolution value.',
 
-    // ----- tools.js: creación -----
+    // ----- tools.js: creation -----
     'Crear rejilla (vista actual)': 'Create grid (current view)',
     'Cuadrados': 'Squares',
     'Hexágonos': 'Hexagons',
@@ -570,7 +570,7 @@
     'La vista es demasiado amplia: acércate.': 'The view is too wide: zoom in.',
     'Falta la clave.': 'The key is missing.',
 
-    // ----- tools.js: atributos -----
+    // ----- tools.js: attributes -----
     'Ver tabla de atributos': 'View attribute table',
     'Clic en una fila para ir al objeto. El botón CSV la exporta.': 'Click a row to go to the feature. The CSV button exports the table.',
     'Calculadora de campos': 'Field calculator',
@@ -588,7 +588,7 @@
     'Falta el nombre nuevo.': 'The new name is missing.',
     'Campo renombrado.': 'Field renamed.',
 
-    // ----- tools.js: terreno -----
+    // ----- tools.js: terrain -----
     'Perfil de elevación': 'Elevation profile',
     'Se usa la primera línea de la entrada.': 'The first line of the input is used.',
     'Muestrear elevación': 'Sample elevation',
@@ -602,7 +602,7 @@
     'Altura del observador sobre el suelo (m)': 'Observer height above ground (m)',
     'Se usa el primer punto de la entrada. Lo verde es lo que se ve desde ahí.': 'The first point of the input is used. Green is what can be seen from there.',
 
-    // ----- tools.js: cartografía, topología, base de datos -----
+    // ----- tools.js: cartography, topology, database -----
     'Simbología por categorías o graduada': 'Categorized or graduated symbology',
     'Modo': 'Mode',
     'Categorías (un color por valor)': 'Categories (one color per value)',
@@ -623,7 +623,7 @@
     'Consulta (SQLite)': 'Query (SQLite)',
     'Los objetos de la capa quedan en la tabla «capa», con las columnas nombre, tipo, area_m2, longitud_m, lon, lat y sus atributos.': 'The layer’s features are placed in the table «capa», with the columns nombre, tipo, area_m2, longitud_m, lon, lat and their attributes.',
 
-    // ----- tools.js: equivalentes QGIS / ArcGIS con texto en español -----
+    // ----- tools.js: QGIS / ArcGIS equivalents with Spanish text -----
     'native:pointstopath (geodésica)': 'native:pointstopath (geodesic)',
     'Intersect (salida de puntos)': 'Intersect (point output)',
     'native:union (parte de la entrada)': 'native:union (input part)',
@@ -647,11 +647,11 @@
   };
 
   const patterns = [
-    // ----- barra de estado (app.js): 12.34567° N  70.12345° O  elev. 520 m  ·  ojo a 3 km -----
+    // ----- status bar (app.js): 12.34567° N  70.12345° O  elev. 520 m  ·  ojo a 3 km -----
     [/^(.*° [NS]  .*° )([EO])(  elev\. .* m  ·  )ojo a (.+)$/, (m, a, h, c, e) => a + (h === 'O' ? 'W' : 'E') + c + 'eye alt ' + e],
     [/^ojo a (.+)$/, 'eye alt $1'],
 
-    // ----- medidas (draw.js, edit.js) y nota del perfil (tools.js): partes unidas con « · » -----
+    // ----- measurements (draw.js, edit.js) and profile note (tools.js): parts joined with « · » -----
     [/^(Longitud .+) — doble clic o Enter termina\.$/, (m, a) => t(a) + ' — double-click or Enter finishes.'],
     [/^(Longitud .+) — Esc o otra herramienta borra la medida\.$/, (m, a) => t(a) + ' — Esc or another tool clears the measurement.'],
     [/^(?:Longitud|Área) [^·]+( · [^·]+)+$/, (m) => m.split(' · ').map(t).join(' · ')],
@@ -714,7 +714,7 @@
     [/^No se pudo crear el mapa: ([\s\S]*)$/, (m, a) => 'Could not create the map: ' + t(a)],
     [/^SVG importado: (\d+) trazados\.$/, 'SVG imported: $1 paths.'],
 
-    // ----- tools.js: mensajes de las herramientas -----
+    // ----- tools.js: tool messages -----
     [/^(\d+) objetos actualizados\.$/, '$1 features updated.'],
     [/^(\d+) duplicados eliminados\.$/, '$1 duplicates deleted.'],
     [/^Error en (.+)$/, (m, a) => 'Error in ' + (a === 'objeto' ? 'feature' : a)],
@@ -735,7 +735,7 @@
     [/^(\d+) astillas fundidas con su vecino\.$/, '$1 slivers merged into their neighbor.'],
     [/^Resultado de: ([\s\S]*)$/, 'Result of: $1'],
 
-    // ----- tools.js: ejecución, diálogo y panel -----
+    // ----- tools.js: execution, dialog and panel -----
     [/^«(.+)»: el resultado está vacío\.$/, (m, a) => '«' + t(a) + '»: the result is empty.'],
     [/^«(.+)»: (\d+) objetos en la capa «(.+)»\.$/, (m, a, n, b) => '«' + t(a) + '»: ' + n + ' features in layer «' + t(b) + '».'],
     [/^«(.+)» lista: es una imagen superpuesta en la capa «(.+)»; su opacidad se cambia en ✎ Propiedades\.$/, (m, a, b) => '«' + t(a) + '» is ready: it is an image overlay in layer «' + t(b) + '»; change its opacity in ✎ Properties.'],
@@ -745,12 +745,12 @@
     [/^«(.+)» no se pudo ejecutar: ([\s\S]*)$/, (m, a, b) => '«' + t(a) + '» could not be run: ' + t(b)],
     [/^Selección actual \((\d+)\)$/, 'Current selection ($1)'],
     [/^Capa de entrada(?: \((.+)\))?$/, (m, k) => 'Input layer' + (k ? ' (' + kinds(k) + ')' : '')],
-    // ayuda del diálogo: «ayuda — QGIS: x · ArcGIS: y»; tooltip del botón: una línea por parte
+    // dialog help: «ayuda — QGIS: x · ArcGIS: y»; button tooltip: one line per part
     [/^([\s\S]+?) — ((?:QGIS|ArcGIS): [\s\S]+)$/, (m, a, b) => t(a) + ' — ' + t(b)],
     [/^QGIS: (.+?) · ArcGIS: (.+)$/, (m, a, b) => 'QGIS: ' + t(a) + ' · ArcGIS: ' + t(b)],
     [/^[^\n]+(\n[^\n]+)+$/, (m) => m.split('\n').map(t).join('\n')],
     [/^(QGIS|ArcGIS): (.+)$/, (m, p, a) => p + ': ' + t(a)],
-    // «Grupo (12)» del panel y capas repetidas «Nombre (2)»
+    // «Grupo (12)» of the panel and repeated layers «Nombre (2)»
     [/^(.+) \((\d+)\)$/, (m, a, n) => t(a) + ' (' + n + ')'],
   ];
 

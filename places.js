@@ -1,13 +1,13 @@
-// OpenGISEarth — Lugares: árbol con casillas (como Earth), propiedades y estilo, abrir/exportar archivos y guardado automático.
+// OpenGISEarth — Places: tree with checkboxes (like Earth), properties and style, opening/exporting files and autosave.
 (() => {
   const C = Cesium, { viewer, geo, $, el } = OGE;
   const now = () => viewer.clock.currentTime;
   const expanded = new Set(['Mis dibujos']);
-  const MAX_ROWS = 300; // filas por capa en el árbol; el resto se ve en la tabla de atributos
+  const MAX_ROWS = 300; // rows per layer in the tree; the rest is seen in the attribute table
   const ICON = { point: '📍', line: '〰', polygon: '⬠', image: '🖼' };
   const TYPE = { point: 'marca', line: 'trazado', polygon: 'polígono', image: 'imagen superpuesta' };
 
-  // ---------- Árbol ----------
+  // ---------- Tree ----------
   const btn = (txt, title, fn, cls) => { const b = el('button', { textContent: txt, title, className: cls || '' }); b.onclick = (ev) => { ev.stopPropagation(); fn(); }; return b; };
   function row({ key, label, title, show, onShow, onOpen, kids, buttons = [] }) {
     const open = expanded.has(key);
@@ -23,7 +23,7 @@
     return li;
   }
   function entityRows(ds) {
-    const byParent = new Map(); // carpetas de KML: los hijos cuelgan de su entidad padre
+    const byParent = new Map(); // KML folders: children hang from their parent entity
     for (const e of ds.entities.values) {
       const pid = e.parent && ds.entities.contains(e.parent) ? e.parent.id : '';
       if (!byParent.has(pid)) byParent.set(pid, []);
@@ -73,7 +73,7 @@
     if (v && v.name.trim()) { OGE.setTarget(geo.addGroup(v.name.trim())); later(); }
   };
 
-  // ---------- Propiedades (como el diálogo de Earth): nombre, descripción y estilo, con vista previa ----------
+  // ---------- Properties (like Earth's dialog): name, description and style, with preview ----------
   const dlg = $('props'), form = dlg.firstElementChild;
   function apply(e, v) {
     const k = geo.kind(e);
@@ -82,7 +82,7 @@
     if (k === 'point' && e.billboard) { if (e.label) e.label.text = v.name; else if (v.name) e.label = new C.LabelGraphics(geo.pinLabel(v.name)); }
     if (k) geo.setStyle(e, v.style);
   }
-  // Devuelve una promesa: true si se aceptó. isNew: al cancelar se deshace la creación del objeto.
+  // Returns a promise: true if accepted. isNew: cancelling undoes the creation of the object.
   function editProps(e, isNew) {
     return new Promise((resolve) => {
       const k = geo.kind(e), f = k && geo.toFeature(e), s = k ? geo.getStyle(e) : {};
@@ -100,9 +100,9 @@
         ...(k === 'polygon' ? { fill: $('pFill').value, fillOpacity: $('pFillOp').value / 100 } : {}),
         ...(k === 'point' ? { color: $('pColor').value } : {}),
         ...(k === 'image' ? { url: $('pUrl').value.trim() || s.url, opacity: $('pOpacity').value / 100, rotation: +$('pRot').value || 0 } : {}) } });
-      form.oninput = (ev) => { if (ev.target.id !== 'pUrl') apply(e, read()); }; // la URL se aplica al aceptar, no en cada tecla
+      form.oninput = (ev) => { if (ev.target.id !== 'pUrl') apply(e, read()); }; // the URL is applied on accept, not on every keystroke
       let settled = false;
-      const finish = (okd) => { // en el propio envío o cancelación, sin depender del evento «close»
+      const finish = (okd) => { // on the submit or cancel itself, without relying on the "close" event
         if (settled) return;
         settled = true;
         form.oninput = null;
@@ -114,7 +114,7 @@
         later();
         resolve(okd);
       };
-      form.onsubmit = (ev) => { ev.preventDefault(); finish(true); }; // Enter o «Aceptar»
+      form.onsubmit = (ev) => { ev.preventDefault(); finish(true); }; // Enter or "OK"
       $('pCancel').onclick = () => finish(false);
       dlg.oncancel = () => finish(false); // Esc
       dlg.showModal();
@@ -122,7 +122,7 @@
     });
   }
 
-  // ---------- Tabla de atributos ----------
+  // ---------- Attribute table ----------
   function table(ds) {
     const fs = geo.features(ds), keys = [...new Set(fs.flatMap((f) => Object.keys(f.properties)))];
     OGE.showTable('Atributos de ' + ds.name, ['nombre', 'tipo', ...keys], fs.map((f) => [f.oge.name, TYPE[f.oge.kind], ...keys.map((k) => f.properties[k])]), {
@@ -131,7 +131,7 @@
     });
   }
 
-  // ---------- Abrir archivos ----------
+  // ---------- Opening files ----------
   const feat = (geometry, name, properties = {}) => ({ type: 'Feature', geometry, properties: { ...properties, ...(name ? { name } : {}) } });
   function parseGpx(text) {
     const x = new DOMParser().parseFromString(text, 'application/xml'), out = [];
@@ -142,7 +142,7 @@
     x.querySelectorAll('rte').forEach((r) => out.push(feat({ type: 'LineString', coordinates: [...r.querySelectorAll('rtept')].map(pt) }, child(r, 'name'))));
     return out;
   }
-  function parseCsv(text) { // filas de celdas; separador , ; o tabulador y comillas dobles
+  function parseCsv(text) { // rows of cells; separator , ; or tab, and double quotes
     const head = text.slice(0, text.indexOf('\n') + 1 || text.length), d = head.includes(';') ? ';' : head.includes('\t') ? '\t' : ',';
     const rows = [];
     let row = [], cur = '', q = false;
@@ -179,11 +179,11 @@
     if (ext === 'kml' || ext === 'kmz') {
       ds = await C.KmlDataSource.load(file, { camera: viewer.scene.camera, canvas: viewer.scene.canvas, clampToGround: true });
       ds.name = ds.name || base;
-      for (const e of ds.entities.values) { // todo a altura 0: el ajuste y la topología comparan posiciones
+      for (const e of ds.entities.values) { // everything at height 0: snapping and topology compare positions
         const k = geo.kind(e);
         if (k && k !== 'image') geo.setRings(e, geo.rings(e).map((r) => r.map(geo.flat)));
       }
-      ds._blob = file; // sin cambios se guarda el archivo original, con toda su fidelidad
+      ds._blob = file; // if unchanged, the original file is saved, with all its fidelity
       ds._dirty = false;
       await viewer.dataSources.add(ds);
     } else {
@@ -207,10 +207,10 @@
     }
   }
   $('open').onchange = (e) => { openFiles([...e.target.files]); e.target.value = ''; };
-  document.body.ondragover = (e) => e.preventDefault(); // arrastrar y soltar archivos sobre la ventana
+  document.body.ondragover = (e) => e.preventDefault(); // drag and drop files onto the window
   document.body.ondrop = (e) => { e.preventDefault(); openFiles([...e.dataTransfer.files]); };
 
-  // ---------- Exportar una capa ----------
+  // ---------- Exporting a layer ----------
   const kmz = async (ds) => (await C.exportKml({ entities: ds.entities, kmz: true })).kmz;
   async function exportGroup(ds) {
     const v = await OGE.ask({ title: 'Guardar «' + ds.name + '» como…', ok: 'Guardar', fields: [{ id: 'fmt', label: 'Formato', type: 'select', options: [
@@ -223,14 +223,14 @@
       else if (v.fmt === 'kml') OGE.download(name + '.kml', (await C.exportKml({ entities: ds.entities })).kml, 'application/vnd.google-earth.kml+xml');
       else if (v.fmt === 'geojson') OGE.download(name + '.geojson', JSON.stringify(geo.exportFC(ds)), 'application/geo+json');
       else if (v.fmt === 'gpkg') OGE.download(name + '.gpkg', await OGE.db.save(ds));
-      else if (v.fmt === 'svg') { // solo esta capa: las demás se ocultan un instante para reutilizar el exportador del mapa
+      else if (v.fmt === 'svg') { // this layer only: the others are hidden for a moment to reuse the map exporter
         const others = geo.groups().filter((d) => d !== ds && d.show), was = ds.show;
         others.forEach((d) => { d.show = false; }); ds.show = true;
         try { OGE.download(name + '.svg', OGE.svgMap(ds.name, false), 'image/svg+xml'); } finally { others.forEach((d) => { d.show = true; }); ds.show = was; }
       }
-      else if (v.fmt === 'shp') { // shortcut: los nombres de campo se cortan a 10 caracteres (límite del formato DBF) y el estilo no se guarda
+      else if (v.fmt === 'shp') { // shortcut: field names are cut to 10 characters (DBF format limit) and the style is not saved
         const fc = geo.exportFC(ds);
-        const utf8 = (t) => unescape(encodeURIComponent(t)); // la librería escribe un byte por carácter: así el DBF queda en UTF-8 (tildes y ñ)
+        const utf8 = (t) => unescape(encodeURIComponent(t)); // the library writes one byte per character: this way the DBF ends up in UTF-8 (accents and ñ)
         for (const f of fc.features) {
           for (const k of ['stroke', 'stroke-width', 'stroke-opacity', 'fill', 'fill-opacity', 'marker-color']) delete f.properties[k];
           f.properties = Object.fromEntries(Object.entries(f.properties).map(([k, v]) => [utf8(k), typeof v === 'string' ? utf8(v) : v]));
@@ -246,8 +246,8 @@
   }
   OGE.saveKmz = async (ds) => OGE.download(ds.name + '.kmz', await kmz(ds));
 
-  // ---------- Guardado automático entre sesiones (IndexedDB) ----------
-  // Capas propias: GeoJSON con estilo y atributos. KML abiertos: el archivo original, o un KMZ re-exportado si se editaron.
+  // ---------- Autosave between sessions (IndexedDB) ----------
+  // Own layers: GeoJSON with style and attributes. Opened KMLs: the original file, or a re-exported KMZ if they were edited.
   const DB = new Promise((okd, ko) => {
     const r = indexedDB.open('opengisearth', 1);
     r.onupgradeneeded = () => r.result.createObjectStore('kv');
@@ -258,7 +258,7 @@
     const db = await DB;
     return new Promise((okd, ko) => { const t = db.transaction('kv', mode), q = fn(t.objectStore('kv')); t.oncomplete = () => okd(q && q.result); t.onerror = () => ko(t.error); });
   };
-  const NOSAVE = location.search.includes('nosave'); // pestañas de prueba: no pisan lo guardado
+  const NOSAVE = location.search.includes('nosave'); // test tabs: they do not overwrite what is saved
   let restoring = true, st;
   function save() {
     if (restoring || NOSAVE) return;
@@ -272,7 +272,7 @@
           else {
             if (ds._dirty || !ds._blob) {
               try { ds._blob = await kmz(ds); }
-              catch { ds._blob = new Blob([(await C.exportKml({ entities: ds.entities })).kml]); } // imagen remota sin CORS: queda como enlace
+              catch { ds._blob = new Blob([(await C.exportKml({ entities: ds.entities })).kml]); } // remote image without CORS: stays as a link
               ds._dirty = false;
             }
             rec.blob = ds._blob;
@@ -294,7 +294,7 @@
           else ds = geo.addGroup(r.name, r.features);
         } else if (r.blob) {
           const kml = await C.KmlDataSource.load(r.blob, { camera: viewer.scene.camera, canvas: viewer.scene.canvas, clampToGround: true });
-          if (r.name === OGE.mine.name) { // formato anterior: los dibujos se guardaban como KMZ
+          if (r.name === OGE.mine.name) { // previous format: drawings were saved as KMZ
             ds = OGE.mine;
             for (const f of kml.entities.values.map(geo.toFeature).filter(Boolean)) for (const o of geo.fromFeature(f)) ds.entities.add(o);
           } else { ds = kml; ds.name = r.name; ds._blob = r.blob; await viewer.dataSources.add(ds); ds._dirty = false; }
@@ -306,7 +306,7 @@
     } catch (e) {
       console.error('No se pudieron recuperar los lugares guardados', e);
     }
-    setTimeout(() => { restoring = false; renderTree(); }, 300); // tras los avisos de alta de capas
+    setTimeout(() => { restoring = false; renderTree(); }, 300); // after the layer-added notices
   }
 
   Object.assign(OGE, { renderTree, editProps, openFiles, flushSave: () => { restoring = false; save(); } });

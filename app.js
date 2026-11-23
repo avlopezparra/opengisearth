@@ -1,5 +1,5 @@
-// OpenGISEarth — núcleo: visor, utilidades compartidas, deshacer, diálogos, búsqueda, barra de estado y paneles.
-Cesium.Ion.defaultAccessToken = ''; // sin Cesium ion: solo datos abiertos
+// OpenGISEarth — core: viewer, shared utilities, undo, dialogs, search, status bar and panels.
+Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
 
 (() => {
   const C = Cesium;
@@ -7,27 +7,27 @@ Cesium.Ion.defaultAccessToken = ''; // sin Cesium ion: solo datos abiertos
   const el = (tag, props, ...kids) => { const n = Object.assign(document.createElement(tag), props); n.append(...kids); return n; };
   const deg = C.Math.toDegrees;
 
-  // Las casillas de Capas recuerdan su estado entre sesiones (se restauran antes de que cada módulo las lea).
+  // The Layers checkboxes remember their state between sessions (restored before each module reads them).
   document.querySelectorAll('.layers input[type=checkbox], .layers select').forEach((c) => {
     const key = 'oge.ui.' + c.id, saved = localStorage.getItem(key);
     if (saved !== null) { if (c.type === 'checkbox') c.checked = saved === '1'; else c.value = saved; }
     c.addEventListener('change', () => localStorage.setItem(key, c.type === 'checkbox' ? (c.checked ? '1' : '0') : c.value));
   });
 
-  // ---------- Visor ----------
+  // ---------- Viewer ----------
   const IMAGERY = {
-    // Sentinel-2 cloudless 2016 de EOX (CC BY 4.0). Las ediciones 2018+ son CC BY-NC-SA.
+    // Sentinel-2 cloudless 2016 by EOX (CC BY 4.0). The 2018+ editions are CC BY-NC-SA.
     s2: () => new C.UrlTemplateImageryProvider({
       url: 'https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless_3857/default/g/{z}/{y}/{x}.jpg', maximumLevel: 14,
       credit: 'Sentinel-2 cloudless – https://s2maps.eu by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2016)',
     }),
-    // Opcional y no libre: el usuario la elige sabiendo que se rige por los términos de uso de Esri.
+    // Optional and not free: the user picks it knowing it is governed by Esri's terms of use.
     esri: () => new C.UrlTemplateImageryProvider({
       url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', maximumLevel: 19,
       credit: 'Imágenes: Esri, Maxar, Earthstar Geographics y la comunidad de usuarios SIG',
     }),
   };
-  // Mapas base de OpenStreetMap que no piden clave (los de Thunderforest y Tracestrack sí la piden y no se incluyen).
+  // OpenStreetMap base maps that need no key (the Thunderforest and Tracestrack ones do, so they are not included).
   const osm = (url, credit, max) => () => new C.UrlTemplateImageryProvider({ url, credit, maximumLevel: max });
   Object.assign(IMAGERY, {
     osm: osm('https://tile.openstreetmap.org/{z}/{x}/{y}.png', '© OpenStreetMap', 19),
@@ -41,7 +41,7 @@ Cesium.Ion.defaultAccessToken = ''; // sin Cesium ion: solo datos abiertos
     timeline: false, animation: false, fullscreenButton: false,
   });
   const scene = viewer.scene;
-  viewer.cesiumWidget.screenSpaceEventHandler.removeInputAction(C.ScreenSpaceEventType.LEFT_DOUBLE_CLICK); // sin seguimiento de entidad
+  viewer.cesiumWidget.screenSpaceEventHandler.removeInputAction(C.ScreenSpaceEventType.LEFT_DOUBLE_CLICK); // no entity tracking
   let base = viewer.imageryLayers.get(0);
   $('baseImagery').addEventListener('change', (e) => {
     viewer.imageryLayers.remove(base);
@@ -50,12 +50,12 @@ Cesium.Ion.defaultAccessToken = ''; // sin Cesium ion: solo datos abiertos
 
   const OGE = window.OGE = { viewer, $, el };
 
-  // Luz del sol: ilumina el globo según la hora actual (lado de día y lado de noche), como «Sol» en Earth.
+  // Sunlight: lights the globe according to the current time (day side and night side), like "Sun" in Earth.
   const sun = $('layerSun'), syncSun = () => { scene.globe.enableLighting = sun.checked; };
   sun.addEventListener('change', syncSun);
   syncSun();
 
-  // ---------- Avisos ----------
+  // ---------- Notices ----------
   let toastT;
   OGE.toast = (msg, error) => {
     const t = $('toast');
@@ -67,14 +67,14 @@ Cesium.Ion.defaultAccessToken = ''; // sin Cesium ion: solo datos abiertos
   OGE.fmtLen = (m) => (m >= 1000 ? (m / 1000).toLocaleString('es', { maximumFractionDigits: 2 }) + ' km' : Math.round(m) + ' m');
   OGE.fmtArea = (m2) => (m2 >= 1e6 ? (m2 / 1e6).toLocaleString('es', { maximumFractionDigits: 2 }) + ' km²'
     : m2 >= 1e4 ? (m2 / 1e4).toLocaleString('es', { maximumFractionDigits: 2 }) + ' ha' : Math.round(m2).toLocaleString('es') + ' m²');
-  // true si el usuario está escribiendo o hay un diálogo abierto: los atajos de teclado no deben actuar
+  // true if the user is typing or a dialog is open: keyboard shortcuts must not act
   OGE.typing = (e) => /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || !!document.querySelector('dialog[open]');
   OGE.setCheck = (cb, v) => { if (cb.checked !== v) { cb.checked = v; cb.dispatchEvent(new Event('change')); } };
 
-  // ---------- Deshacer / rehacer: cada acción es {do, undo} ----------
+  // ---------- Undo / redo: each action is {do, undo} ----------
   const done = [], undone = [], listeners = [];
   const fire = () => listeners.forEach((f) => f());
-  OGE.onChange = (f) => listeners.push(f); // se llama tras cada acción, deshacer o rehacer
+  OGE.onChange = (f) => listeners.push(f); // called after every action, undo or redo
   OGE.run = (cmd) => { cmd.do(); done.push(cmd); if (done.length > 300) done.shift(); undone.length = 0; fire(); };
   OGE.undo = () => { const c = done.pop(); if (c) { c.undo(); undone.push(c); fire(); } };
   OGE.redo = () => { const c = undone.pop(); if (c) { c.do(); done.push(c); fire(); } };
@@ -86,7 +86,7 @@ Cesium.Ion.defaultAccessToken = ''; // sin Cesium ion: solo datos abiertos
     if (k === 'z') { e.preventDefault(); (e.shiftKey ? OGE.redo : OGE.undo)(); } else if (k === 'y') { e.preventDefault(); OGE.redo(); }
   });
 
-  // ---------- Diálogo genérico de parámetros (reemplaza a prompt/confirm) ----------
+  // ---------- Generic parameter dialog (replaces prompt/confirm) ----------
   // fields: [{id, label, type: number|text|select|checkbox|textarea|color|range, value, options, min, max, step, hint}]
   OGE.ask = ({ title, help, fields = [], ok = 'Aceptar' }) => new Promise((resolve) => {
     const dlg = $('ask'), form = dlg.firstElementChild, get = {};
@@ -117,7 +117,7 @@ Cesium.Ion.defaultAccessToken = ''; // sin Cesium ion: solo datos abiertos
     }
     const cancel = el('button', { type: 'button', textContent: 'Cancelar' });
     form.append(el('div', { className: 'row end' }, cancel, el('button', { textContent: ok })));
-    // Se resuelve en el propio envío o cancelación (no en el evento «close», que el navegador retrasa si la ventana no se ve).
+    // Resolved on the submit or cancel itself (not on the "close" event, which the browser delays if the window is not visible).
     let settled = false;
     const finish = (okd) => {
       if (settled) return;
@@ -127,13 +127,13 @@ Cesium.Ion.defaultAccessToken = ''; // sin Cesium ion: solo datos abiertos
       resolve(out);
     };
     cancel.onclick = () => finish(false);
-    form.onsubmit = (e) => { e.preventDefault(); finish(true); }; // Enter o el botón principal
+    form.onsubmit = (e) => { e.preventDefault(); finish(true); }; // Enter or the main button
     dlg.oncancel = () => finish(false); // Esc
     dlg.showModal();
   });
   OGE.confirm = (title, help) => OGE.ask({ title, help, ok: 'Sí' }).then(Boolean);
 
-  // ---------- Descargas, CSV y tablas ----------
+  // ---------- Downloads, CSV and tables ----------
   OGE.download = (name, data, mime = 'application/octet-stream') => {
     const a = el('a', { href: URL.createObjectURL(data instanceof Blob ? data : new Blob([data], { type: mime })), download: name });
     document.body.append(a); a.click(); a.remove();
@@ -144,7 +144,7 @@ Cesium.Ion.defaultAccessToken = ''; // sin Cesium ion: solo datos abiertos
     return /[",\n;]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
   }).join(',')).join('\r\n');
   const cell = (v) => (v == null ? '' : typeof v === 'number' && !Number.isInteger(v) ? String(+v.toFixed(6)) : typeof v === 'object' ? JSON.stringify(v) : String(v));
-  // Tabla o informe. content: nodo DOM opcional (p. ej. un gráfico) que se muestra sobre la tabla.
+  // Table or report. content: optional DOM node (e.g. a chart) shown above the table.
   OGE.showTable = (title, cols, rows, { onRow, note, content } = {}) => {
     const MAX = 1000;
     $('tableTitle').textContent = title;
@@ -162,21 +162,21 @@ Cesium.Ion.defaultAccessToken = ''; // sin Cesium ion: solo datos abiertos
   };
   $('tableClose').onclick = () => $('table').close();
 
-  // ---------- Puntería: suelo bajo un píxel, punto mirado y rectángulo visible ----------
+  // ---------- Aiming: ground under a pixel, look-at point and visible rectangle ----------
   OGE.pickGround = (p) => { const ray = viewer.camera.getPickRay(p); return ray ? scene.globe.pick(ray, scene) : undefined; };
   OGE.lookAt = () => {
     const pos = OGE.pickGround(new C.Cartesian2(scene.canvas.clientWidth / 2, scene.canvas.clientHeight / 2));
     return pos ? { pos, carto: C.Cartographic.fromCartesian(pos), dist: C.Cartesian3.distance(viewer.camera.positionWC, pos) } : null;
   };
-  OGE.viewBbox = () => { // [oeste, sur, este, norte] en grados
+  OGE.viewBbox = () => { // [west, south, east, north] in degrees
     const r = viewer.camera.computeViewRectangle();
     if (!r) return null;
     const b = [r.west, r.south, r.east, r.north].map(deg);
-    if (b[0] > b[2]) b[2] = 180; // shortcut: una vista que cruza el antimeridiano se corta en 180°
+    if (b[0] > b[2]) b[2] = 180; // shortcut: a view that crosses the antimeridian is cut at 180°
     return b;
   };
 
-  // ---------- Búsqueda: coordenadas «lat, lon» o topónimo (Nominatim / OpenStreetMap) ----------
+  // ---------- Search: "lat, lon" coordinates or place name (Nominatim / OpenStreetMap) ----------
   $('search').onsubmit = async (e) => {
     e.preventDefault();
     const q = $('q').value.trim(), ul = $('results');
@@ -192,7 +192,7 @@ Cesium.Ion.defaultAccessToken = ''; // sin Cesium ion: solo datos abiertos
       const hits = await r.json();
       ul.replaceChildren(...(hits.length ? [] : [el('li', { textContent: 'Sin resultados' })]));
       for (const h of hits) {
-        const [s, n, w, ea] = h.boundingbox.map(Number); // [sur, norte, oeste, este]
+        const [s, n, w, ea] = h.boundingbox.map(Number); // [south, north, west, east]
         const a = el('a', { textContent: h.display_name, title: h.display_name });
         a.onclick = () => viewer.camera.flyTo({ destination: C.Rectangle.fromDegrees(w, s, ea, n) });
         ul.append(el('li', {}, a));
@@ -203,7 +203,7 @@ Cesium.Ion.defaultAccessToken = ''; // sin Cesium ion: solo datos abiertos
     }
   };
 
-  // ---------- Barra de estado: coordenadas y elevación bajo el cursor, altura del ojo ----------
+  // ---------- Status bar: coordinates and elevation under the cursor, eye altitude ----------
   let mouse = null, lastSb = 0;
   new C.ScreenSpaceEventHandler(scene.canvas).setInputAction((m) => { mouse = m.endPosition; }, C.ScreenSpaceEventType.MOUSE_MOVE);
   scene.postRender.addEventListener(() => {
@@ -220,19 +220,19 @@ Cesium.Ion.defaultAccessToken = ''; // sin Cesium ion: solo datos abiertos
     $('statusbar').textContent = s + 'ojo a ' + (eye > 10000 ? Math.round(eye / 1000).toLocaleString('es') + ' km' : Math.round(eye) + ' m');
   });
 
-  // ---------- Primera vez: el usuario decide qué imágenes usar (luego se cambia en Capas → Imágenes) ----------
+  // ---------- First run: the user decides which imagery to use (changed later in Layers → Imagery) ----------
   if (localStorage.getItem('oge.ui.baseImagery') === null) setTimeout(async () => {
     const sel = $('baseImagery');
     const v = await OGE.ask({ title: '¿Qué imágenes satelitales quieres usar?', help: 'Puedes cambiarlo cuando quieras en Capas → Imágenes.',
       fields: [{ id: 'img', label: 'Imágenes', type: 'select', value: sel.value, options: [...sel.options].map((o) => [o.value, o.textContent]) }] });
     sel.value = v ? v.img : sel.value;
-    sel.dispatchEvent(new Event('change')); // también guarda la elección
+    sel.dispatchEvent(new Event('change')); // also saves the choice
   }, 1500);
 
-  // ---------- Captura de la vista ----------
+  // ---------- View screenshot ----------
   $('shotBtn').onclick = () => { viewer.render(); scene.canvas.toBlob((b) => OGE.download('OpenGISEarth.png', b)); };
 
-  // ---------- Paneles: ancho del lateral (arrastrar el borde), ocultarlo, y plegar las barras ----------
+  // ---------- Panels: sidebar width (drag the edge), hiding it, and collapsing the bars ----------
   const setSide = (w) => { document.documentElement.style.setProperty('--side', w + 'px'); localStorage.setItem('oge.side', w); };
   const hideSide = (h) => { document.body.classList.toggle('noside', h); localStorage.setItem('oge.noside', h ? '1' : ''); };
   if (localStorage.getItem('oge.side')) setSide(+localStorage.getItem('oge.side'));

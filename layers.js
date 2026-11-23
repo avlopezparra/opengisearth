@@ -1,5 +1,5 @@
-// Capas en vivo al estilo de Earth: Wikipedia, edificios 3D y cuadrícula (parques y calles están en osmvector.js).
-// Se consultan según el punto que mira la cámara y se vuelven a pedir al moverla.
+// Earth-style live layers: Wikipedia, 3D buildings and graticule (parks and streets are in osmvector.js).
+// They are queried according to the point the camera looks at and requested again when it moves.
 (() => {
   const C = Cesium, { viewer, $ } = OGE;
   const scene = viewer.scene, deg = C.Math.toDegrees;
@@ -8,8 +8,8 @@
   const icon = (txt, bg) => 'data:image/svg+xml,' + encodeURIComponent(
     `<svg xmlns="http://www.w3.org/2000/svg" width="26" height="26"><circle cx="13" cy="13" r="12" fill="${bg}" stroke="#fff" stroke-width="2"/><text x="13" y="18" font-size="14" font-family="serif" font-weight="bold" text-anchor="middle" fill="#fff">${txt}</text></svg>`);
 
-  // ---------- Overpass (consultas a OpenStreetMap; lo usa «Descargar de OpenStreetMap») ----------
-  // Los servidores públicos se saturan a menudo: se piden a la vez varios espejos y gana el primero que responde.
+  // ---------- Overpass (OpenStreetMap queries; used by "Download from OpenStreetMap") ----------
+  // Public servers are often overloaded: several mirrors are requested at once and the first to answer wins.
   const MIRRORS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
   OGE.overpass = async (query, ms = 60000) => {
     const ctl = MIRRORS.map(() => new AbortController());
@@ -23,9 +23,9 @@
     } finally { clearTimeout(timer); }
   };
 
-  // ---------- Wikipedia: artículos cercanos al punto mirado; al abrir uno, su resumen ----------
+  // ---------- Wikipedia: articles near the look-at point; on opening one, its summary ----------
   const wiki = new C.CustomDataSource('Wikipedia'), wikiIcon = icon('W', '#555'), seenWiki = new Set();
-  wiki.isLayer = true; // no aparece en Lugares ni se guarda
+  wiki.isLayer = true; // does not appear in Places and is not saved
   viewer.dataSources.add(wiki);
   async function loadWiki() {
     const la = OGE.lookAt();
@@ -51,17 +51,17 @@
       const p = js.query.pages[e.wikiId];
       e.description = (p.thumbnail ? `<img src="${p.thumbnail.source}" style="float:right;max-width:45%;margin:0 0 6px 8px">` : '') +
         `<p>${esc(p.extract || '')}</p><p><a href="https://${OGE_LANG}.wikipedia.org/?curid=${e.wikiId}" target="_blank">${T('Seguir leyendo en Wikipedia')}</a></p>`;
-    } catch { /* se queda con el enlace */ }
+    } catch { /* keeps just the link */ }
   });
 
-  // ---------- Edificios 3D: huellas de OSM con su altura (capa «building» de OpenFreeMap), un lote por tesela ----------
+  // ---------- 3D buildings: OSM footprints with their height (OpenFreeMap "building" layer), one batch per tile ----------
   const Z = 14, batches = new Map(); // "x/y" -> { prim, count }
   let total = 0;
-  const signedArea = (r) => r.reduce((a, p, i) => a + (i ? r[i - 1][0] * p[1] - p[0] * r[i - 1][1] : 0), 0); // > 0: anillo exterior
+  const signedArea = (r) => r.reduce((a, p, i) => a + (i ? r[i - 1][0] * p[1] - p[0] * r[i - 1][1] : 0), 0); // > 0: outer ring
   async function loadTile(x, y) {
     const key = x + '/' + y;
     if (batches.has(key)) return;
-    batches.set(key, { prim: null, count: 0 }); // reservado: no se pide dos veces
+    batches.set(key, { prim: null, count: 0 }); // reserved: not requested twice
     const layers = await OGE.mvt.ofmTile(Z, x, y).catch(() => null);
     if (!layers) { batches.delete(key); throw new Error('no se pudieron descargar las teselas de edificios'); }
     const els = [];
@@ -70,12 +70,12 @@
       for (const r of f.geom) if (r.length >= 4 && signedArea(r) > 0) els.push({ ring: r.slice(0, -1).map(([px, py]) => OGE.mvt.lonLat(Z, x, y, px, py)), h: f.props.render_height || 8, min: f.props.render_min_height || 0, colour: f.props.colour });
     }
     if (!els.length) return;
-    // altura del terreno bajo cada edificio, la misma que usa el relieve dibujado de cerca
+    // terrain height under each building, the same one used by the terrain drawn up close
     const cartos = els.map((b) => C.Cartographic.fromDegrees(b.ring[0][0], b.ring[0][1]));
-    try { await C.sampleTerrain(scene.terrainProvider, 13, cartos); } catch { /* sin relieve: altura 0 */ }
-    if (!batches.has(key)) return; // se reinició mientras cargaba
+    try { await C.sampleTerrain(scene.terrainProvider, 13, cartos); } catch { /* no terrain: height 0 */ }
+    if (!batches.has(key)) return; // it was reset while loading
     const instances = els.map((b, i) => {
-      const base = (cartos[i].height || 0) * scene.verticalExaggeration, g = 0.74 + ((i * 13) % 12) / 100; // gris con leve variación
+      const base = (cartos[i].height || 0) * scene.verticalExaggeration, g = 0.74 + ((i * 13) % 12) / 100; // gray with slight variation
       const color = (b.colour && C.Color.fromCssColorString(b.colour)) || new C.Color(g + 0.1, g + 0.08, g, 1);
       return new C.GeometryInstance({
         geometry: new C.PolygonGeometry({ polygonHierarchy: new C.PolygonHierarchy(C.Cartesian3.fromDegreesArray(b.ring.flat())),
@@ -87,7 +87,7 @@
     prim.show = $('layerBuildings').checked;
     batches.set(key, { prim, count: els.length });
     total += els.length;
-    while (batches.size > 12) drop(batches.keys().next().value); // se descartan las teselas más antiguas
+    while (batches.size > 12) drop(batches.keys().next().value); // the oldest tiles are discarded
   }
   function drop(key) {
     const b = batches.get(key);
@@ -98,20 +98,20 @@
     const la = OGE.lookAt();
     if (!la || la.dist > 9000) return status('Acércate (a menos de 9 km del suelo que miras) para ver edificios 3D.');
     const n = 2 ** Z, fx = ((deg(la.carto.longitude) + 180) / 360) * n, fy = ((1 - Math.log(Math.tan(Math.PI / 4 + la.carto.latitude / 2)) / Math.PI) / 2) * n;
-    const x0 = Math.floor(fx - 0.5), y0 = Math.floor(fy - 0.5); // las 4 teselas (~2 km cada una) más cercanas al punto mirado
+    const x0 = Math.floor(fx - 0.5), y0 = Math.floor(fy - 0.5); // the 4 tiles (~2 km each) closest to the look-at point
     status('Cargando edificios 3D…');
     await Promise.all([[x0, y0], [x0 + 1, y0], [x0, y0 + 1], [x0 + 1, y0 + 1]].map(([x, y]) => loadTile(x, y)));
     status(total ? total.toLocaleString('es') + ' edificios 3D cargados.' : 'OpenStreetMap no tiene edificios en esta zona.');
   }
-  function resetBuildings() { // el relieve cambió: las bases ya no calzan
+  function resetBuildings() { // the terrain changed: the bases no longer fit
     [...batches.keys()].forEach(drop);
     total = 0;
     if ($('layerBuildings').checked) refresh();
   }
 
-  // ---------- Meridianos y paralelos, como la cuadrícula de Earth: más finos al acercarse y con su rótulo ----------
+  // ---------- Meridians and parallels, like Earth's grid: finer when zooming in and with their labels ----------
   function gridProvider() {
-    const scheme = new C.GeographicTilingScheme(), TS = 256, STEP = [30, 30, 10, 10, 5, 2, 1, 0.5, 0.25, 0.1, 0.05, 0.02, 0.01, 0.005, 0.002, 0.001]; // grados por nivel de zoom
+    const scheme = new C.GeographicTilingScheme(), TS = 256, STEP = [30, 30, 10, 10, 5, 2, 1, 0.5, 0.25, 0.1, 0.05, 0.02, 0.01, 0.005, 0.002, 0.001]; // degrees per zoom level
     const fmt = (v, pos, neg) => { const a = Math.abs(v), d = Math.floor(a + 1e-9), m = Math.round((a - d) * 6000) / 100; return d + '°' + (m ? m + '′' : '') + (v < -1e-9 ? neg : v > 1e-9 ? pos : ''); };
     return {
       tilingScheme: scheme, rectangle: scheme.rectangle, tileWidth: TS, tileHeight: TS, minimumLevel: 0, maximumLevel: 15,
@@ -134,12 +134,12 @@
   $('layerGrid').addEventListener('change', syncGrid);
   syncGrid();
 
-  // ---------- Encendido y recarga al mover la cámara ----------
+  // ---------- Switching on and reloading when the camera moves ----------
   const L = [
     { cb: $('layerWiki'), load: loadWiki, show: (v) => { wiki.show = v; }, what: 'Wikipedia' },
     { cb: $('layerBuildings'), load: loadBuildings, show: (v) => batches.forEach((b) => { if (b.prim) b.prim.show = v; }), what: 'los edificios' },
   ];
-  async function run(l) { // una carga a la vez por capa; si la cámara se movió mientras tanto, se repite
+  async function run(l) { // one load at a time per layer; if the camera moved meanwhile, it is repeated
     if (l.busy) { l.again = true; return; }
     l.busy = true;
     try { await l.load(); } catch (e) { status('No se pudieron cargar ' + l.what + ': ' + e.message); }

@@ -1,20 +1,20 @@
-// OpenGISEarth — bases de datos: abre y guarda GeoPackage (.gpkg, la base de datos SIG abierta que usa QGIS)
-// y permite consultar una capa con SQL. Usa SQLite compilado a WebAssembly (sql.js), todo dentro del programa.
-// shortcut: no hay conexión a servidores (PostGIS, SQL Server): el visor no tiene un componente que hable esos protocolos.
+// OpenGISEarth — databases: opens and saves GeoPackage (.gpkg, the open GIS database used by QGIS)
+// and lets a layer be queried with SQL. Uses SQLite compiled to WebAssembly (sql.js), all inside the program.
+// shortcut: there is no connection to servers (PostGIS, SQL Server): the viewer has no component that speaks those protocols.
 (() => {
   const { geo } = OGE;
   let ready = null;
   const sqlite = () => ready || (ready = initSqlJs({ locateFile: (f) => 'vendor/' + f }));
   const ident = (s) => '"' + String(s).replace(/"/g, '""') + '"';
 
-  // ---------- WKB (geometría binaria) ----------
+  // ---------- WKB (binary geometry) ----------
   function readWkb(dv, o) {
     const le = dv.getUint8(o.p) === 1;
     let t = dv.getUint32(o.p + 1, le), dims = 2;
     o.p += 5;
     if (t & 0x80000000) dims++;
     if (t & 0x40000000) dims++;
-    if (t & 0x20000000) o.p += 4; // SRID de EWKB
+    if (t & 0x20000000) o.p += 4; // EWKB SRID
     t &= 0xffff;
     if (t >= 3000) { dims = 4; t -= 3000; } else if (t >= 1000) { dims = 3; t %= 1000; }
     const n = () => { const v = dv.getUint32(o.p, le); o.p += 4; return v; };
@@ -42,11 +42,11 @@
     else { u32(3); u32(g.coordinates.length); g.coordinates.forEach(pts); }
     return out;
   }
-  // Cabecera de GeoPackage: «GP», versión, banderas (bits 1-3 = tamaño del envolvente), SRID, envolvente y luego el WKB.
+  // GeoPackage header: "GP", version, flags (bits 1-3 = envelope size), SRID, envelope and then the WKB.
   const fromGpb = (b) => readWkb(new DataView(b.buffer, b.byteOffset + 8 + ([0, 32, 48, 48, 64][(b[3] >> 1) & 7] || 0)), { p: 0 });
   const toGpb = (g) => new Uint8Array([0x47, 0x50, 0, 1, 0xe6, 0x10, 0, 0, ...writeWkb(g)]); // SRID 4326
 
-  // ---------- Abrir: cada tabla de objetos pasa a ser una capa ----------
+  // ---------- Open: each feature table becomes a layer ----------
   async function open(file) {
     const SQL = await sqlite(), db = new SQL.Database(new Uint8Array(await file.arrayBuffer())), layers = [];
     try {
@@ -62,7 +62,7 @@
           if (!row[gi]) continue;
           const p = {};
           res.columns.forEach((c, i) => { if (i !== gi && c !== 'fid' && row[i] != null && !(row[i] instanceof Uint8Array)) p[c] = row[i]; });
-          try { feats.push({ type: 'Feature', geometry: fromGpb(row[gi]), properties: p }); } catch { /* geometría ilegible: se omite */ }
+          try { feats.push({ type: 'Feature', geometry: fromGpb(row[gi]), properties: p }); } catch { /* unreadable geometry: skipped */ }
         }
         if (feats.length) layers.push(geo.addGroup(table, feats, { style: { marker: feats.length > 150 ? 'dot' : 'pin' } }));
       }
@@ -71,7 +71,7 @@
     return layers;
   }
 
-  // ---------- Guardar una capa como GeoPackage ----------
+  // ---------- Saving a layer as GeoPackage ----------
   async function save(ds) {
     const SQL = await sqlite(), db = new SQL.Database(), fs = geo.features(ds).filter((f) => f.oge.kind !== 'image');
     if (!fs.length) throw new Error('la capa no tiene geometrías');
@@ -96,7 +96,7 @@
     return new Blob([bytes], { type: 'application/geopackage+sqlite3' });
   }
 
-  // ---------- Consulta SQL sobre los objetos de una capa (tabla «capa») ----------
+  // ---------- SQL query over the objects of a layer (table "capa") ----------
   async function query(fs, text) {
     const SQL = await sqlite(), db = new SQL.Database(), keys = [...new Set(fs.flatMap((f) => Object.keys(f.properties)))].filter((k) => !/^(nombre|tipo|area_m2|longitud_m|lon|lat)$/i.test(k));
     try {

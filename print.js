@@ -1,12 +1,12 @@
-// OpenGISEarth — diseño de impresión (PDF/PNG), exportación del mapa a SVG vectorial e importación de trazados SVG.
+// OpenGISEarth — print layout (PDF/PNG), map export to vector SVG and import of SVG paths.
 (() => {
   const C = Cesium, { viewer, geo, $ } = OGE;
-  const PAPER = { A4: [297, 210], A3: [420, 297], Carta: [279.4, 215.9] }; // mm, horizontal
+  const PAPER = { A4: [297, 210], A3: [420, 297], Carta: [279.4, 215.9] }; // mm, landscape
   const xml = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const visible = () => geo.groups().filter((d) => d.show && d.entities.values.length);
   const colorOf = (ds) => { const f = geo.features(ds)[0], s = f ? f.oge.style : {}; return s.fill || s.stroke || s.color || '#ffd400'; };
 
-  // ---------- PDF mínimo de una página con una imagen JPEG (sin librerías) ----------
+  // ---------- Minimal one-page PDF with a JPEG image (no libraries) ----------
   function pdf(jpeg, wPx, hPx, wPt, hPt) {
     const enc = new TextEncoder(), parts = [], offs = [];
     let len = 0;
@@ -26,7 +26,7 @@
     return new Blob(parts, { type: 'application/pdf' });
   }
 
-  // ---------- Composición: título, mapa (la vista actual), norte, escala, leyenda y pie ----------
+  // ---------- Composition: title, map (the current view), north arrow, scale, legend and footer ----------
   function compose(v) {
     const DPI = 150, mm = DPI / 25.4;
     let [pw, ph] = PAPER[v.paper];
@@ -37,13 +37,13 @@
     g.fillStyle = '#111'; g.textBaseline = 'alphabetic';
     if (v.title) { g.font = `700 ${7 * mm}px sans-serif`; g.fillText(v.title, m, 13 * mm); }
     if (v.sub) { g.font = `${4 * mm}px sans-serif`; g.fillStyle = '#444'; g.fillText(v.sub, m, 20 * mm); }
-    // mapa: recorte centrado de la vista con la proporción del marco
+    // map: centered crop of the view with the frame's aspect ratio
     viewer.render();
     const src = viewer.scene.canvas, k = Math.max(fw / src.width, fh / src.height), sw = fw / k, sh = fh / k;
     g.drawImage(src, (src.width - sw) / 2, (src.height - sh) / 2, sw, sh, fx, fy, fw, fh);
     g.strokeStyle = '#111'; g.lineWidth = 0.4 * mm; g.strokeRect(fx, fy, fw, fh);
     const box = (x, y, w, h) => { g.fillStyle = 'rgba(255,255,255,.88)'; g.fillRect(x, y, w, h); g.strokeStyle = '#111'; g.lineWidth = 0.25 * mm; g.strokeRect(x, y, w, h); g.fillStyle = '#111'; };
-    if (v.north) { // la flecha gira con el rumbo de la cámara
+    if (v.north) { // the arrow rotates with the camera heading
       const cx = fx + fw - 12 * mm, cy = fy + 14 * mm;
       box(cx - 8 * mm, cy - 10 * mm, 16 * mm, 20 * mm);
       g.save(); g.translate(cx, cy + 2 * mm); g.rotate(-viewer.camera.heading);
@@ -51,8 +51,8 @@
       g.font = `700 ${3.2 * mm}px sans-serif`; g.textAlign = 'center'; g.fillText('N', 0, -8 * mm); g.restore(); g.textAlign = 'left';
     }
     const la = OGE.lookAt();
-    if (v.scale && la) { // escala en el centro de la vista (en perspectiva varía hacia los bordes)
-      const mpp = viewer.camera.getPixelSize(new C.BoundingSphere(la.pos, 0), src.width, src.height) / k; // metros por píxel del papel
+    if (v.scale && la) { // scale at the center of the view (in perspective it varies toward the edges)
+      const mpp = viewer.camera.getPixelSize(new C.BoundingSphere(la.pos, 0), src.width, src.height) / k; // meters per paper pixel
       const target = mpp * fw * 0.2, p10 = 10 ** Math.floor(Math.log10(target)), nice = [5, 2, 1].map((n) => n * p10).find((n) => n <= target) || p10, len = nice / mpp;
       const x = fx + fw - len - 8 * mm, y = fy + fh - 8 * mm;
       box(x - 4 * mm, y - 8 * mm, len + 8 * mm, 13 * mm);
@@ -75,8 +75,8 @@
     return { cv, wPt: (pw * 72) / 25.4, hPt: (ph * 72) / 25.4 };
   }
 
-  // ---------- Mapa vectorial en SVG: las capas visibles dentro de la vista, en proyección equirectangular ----------
-  // data-bounds guarda la extensión para poder reimportarlo georreferenciado (aquí o en otro editor).
+  // ---------- Vector map in SVG: the visible layers within the view, in equirectangular projection ----------
+  // data-bounds stores the extent so it can be re-imported georeferenced (here or in another editor).
   function svgMap(title, graticule) {
     const b = OGE.viewBbox();
     if (!b) throw new Error('no se pudo determinar la zona visible');
@@ -124,10 +124,10 @@
   }
   $('printBtn').onclick = layout;
 
-  // ---------- Importar trazados de un SVG ----------
-  // Las formas se recorren con el propio motor SVG del navegador (curvas y transformaciones incluidas) y se
-  // georreferencian con una extensión equirectangular: la de data-bounds si el archivo la trae, o la que indique el usuario.
-  // shortcut: cada subtrazado cerrado sale como polígono aparte (los huecos no se detectan).
+  // ---------- Importing paths from an SVG ----------
+  // Shapes are walked with the browser's own SVG engine (curves and transforms included) and
+  // georeferenced with an equirectangular extent: the data-bounds one if the file has it, or the one the user gives.
+  // shortcut: each closed subpath comes out as a separate polygon (holes are not detected).
   async function importSvg(file) {
     const doc = new DOMParser().parseFromString(await file.text(), 'image/svg+xml'), svg = doc.documentElement;
     if (svg.localName !== 'svg') throw new Error('no es un SVG válido');
@@ -137,7 +137,7 @@
     try {
       const root = host.firstElementChild, vb0 = root.viewBox.baseVal;
       const vb = vb0 && vb0.width ? vb0 : { width: parseFloat(root.getAttribute('width')) || 1000, height: parseFloat(root.getAttribute('height')) || 1000 };
-      root.setAttribute('width', vb.width); root.setAttribute('height', vb.height); root.setAttribute('preserveAspectRatio', 'none'); // 1 unidad = 1 píxel
+      root.setAttribute('width', vb.width); root.setAttribute('height', vb.height); root.setAttribute('preserveAspectRatio', 'none'); // 1 unit = 1 pixel
       const saved = (root.getAttribute('data-bounds') || '').split(/[\s,]+/).map(Number), view = OGE.viewBbox() || [-10, -10, 10, 10];
       const own = saved.length === 4 && saved.every(Number.isFinite), def = own ? saved : view.map((x) => +x.toFixed(5));
       const num = (id, label, value) => ({ id, label, type: 'number', value });
@@ -148,11 +148,11 @@
       const hex = (c) => { const k = C.Color.fromCssColorString(c); return k ? k.withAlpha(1).toCssHexString() : null; };
       const feats = [], step = Math.max(vb.width, vb.height) / 1500;
       for (const elm of root.querySelectorAll('path,polygon,polyline,line,rect,circle,ellipse')) {
-        if (elm.closest('defs,clipPath,mask,symbol,pattern,marker') || elm.id === 'reticula') continue; // la retícula de nuestro propio SVG no es un trazado
+        if (elm.closest('defs,clipPath,mask,symbol,pattern,marker') || elm.id === 'reticula') continue; // the graticule of our own SVG is not a path
         let total = 0;
         try { total = elm.getTotalLength(); } catch { continue; }
         if (!total) continue;
-        // tramos [inicio, fin, cerrado] de cada subtrazado, medidos sobre la longitud total
+        // [start, end, closed] spans of each subpath, measured along the total length
         let spans = [[0, total, /^(polygon|rect|circle|ellipse)$/.test(elm.localName)]];
         const subs = elm.localName === 'path' ? (elm.getAttribute('d') || '').match(/[Mm][^Mm]*/g) : null;
         if (subs && subs.length > 1) {
