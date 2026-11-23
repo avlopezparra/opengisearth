@@ -232,6 +232,9 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
   const hideSide = (h) => { document.body.classList.toggle('noside', h); localStorage.setItem('oge.noside', h ? '1' : ''); };
   if (localStorage.getItem('oge.side')) setSide(+localStorage.getItem('oge.side'));
   hideSide(!!localStorage.getItem('oge.noside'));
+  const PHONE = matchMedia('(max-width: 700px)').matches;
+  if (PHONE) document.body.classList.add('noside'); // phones start on the map; the panel opens over it with the ☰ button
+  if (PHONE || matchMedia('(pointer: coarse)').matches) scene.msaaSamples = 1; // mobile GPUs: antialiasing costs too much memory
   $('sideBtn').onclick = () => hideSide(!document.body.classList.contains('noside'));
   const sp = $('splitter');
   sp.onpointerdown = (e) => { sp.setPointerCapture(e.pointerId); sp.classList.add('drag'); };

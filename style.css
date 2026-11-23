@@ -89,3 +89,14 @@ dialog [hidden] { display: none; }
 #tableBody canvas { width: 100%; background: #1e1e22; border-radius: 4px; }
 #credits { margin-top: 14px; border-top: 1px solid #555; padding-top: 8px; } #credits a { color: #9cf; }
 #credits a.donate { color: #fff; background: #e08a1e; text-decoration: none; display: inline-block; margin-top: 6px; }
+
+/* Phones: the panel slides over the map instead of taking half the screen; the bars use the full width. */
+@media (max-width: 700px) {
+  #panel { position: fixed; z-index: 5; top: 0; left: 0; height: 100%; width: min(86vw, 330px); background: #1e1e22; box-shadow: 4px 0 12px #000a; }
+  #splitter { display: none; }
+  #sideBtn { z-index: 6; }
+  body:not(.noside) #sideBtn { left: calc(min(86vw, 330px) + 6px); }
+  #tools { top: 48px; left: 8px; max-width: calc(100% - 16px); }
+  #right { top: 8px; left: 8px; right: 8px; width: auto; z-index: 4; }
+  #statusbar { font-size: 10px; }
+}
