@@ -188,7 +188,7 @@ Cesium.Ion.defaultAccessToken = ''; // sin Cesium ion: solo datos abiertos
     }
     ul.replaceChildren(el('li', { textContent: 'Buscando…' }));
     try {
-      const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=6&accept-language=es&q=' + encodeURIComponent(q));
+      const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=6&accept-language=' + OGE_LANG + '&q=' + encodeURIComponent(q));
       const hits = await r.json();
       ul.replaceChildren(...(hits.length ? [] : [el('li', { textContent: 'Sin resultados' })]));
       for (const h of hits) {

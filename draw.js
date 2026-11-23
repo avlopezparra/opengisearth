@@ -65,7 +65,7 @@
     if ((t === 'line' && p.length < 2) || (t === 'polygon' && p.length < 3)) return OGE.toast('Faltan puntos: un trazado necesita 2 y un polígono 3.', true);
     const ll = p.map(geo.toLL);
     const [e] = geo.add([feature(t === 'line' ? { type: 'LineString', coordinates: ll } : { type: 'Polygon', coordinates: [[...ll, ll[0]]] },
-      { name: t === 'line' ? 'Trazado' : 'Polígono' })]);
+      { name: T(t === 'line' ? 'Trazado' : 'Polígono') })]);
     activate(t); // listo para el siguiente
     if (e) OGE.editProps(e, true); else OGE.toast('La figura no es válida (puntos repetidos).', true);
   }
@@ -77,7 +77,7 @@
     const s = OGE.snapAt(ev.position); // nodo o borde cercano si el ajuste está activo
     if (!s) return;
     if (tool === 'point') {
-      const [e] = geo.add([feature({ type: 'Point', coordinates: geo.toLL(s.pos) }, { name: 'Marca' })]);
+      const [e] = geo.add([feature({ type: 'Point', coordinates: geo.toLL(s.pos) }, { name: T('Marca') })]);
       return OGE.editProps(e, true);
     }
     // Dos clics seguidos sobre nodos del mismo borde lo siguen (como el editor de regiones de Making History).
@@ -127,7 +127,7 @@
   $('overlayUrl').onclick = async () => {
     const v = await OGE.ask({ title: 'Imagen desde una dirección web', fields: [{ id: 'url', label: 'Dirección (URL) de la imagen', type: 'url', value: 'https://' }] });
     if (!v || !/^https?:\/\/./i.test(v.url)) return;
-    loadImage(v.url.trim(), decodeURIComponent(v.url.split('/').pop().split('?')[0]) || 'Imagen');
+    loadImage(v.url.trim(), decodeURIComponent(v.url.split('/').pop().split('?')[0]) || T('Imagen'));
   };
 
   Object.assign(OGE, { setTool, activate, finish, drawing: () => tool });

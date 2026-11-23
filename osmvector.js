@@ -169,7 +169,7 @@
   function drawParks(ctx, layers, level, k, ox, oy) {
     const X = (p) => p[0] * k - ox, Y = (p) => p[1] * k - oy, labels = [];
     for (const f of layers.park || []) {
-      const name = f.props['name:es'] || f.props.name;
+      const name = f.props[OGE_LANG === 'en' ? 'name:en' : 'name:es'] || f.props.name;
       if (f.type === 1) { if (name) labels.push([name, X(f.geom[0][0]), Y(f.geom[0][0])]); continue; }
       const national = /national_park|parque_nacional/.test(f.props.class || '');
       ctx.beginPath();
