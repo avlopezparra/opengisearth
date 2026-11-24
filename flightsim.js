@@ -123,6 +123,8 @@
     const cv = Object.assign(document.createElement('canvas'), { width: size, height: size }), c = cv.getContext('2d');
     c.translate(size / 2, size / 2); c.scale(size / 200, size / 200); c.lineJoin = 'round'; // paint in a -100..100 box
     paint(c);
+    const gl = c.createLinearGradient(0, -70, 0, 10); gl.addColorStop(0, 'rgba(255,255,255,.6)'); gl.addColorStop(1, 'rgba(255,255,255,0)'); // glossy highlight
+    c.globalCompositeOperation = 'source-atop'; c.fillStyle = gl; c.beginPath(); c.ellipse(0, -30, 80, 38, 0, 0, 7); c.fill(); c.globalCompositeOperation = 'source-over';
     return cv;
   }
   const poly = (c, pts, fill, stroke) => { c.beginPath(); pts.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y))); c.closePath(); c.fillStyle = fill; c.fill(); if (stroke) { c.strokeStyle = stroke; c.lineWidth = 4; c.stroke(); } };
@@ -255,6 +257,7 @@
   // ---------- Starship arcade: random enemies to shoot, rings to fly through and coins to collect ----------
   // The objects live in the 3D world and are drawn on the HUD at their projected position and size.
   let arcade = false, objs = [], booms = [], score = 0, coins = 0;
+  let maxHp = 100; // grows with the life boosters found over big cities
   let run = { flags: 0, caps: 0, bosses: 0 }; // collected in this flight, for the scoreboard
   let hp = 100, bombs = 3, incoming = [], flash = 0, hit = 0; // incoming: enemy shots { p, vel, t }; flash/hit: time of the last bomb / damage
   const SIZE = { ring: 1, coin: 0.35, enemy: 0.5, wall: 0.6, heart: 0.4, shield: 0.4, bomb: 0.4 };
@@ -283,7 +286,11 @@
     o.hp -= n; booms.push({ p: o.p, t: performance.now() }); beep(260, 90, 0.2);
     if (o.hp > 0) return;
     objs.splice(objs.indexOf(o), 1); score += 1000; run.bosses++; flash = performance.now(); sfx('boss');
-    if (o.cap) collect(o.cap); // the practice boss of the tutorial guards no capital
+    if (o.cap) { // the practice boss of the tutorial guards no capital
+      const c = o.cap, fl = flagMap && flagMap.get(c.a3), img = fl && fl.arms ? Object.assign(new Image(), { src: fl.arms }) : null;
+      objs.push({ kind: 'crest', cap: c, img, p: C.Cartesian3.fromDegrees(c.lon, c.lat, 5500), size: 900, next: 1e15 });
+      OGE.toast(`${T('Jefe derrotado: recoge el escudo de')} ${c.name}.`);
+    }
   }
   function bomb() { // clears every enemy and shot in range
     if (!on || paused || !arcade) return;
@@ -309,20 +316,24 @@
         if (d < o.size + slack && now - hit > 800 && !rolling) hurt(30);
         return d < 4e5;
       }
+      const fixed = o.kind === 'crest' || o.kind === 'life'; // these wait where they are instead of being left behind
       if (d < o.size * (o.kind === 'ring' ? 1 : 1.6) + slack) { // touched
         if (o.kind === 'enemy') { if (!rolling) hurt(25); }
         else if (o.kind === 'wall') hurt(20); // obstacles always hurt
-        else if (o.kind === 'heart') { hp = Math.min(100, hp + 25); sfx('heart'); }
+        else if (o.kind === 'heart') { hp = Math.min(maxHp, hp + 25); sfx('heart'); }
+        else if (o.kind === 'life') { maxHp = Math.min(300, maxHp + 25); hp = maxHp; usedTowns.add(o.town); sfx('achieve'); OGE.toast(`${T('Vida máxima')}: ${maxHp}`); }
+        else if (o.kind === 'crest') collect(o.cap); // the coat of arms wins the capital
         else if (o.kind === 'shield') { shields = Math.min(3, shields + 1); sfx('shield'); }
         else if (o.kind === 'bomb') { bombs++; sfx('bombGet'); }
         else {
           score += o.kind === 'ring' ? 50 : 10;
-          if (o.kind === 'ring') hp = Math.min(100, hp + 10); // rings repair the ship
+          if (o.kind === 'ring') hp = Math.min(maxHp, hp + 10); // rings repair the ship
           else if (++coins % 25 === 0) bombs++;
           sfx(o.kind); // coin or ring
         }
         return false;
       }
+      if (fixed) return d < 4e5;
       const gone = C.Cartesian3.dot(t, cam.directionWC) < -o.size; // left behind
       if (gone && o.kind === 'ring' && on) hurt(5); // a ring that was not flown through costs life
       return !gone && d < far;
@@ -347,7 +358,7 @@
       if (C.Cartesian3.distance(b.p, cam.positionWC) < 40 + slack * 1.5) { if (!rolling) hurt(8); return false; }
       return now - b.t < 8000;
     });
-    while (on && !tut && objs.filter((o) => o.kind !== 'boss').length < 10) spawn();
+    while (on && !tut && objs.filter((o) => !['boss', 'crest', 'life'].includes(o.kind)).length < 10) spawn();
   }
   function drawArcade(w, h, text) {
     const f = h / 2 / Math.tan((viewer.camera.frustum.fovy || rad(60)) / 2), toWin = C.SceneTransforms.worldToWindowCoordinates || C.SceneTransforms.wgs84ToWindowCoordinates, now = performance.now();
@@ -357,18 +368,42 @@
       const pr = Math.max(4, (o.size / C.Cartesian3.distance(o.p, viewer.camera.positionWC)) * f);
       g.save(); g.shadowBlur = 8; g.beginPath();
       if (o.kind === 'ring') { g.strokeStyle = g.shadowColor = '#ffd60a'; g.lineWidth = Math.max(2, pr * 0.12); g.arc(q.x, q.y, pr, 0, 7); g.stroke(); }
-      else if (o.kind === 'coin') { g.fillStyle = g.shadowColor = '#ffcc00'; g.ellipse(q.x, q.y, pr * Math.abs(Math.cos(now / 300)) + 1, pr, 0, 0, 7); g.fill(); } // spinning
+      else if (o.kind === 'coin') { // glossy gold coin, spinning
+        const rx = pr * Math.abs(Math.cos(now / 300)) + 1, gr = g.createRadialGradient(q.x - rx * 0.3, q.y - pr * 0.35, 1, q.x, q.y, pr);
+        gr.addColorStop(0, '#fff8c4'); gr.addColorStop(0.45, '#ffd23a'); gr.addColorStop(1, '#d48a00');
+        g.shadowColor = '#ffd23a'; g.shadowBlur = 14; g.fillStyle = gr; g.ellipse(q.x, q.y, rx, pr, 0, 0, 7); g.fill(); g.strokeStyle = '#fff2a8'; g.lineWidth = 1.5; g.stroke();
+      }
       else if (o.kind === 'shield') { g.strokeStyle = g.shadowColor = '#0a84ff'; g.fillStyle = 'rgba(10,132,255,.35)'; g.lineWidth = Math.max(2, pr * 0.15); for (let a = 0; a < 6; a++) g.lineTo(q.x + pr * Math.sin((a * Math.PI) / 3), q.y - pr * Math.cos((a * Math.PI) / 3)); g.closePath(); g.fill(); g.stroke(); }
       else if (o.kind === 'bomb') { g.shadowColor = '#ff9f0a'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = Math.max(12, pr * 2) + 'px sans-serif'; g.fillText('💣', q.x, q.y); }
-      else if (o.kind === 'heart') { g.fillStyle = g.shadowColor = '#ff2d55'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = Math.max(12, pr * 2) + 'px sans-serif'; g.fillText('♥', q.x, q.y); }
-      else if (o.kind === 'wall') { g.fillStyle = 'rgba(120,130,150,.85)'; g.strokeStyle = g.shadowColor = '#e5e5ea'; g.lineWidth = 2; g.rect(q.x - pr, q.y - pr * 0.6, pr * 2, pr * 1.2); g.fill(); g.stroke(); }
+      else if (o.kind === 'heart' || o.kind === 'life') { // glossy heart; the life booster is green and bigger
+        const R = Math.max(10, pr) * (o.kind === 'life' ? 1.5 : 1), gr = g.createLinearGradient(0, q.y - R, 0, q.y + R), life = o.kind === 'life';
+        gr.addColorStop(0, life ? '#c9ffb0' : '#ffb3c4'); gr.addColorStop(0.5, life ? '#4fd12e' : '#ff2d55'); gr.addColorStop(1, life ? '#1f7a10' : '#b00030');
+        g.shadowColor = life ? '#7dff5a' : '#ff5c7c'; g.shadowBlur = 16; g.fillStyle = gr; g.strokeStyle = '#fff'; g.lineWidth = 2;
+        g.moveTo(q.x, q.y + R * 0.9); g.bezierCurveTo(q.x - R * 1.6, q.y - R * 0.2, q.x - R * 0.7, q.y - R * 1.3, q.x, q.y - R * 0.45); g.bezierCurveTo(q.x + R * 0.7, q.y - R * 1.3, q.x + R * 1.6, q.y - R * 0.2, q.x, q.y + R * 0.9); g.fill(); g.stroke();
+        g.shadowBlur = 0; g.fillStyle = 'rgba(255,255,255,.55)'; g.beginPath(); g.ellipse(q.x - R * 0.42, q.y - R * 0.5, R * 0.26, R * 0.16, -0.6, 0, 7); g.fill();
+        if (life) { g.fillStyle = '#fff'; g.fillRect(q.x - R * 0.42, q.y - R * 0.12, R * 0.84, R * 0.22); g.fillRect(q.x - R * 0.11, q.y - R * 0.42, R * 0.22, R * 0.84); } // a white cross: more life
+        if (life) { g.fillStyle = '#fff'; g.textAlign = 'center'; g.font = '600 11px sans-serif'; g.fillText(T('Más vida') + (o.town ? ' · ' + o.town.name : ''), q.x, q.y + R + 14); }
+      }
+      else if (o.kind === 'wall') { // glass block
+        const x = q.x - pr, y = q.y - pr * 0.6, w2 = pr * 2, h2 = pr * 1.2, gr = g.createLinearGradient(0, y, 0, y + h2);
+        gr.addColorStop(0, 'rgba(220,240,255,.85)'); gr.addColorStop(0.5, 'rgba(120,180,230,.7)'); gr.addColorStop(1, 'rgba(60,120,190,.8)');
+        g.shadowColor = '#bfe6ff'; g.shadowBlur = 12; g.fillStyle = gr; g.strokeStyle = '#fff'; g.lineWidth = 2; g.roundRect(x, y, w2, h2, Math.min(10, pr * 0.2)); g.fill(); g.stroke();
+        g.shadowBlur = 0; g.fillStyle = 'rgba(255,255,255,.45)'; g.beginPath(); g.roundRect(x + w2 * 0.06, y + h2 * 0.08, w2 * 0.88, h2 * 0.32, Math.min(8, pr * 0.15)); g.fill();
+      }
+      else if (o.kind === 'crest') { // the national coat of arms dropped by a beaten boss
+        const R = Math.max(26, pr * 2), im = o.img;
+        g.shadowColor = '#ffe27a'; g.shadowBlur = 22;
+        if (im && im.complete && im.naturalWidth) g.drawImage(im, q.x - R, q.y - (R * im.naturalHeight) / im.naturalWidth, R * 2, (R * 2 * im.naturalHeight) / im.naturalWidth);
+        else { g.fillStyle = '#ffd23a'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = R * 1.6 + 'px sans-serif'; g.fillText('★', q.x, q.y); }
+        g.shadowBlur = 0; g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'alphabetic'; g.font = '600 12px sans-serif'; g.fillText(T('Recoge el escudo de') + ' ' + o.cap.name, q.x, q.y + R + 16);
+      }
       else if (o.kind === 'boss') {
         const R = Math.max(14, pr);
         drawBoss(o, q.x, q.y, R, now);
         g.shadowBlur = 0; g.fillStyle = '#300'; g.fillRect(q.x - 40, q.y - R * 1.5 - 16, 80, 6); g.fillStyle = '#ff453a'; g.fillRect(q.x - 40, q.y - R * 1.5 - 16, (80 * o.hp) / o.max, 6); // its life
         g.fillStyle = '#fff'; g.textAlign = 'center'; g.font = '600 12px sans-serif'; g.fillText(`${T(BOSSES[o.type].name)} · ${o.cap ? o.cap.name : T('práctica')} · ${o.hp}/${o.max}`, q.x, q.y - R * 1.5 - 22);
       }
-      else { const R = Math.max(10, pr * 1.6); g.shadowColor = '#ff453a'; g.drawImage(ENEMY[o.look || 0], q.x - R, q.y - R, R * 2, R * 2); } // enemy craft
+      else { const R = Math.max(10, pr * 1.6); g.shadowColor = ['#ff6b5e', '#7fe3ff', '#e08bff'][o.look || 0]; g.shadowBlur = 18; g.drawImage(ENEMY[o.look || 0], q.x - R, q.y - R, R * 2, R * 2); } // enemy craft
       g.restore();
     }
     booms = booms.filter((b) => now - b.t < 350);
@@ -386,8 +421,8 @@
     fade(flash, 450, '#fff'); fade(hit, 250, broke === hit ? '#0a84ff' : '#f00'); // bomb / shield broken / damage
     if (shields) { g.save(); g.strokeStyle = 'rgba(10,132,255,.55)'; g.lineWidth = 3 * shields; g.beginPath(); g.ellipse(w / 2, h / 2, w * 0.46, h * 0.46, 0, 0, 7); g.stroke(); g.restore(); } // shield around the view, thicker with more layers
     text(`${T('PUNTOS')} ${score}  ·  ${T('MONEDAS')} ${coins}  ·  ${T('BOMBAS')} ${bombs}`, 24, 96, 16, 'left'); // below the heading tape
-    g.save(); g.strokeRect(24, 110, 180, 12); g.fillStyle = hp > 50 ? '#39ff14' : hp > 25 ? '#ffd60a' : '#ff453a'; g.fillRect(24, 110, 1.8 * Math.max(0, hp), 12); g.restore();
-    text(`${T('VIDA')} ${Math.max(0, Math.round(hp))}  ·  ${T('ESCUDOS')} ${shields}/3`, 212, 117, 12, 'left');
+    g.save(); g.strokeRect(24, 110, 180, 12); g.fillStyle = hp > maxHp / 2 ? '#39ff14' : hp > maxHp / 4 ? '#ffd60a' : '#ff453a'; g.fillRect(24, 110, (180 * Math.max(0, hp)) / maxHp, 12); g.restore();
+    text(`${T('VIDA')} ${Math.max(0, Math.round(hp))}/${maxHp}  ·  ${T('ESCUDOS')} ${shields}/3`, 212, 117, 12, 'left');
   }
 
   async function open() {
@@ -411,7 +446,7 @@
     loadCaps();
     loadRegs();
     if (A.ship) OGE.minimap.zoom(99); // the starship starts with the minimap zoomed all the way in
-    arcade = !!A.ship && !!useArcade; hp = 100; bombs = 2; incoming = []; flash = hit = 0; shields = 0;
+    arcade = !!A.ship && !!useArcade; maxHp = 100; usedTowns.clear(); hp = 100; bombs = 2; incoming = []; flash = hit = 0; shields = 0;
     run = { flags: 0, caps: 0, bosses: 0 };
     music(arcade);
     objs = []; booms = []; score = coins = 0;
@@ -432,6 +467,8 @@
   // ---------- Capitals: a collectible over each national capital; a whole continent is an achievement ----------
   const NE = 'https://raw.githubusercontent.com/avlopezparra/natural-earth-vector/master/', CAPS = 'oge.capitals';
   const CONT = { Africa: 'África', Asia: 'Asia', Europe: 'Europa', 'North America': 'Norteamérica', 'South America': 'Sudamérica', Oceania: 'Oceanía', Antarctica: 'Antártida' };
+  let towns = [], flagMap = null; // big cities that are not capitals; country flags and coats of arms
+  const usedTowns = new Set(); // life boosters already taken in this flight
   let caps = null, capsBusy = false; // [{ name, lon, lat, cont, p }]
   const got = new Set((() => { try { return JSON.parse(localStorage.getItem(CAPS)) || []; } catch { return []; } })()), capId = (c) => c.name + '|' + c.cont;
   const capOcc = new C.EllipsoidalOccluder(C.Ellipsoid.WGS84, viewer.camera.positionWC);
@@ -442,9 +479,12 @@
       const get = (p) => fetch(NE + p).then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); });
       const [ps, pd, cd] = await Promise.all([get('110m_cultural/ne_110m_populated_places_simple.shp'), get('110m_cultural/ne_110m_populated_places_simple.dbf'), get('50m_cultural/ne_50m_admin_0_countries.dbf')]);
       const clean = (v) => String(v ?? '').replace(/\0/g, '').trim(), cont = new Map(shp.parseDbf(cd).map((r) => [clean(r.ADM0_A3), clean(r.CONTINENT)]));
-      caps = shp.combine([shp.parseShp(ps), shp.parseDbf(pd)]).features.filter((f) => f.geometry && +f.properties.adm0cap === 1).map((f) => {
+      const all = shp.combine([shp.parseShp(ps), shp.parseDbf(pd)]).features.filter((f) => f.geometry);
+      towns = all.filter((f) => +f.properties.adm0cap !== 1).map((f) => ({ name: clean(f.properties.name), lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1], p: C.Cartesian3.fromDegrees(f.geometry.coordinates[0], f.geometry.coordinates[1], 4000) }));
+      OGE.flags().then((m) => { flagMap = m; }).catch(() => {}); // flags and coats of arms by country
+      caps = all.filter((f) => +f.properties.adm0cap === 1).map((f) => {
         const [lon, lat] = f.geometry.coordinates;
-        return { name: clean(f.properties.name), lon, lat, cont: CONT[cont.get(clean(f.properties.adm0_a3))] || 'Islas oceánicas', p: C.Cartesian3.fromDegrees(lon, lat, 1500) };
+        return { name: clean(f.properties.name), a3: clean(f.properties.adm0_a3), lon, lat, cont: CONT[cont.get(clean(f.properties.adm0_a3))] || 'Islas oceánicas', p: C.Cartesian3.fromDegrees(lon, lat, 1500) };
       });
     } catch (e) { OGE.toast('No se pudieron cargar las capitales: ' + e.message, true); }
     capsBusy = false;
@@ -464,12 +504,16 @@
   // Free flight: flying close to a capital collects it. Arcade: a boss appears over it and must be beaten first.
   function capStep() {
     if (!caps) return;
+    if (arcade && !tut) for (const tw of towns) { // a life booster floats over each big city nearby
+      if (usedTowns.has(tw) || objs.some((o) => o.town === tw) || C.Cartesian3.distance(tw.p, viewer.camera.positionWC) > 2e5) continue;
+      objs.push({ kind: 'life', town: tw, p: tw.p, size: 700, next: 1e15 });
+    }
     const cam = viewer.camera.positionWC, R = Math.max(5000, s.v * warp * 0.06); // you have to fly close: 5 km, or what is covered in a couple of frames at high speed
     for (const c of caps) {
       if (got.has(capId(c))) continue;
       const d = C.Cartesian3.distance(c.p, cam);
       if (!arcade) { if (d < R) collect(c); continue; }
-      if (d > 2e5 || objs.some((o) => o.cap === c)) continue;
+      if (d > 2e5 || objs.some((o) => o.cap === c)) continue; // its boss or its coat of arms is already there
       const type = bossKind(c.name), B = BOSSES[type], base = C.Cartesian3.fromDegrees(c.lon, c.lat, 3000);
       objs.push({ kind: 'boss', type, cap: c, base, p: C.Cartesian3.clone(base), east: C.Cartesian3.normalize(C.Cartesian3.cross(C.Cartesian3.UNIT_Z, base, new C.Cartesian3()), new C.Cartesian3()), size: 700, hp: B.hp, max: B.hp, next: performance.now() + 2500 });
       OGE.toast(`⚠ Jefe de ${c.name}: derrótalo para conseguir la capital.`);
@@ -518,7 +562,7 @@
         seen.add(id);
         if (!imgs.has(fl.url)) imgs.set(fl.url, Object.assign(new Image(), { src: fl.url }));
         const [lon, lat] = f.geometry.coordinates;
-        out.push({ id, lon, lat, name: clean(p.name), a3: fl.a3, country: fl.name, cont: CONT[fl.cont] || 'Islas oceánicas', p: C.Cartesian3.fromDegrees(lon, lat, 1500), img: imgs.get(fl.url) });
+        out.push({ id, lon, lat, name: clean(p.name), a3: fl.a3, country: fl.name, cont: CONT[fl.cont] || 'Islas oceánicas', p: C.Cartesian3.fromDegrees(lon, lat, 4500), img: imgs.get(fl.url) }); // high enough to be collected without scraping the ground
       }
       regs = out;
     } catch (e) { OGE.toast('No se pudieron cargar las banderas: ' + e.message, true); }
@@ -528,7 +572,13 @@
     if (!regs) return;
     const cam = viewer.camera.positionWC, R = Math.max(5000, s.v * warp * 0.06); // you have to fly close: 5 km, or what is covered in a couple of frames at high speed
     for (const r of regs) {
-      if (gotReg.has(r.id) || C.Cartesian3.distance(r.p, cam) > R) continue;
+      if (gotReg.has(r.id)) continue;
+      const d = C.Cartesian3.distance(r.p, cam);
+      if (!r.onRelief && d < 6e5) { // once its terrain is loaded, the flag floats 2.5 km above the relief (mountains included)
+        const h = scene.globe.getHeight(C.Cartographic.fromDegrees(r.lon, r.lat));
+        if (h !== undefined) { r.p = C.Cartesian3.fromDegrees(r.lon, r.lat, h * scene.verticalExaggeration + 2500); r.onRelief = true; }
+      }
+      if (d > R) continue;
       gotReg.add(r.id); localStorage.setItem(REGS, JSON.stringify([...gotReg])); run.flags++;
       const all = (fn) => regs.filter(fn).every((x) => gotReg.has(x.id)), mine = regs.filter((x) => x.a3 === r.a3), n = mine.filter((x) => gotReg.has(x.id)).length;
       if (arcade) score += 100;
