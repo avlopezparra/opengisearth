@@ -189,6 +189,61 @@
     }
   }
 
+  // ---------- Guided tutorial: one task at a time; it explains, waits until the pilot does it, then moves on ----------
+  // While it runs nothing spawns at random and nothing hurts. Each step: text, an optional setup (what to put ahead) and a test.
+  let tut = null; // { i, ref } while the tutorial runs
+  function put(kind, side = 0, up = 0, extra = {}) { // places one object ahead of the ship
+    const cam = viewer.camera, D = Math.max(2500, s.v * warp * 3.5), p = C.Cartesian3.clone(cam.positionWC);
+    for (const [v, k] of [[cam.directionWC, D], [cam.rightWC, side * D], [cam.upWC, up * D]]) C.Cartesian3.add(p, C.Cartesian3.multiplyByScalar(v, k, new C.Cartesian3()), p);
+    const o = { kind, p, size: D * 0.07 * (SIZE[kind] || 1), look: 0, next: 1e15, ...extra };
+    objs.push(o);
+    return o;
+  }
+  const has = (kind) => objs.some((o) => o.kind === kind);
+  const turned = (a, b) => Math.abs(C.Math.negativePiToPi(a - b));
+  const STEPS = [
+    { text: 'Dobla a la izquierda y a la derecha con A y D.', test: (r) => turned(s.heading, r.heading) > rad(25) },
+    { text: 'Sube y baja la nariz con S y W.', test: (r) => Math.abs(s.pitch - r.pitch) > rad(8) },
+    { text: 'Acelera con E y frena con Q.', test: (r) => Math.abs(s.v - r.v) > r.v * 0.3 + 30 },
+    { text: 'Ese es un enemigo: apúntale con el centro de la mira y dispara con X o clic derecho.', need: 'enemy', make: () => put('enemy'), test: (r) => score >= r.score + 100 },
+    { text: 'Atraviesa el aro: da puntos y repara la nave.', need: 'ring', make: () => put('ring', 0.05), test: (r) => score >= r.score + 50 },
+    { text: 'Recoge la moneda, el corazón (vida) y el escudo (absorbe un golpe).', need: 'coin', make: () => { put('coin', -0.08); put('heart'); put('shield', 0.08); }, test: (r) => coins > r.coins },
+    { text: 'Los rectángulos grises son obstáculos: esquívalo.', need: 'wall', make: () => put('wall'), test: (r, age) => age > 1500 && !has('wall') },
+    { text: 'Haz un tonel con R: desvía disparos y choques.', test: () => !!man && man.type === 'roll' },
+    { text: 'Lanza una bomba con B: destruye a todos los enemigos cercanos.', need: 'enemy', make: () => { bombs = Math.max(bombs, 1); put('enemy', -0.1); put('enemy'); put('enemy', 0.1); }, test: (r) => bombs < r.bombs || (r.bombs === 0 && !has('enemy')) },
+    { text: 'Un jefe custodia cada capital. Este es de práctica: dispárale hasta vaciar su barra de vida.', need: 'boss', make: () => { const o = put('boss', 0, 0.05, { type: 'fortress', hp: 5, max: 5, cap: null }); o.base = C.Cartesian3.clone(o.p); o.east = viewer.camera.rightWC.clone(); o.size = Math.max(o.size, 400); }, test: (r, age) => age > 1000 && !has('boss') },
+    { text: '¡Listo! Ahora colecciona banderas, derrota jefes en las capitales y suma puntos. I: ayuda · O: repetir el tutorial.', test: (r, age) => age > 6000 },
+  ];
+  const snap = () => ({ heading: s.heading, pitch: s.pitch, v: s.v, score, coins, bombs, t: performance.now() });
+  function tutorial(startIt) {
+    if (!startIt) { tut = null; return; }
+    if (!A || !A.ship) return OGE.toast('El tutorial guiado es para la Starship: elígela al pulsar Volar.');
+    arcade = true; objs = []; incoming = []; hp = 100; shields = 0;
+    tut = { i: 0, ref: snap() };
+  }
+  function tutStep() {
+    const st = STEPS[tut.i], age = performance.now() - tut.ref.t;
+    if (tut.i !== 2) s.v = Math.max(s.v, 250); // keeps moving so the objects ahead are reached (except while practicing the brake)
+    if (!st.test(tut.ref, age)) { // not done yet: what the step needs is put ahead, and put back if it was lost
+      if (st.make && !has(st.need) && (!tut.made || age > 900)) { st.make(); if (!tut.made) tut.ref = snap(); tut.made = true; }
+      return;
+    }
+    beep(700, 1400, 0.25);
+    objs = []; incoming = [];
+    if (++tut.i >= STEPS.length) { tut = null; return OGE.toast('Tutorial terminado. ¡Buen vuelo!'); }
+    tut.ref = snap(); tut.made = false;
+  }
+  function drawTutorial(w) {
+    const txt = T(STEPS[tut.i].text), bw = Math.min(w - 40, 620), x = (w - bw) / 2, words = txt.split(' '), lines = [''];
+    g.save(); g.font = '600 15px sans-serif';
+    for (const wd of words) { if (g.measureText(lines[lines.length - 1] + ' ' + wd).width > bw - 28) lines.push(wd); else lines[lines.length - 1] += (lines[lines.length - 1] ? ' ' : '') + wd; }
+    const bh = 40 + lines.length * 20;
+    g.shadowBlur = 0; g.fillStyle = 'rgba(8,40,70,.82)'; g.strokeStyle = '#7fd4ff'; g.lineWidth = 2; g.beginPath(); g.roundRect(x, 130, bw, bh, 12); g.fill(); g.stroke();
+    g.fillStyle = '#ffd60a'; g.textAlign = 'center'; g.font = '700 12px sans-serif'; g.fillText(`${T('TUTORIAL')} ${tut.i + 1}/${STEPS.length}`, w / 2, 148);
+    g.fillStyle = '#fff'; g.font = '600 15px sans-serif'; lines.forEach((l, i) => g.fillText(l, w / 2, 170 + i * 20));
+    g.restore();
+  }
+
   // ---------- Starship arcade: random enemies to shoot, rings to fly through and coins to collect ----------
   // The objects live in the 3D world and are drawn on the HUD at their projected position and size.
   let arcade = false, objs = [], booms = [], score = 0, coins = 0;
@@ -208,6 +263,7 @@
     objs.push({ kind, p, size: D * 0.06 * SIZE[kind], look: Math.floor(Math.random() * ENEMY.length), next: performance.now() + 3000 + Math.random() * 4000 }); // sized for the speed it was created at; next: when an enemy fires
   }
   function hurt(n) {
+    if (tut) { hit = performance.now(); return; } // nothing hurts during the tutorial
     if (shields) { shields--; broke = hit = performance.now(); return beep(1400, 300, 0.2); } // the shield takes the hit and breaks
     hp -= n; hit = performance.now(); beep(200, 80, 0.25);
     if (hp <= 0) stop(`Nave destruida: ${score} puntos y ${coins} monedas.`, true);
@@ -216,7 +272,7 @@
     o.hp -= n; booms.push({ p: o.p, t: performance.now() }); beep(260, 90, 0.2);
     if (o.hp > 0) return;
     objs.splice(objs.indexOf(o), 1); score += 1000; run.bosses++; flash = performance.now(); beep(120, 30, 0.8);
-    collect(o.cap);
+    if (o.cap) collect(o.cap); // the practice boss of the tutorial guards no capital
   }
   function bomb() { // clears every enemy and shot in range
     if (!on || paused || !arcade) return;
@@ -280,7 +336,7 @@
       if (C.Cartesian3.distance(b.p, cam.positionWC) < 40 + slack * 1.5) { if (!rolling) hurt(8); return false; }
       return now - b.t < 8000;
     });
-    while (on && objs.filter((o) => o.kind !== 'boss').length < 10) spawn();
+    while (on && !tut && objs.filter((o) => o.kind !== 'boss').length < 10) spawn();
   }
   function drawArcade(w, h, text) {
     const f = h / 2 / Math.tan((viewer.camera.frustum.fovy || rad(60)) / 2), toWin = C.SceneTransforms.worldToWindowCoordinates || C.SceneTransforms.wgs84ToWindowCoordinates, now = performance.now();
@@ -299,7 +355,7 @@
         const R = Math.max(14, pr);
         drawBoss(o, q.x, q.y, R, now);
         g.shadowBlur = 0; g.fillStyle = '#300'; g.fillRect(q.x - 40, q.y - R * 1.5 - 16, 80, 6); g.fillStyle = '#ff453a'; g.fillRect(q.x - 40, q.y - R * 1.5 - 16, (80 * o.hp) / o.max, 6); // its life
-        g.fillStyle = '#fff'; g.textAlign = 'center'; g.font = '600 12px sans-serif'; g.fillText(`${T(BOSSES[o.type].name)} · ${o.cap.name} · ${o.hp}/${o.max}`, q.x, q.y - R * 1.5 - 22);
+        g.fillStyle = '#fff'; g.textAlign = 'center'; g.font = '600 12px sans-serif'; g.fillText(`${T(BOSSES[o.type].name)} · ${o.cap ? o.cap.name : T('práctica')} · ${o.hp}/${o.max}`, q.x, q.y - R * 1.5 - 22);
       }
       else { const R = Math.max(10, pr * 1.6); g.shadowColor = '#ff453a'; g.drawImage(ENEMY[o.look || 0], q.x - R, q.y - R, R * 2, R * 2); } // enemy craft
       g.restore();
@@ -331,12 +387,14 @@
       fields: [{ id: 'plane', label: 'Avión', type: 'select', value: PLANES[last.plane] ? last.plane : 'ship', options: Object.entries(PLANES).map(([k, p]) => [k, p.name]) },
         { id: 'mouse', label: 'Controlar con el mouse (como en Earth)', type: 'checkbox', value: last.mouse ?? true },
         { id: 'arcade', label: 'Starship: modo arcade con enemigos y puntaje (desmárcalo para volar libre)', type: 'checkbox', value: last.arcade ?? true },
-        { id: 'aim', label: 'Starship: apuntar los disparos con el mouse (clic dispara; se vuela con el teclado)', type: 'checkbox', value: last.aim ?? false }] });
-    if (v) localStorage.setItem('oge.flyOpts', JSON.stringify(v));
-    if (v) start(v.plane, v.mouse, v.arcade, v.aim);
+        { id: 'aim', label: 'Starship: apuntar los disparos con el mouse (clic dispara; se vuela con el teclado)', type: 'checkbox', value: last.aim ?? false },
+        { id: 'tut', label: 'Starship: hacer el tutorial guiado (va diciendo qué hacer)', type: 'checkbox', value: !localStorage.getItem('oge.tutorial') }] }); // offered ticked the first time
+    if (v) localStorage.setItem('oge.flyOpts', JSON.stringify({ ...v, tut: undefined }));
+    if (v) start(v.plane, v.mouse, v.arcade, v.aim, v.tut);
   }
-  function start(plane, useMouse, useArcade = true, useAim = false) {
+  function start(plane, useMouse, useArcade = true, useAim = false, useTut = false) {
     A = PLANES[plane];
+    tut = null;
     aimMouse = !!A.ship && !!useAim; mouse.x = hud.clientWidth / 2; mouse.y = hud.clientHeight / 2;
     man = null;
     loadCaps();
@@ -345,7 +403,7 @@
     arcade = !!A.ship && !!useArcade; hp = 100; bombs = 2; incoming = []; flash = hit = 0; shields = 0;
     run = { flags: 0, caps: 0, bosses: 0 };
     music(arcade);
-    if (arcade && !localStorage.getItem('oge.tutorial')) { localStorage.setItem('oge.tutorial', '1'); showRules(); } // shown once on its own, then with I objs = []; booms = []; score = coins = 0;
+    objs = []; booms = []; score = coins = 0;
     const la = OGE.lookAt(), c = la ? la.carto : viewer.camera.positionCartographic; // above the look-at point, not from orbit
     const ground = scene.globe.getHeight(c) || 0;
     s = { lon: c.longitude, lat: c.latitude, alt: ground + A.agl, heading: viewer.camera.heading, pitch: 0, roll: 0, v: A.v0, vs: 0,
@@ -358,6 +416,7 @@
     document.body.classList.add('flying');
     hud.hidden = false;
     $('flyBtn').classList.add('active');
+    if (A.ship && useTut) { localStorage.setItem('oge.tutorial', '1'); tutorial(true); music(true); } // once the ship exists
   }
   // ---------- Capitals: a collectible over each national capital; a whole continent is an achievement ----------
   const NE = 'https://raw.githubusercontent.com/avlopezparra/natural-earth-vector/master/', CAPS = 'oge.capitals';
@@ -499,7 +558,7 @@
     showScores();
   }
   function stop(msg, error) {
-    on = false;
+    on = false; tut = null;
     music(false);
     if (arcade && !msg && score) msg = `Vuelo terminado: ${score} puntos y ${coins} monedas.`;
     if (arcade && (score || coins)) saveScore(score, coins);
@@ -588,6 +647,7 @@
     s.agl = s.alt - ground;
     viewer.camera.setView({ destination: C.Cartesian3.fromRadians(s.lon, s.lat, s.alt), orientation: { heading: s.heading, pitch: pe, roll: s.roll + rollOff } });
     if (arcade && on) arcadeStep(dt);
+    if (tut && on) tutStep();
     if (on) { capStep(); regStep(); }
   }
 
@@ -608,6 +668,7 @@
     if (regs) drawRegs();
     if (caps) drawCaps();
     if (arcade) drawArcade(w, h, text);
+    if (tut) drawTutorial(w);
     shots = shots.filter((sh) => performance.now() - sh.t < 220);
     for (const sh of shots) { // two bolts converging on the aim point
       const a = (performance.now() - sh.t) / 220, b = Math.min(1, a + 0.3);
@@ -715,6 +776,7 @@
     else if (k === 'r' || k === 'v' || k === 'u') maneuver(k === 'r' ? 'roll' : k === 'v' ? 'loop' : 'uturn');
     else if (k === 'k') { $('flyKeys').hidden = !$('flyKeys').hidden; $('flyRules').hidden = true; }
     else if (k === 'i') showRules();
+    else if (k === 'o') tutorial(true);
     else keys.add(k);
     e.preventDefault(); e.stopPropagation();
   }, true);
@@ -735,6 +797,7 @@
     if (on) { paused = !$('flyRules').hidden; last = performance.now(); }
   };
   $('flyRulesBtn').onclick = showRules;
+  $('flyTutBtn').onclick = () => tutorial(true);
   for (const [id, key] of [['flyUp', 'pageup'], ['flyDown', 'pagedown'], ['flyLeft', 'a'], ['flyRight', 'd']]) { // held down like the keys
     const b = $(id);
     b.addEventListener('pointerdown', (e) => {
@@ -744,5 +807,5 @@
     for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => keys.delete(key));
   }
   $('flyBtn').onclick = open;
-  OGE.flight = { start, stop, maneuver, state: () => s, flying: () => on, game: () => ({ score, coins, objs, hp, bombs, incoming, shields, regs }) };
+  OGE.flight = { start, stop, maneuver, state: () => s, flying: () => on, game: () => ({ score, coins, objs, hp, bombs, incoming, shields, regs, tut: tut && tut.i }) };
 })();
