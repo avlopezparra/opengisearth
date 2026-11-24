@@ -228,6 +228,29 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
   scene.postRender.addEventListener(() => { $('compass').firstElementChild.style.transform = `rotate(${-viewer.camera.heading}rad)`; });
   $('compass').onclick = () => viewer.camera.flyTo({ destination: viewer.camera.positionWC.clone(), orientation: { heading: 0, pitch: viewer.camera.pitch, roll: 0 }, duration: 0.6 });
 
+  // ---------- World minimap: where the camera (or the aircraft) is; other modules add their marks through OGE.minimap.extra ----------
+  const mm = $('minimap'), mg = mm.getContext('2d'), mmImg = [0, 1].map((i) => Object.assign(new Image(), { src: `cesium/Assets/Textures/NaturalEarthII/0/${i}/0.jpg` })); // west and east halves
+  OGE.minimap = { extra: null, xy: (lon, lat) => [((lon + 180) / 360) * mm.width, ((90 - lat) / 180) * mm.height] };
+  let mmLast = 0;
+  scene.postRender.addEventListener(() => {
+    const now = performance.now();
+    if (mm.hidden || now - mmLast < 200) return; // five times per second is enough
+    mmLast = now;
+    const W = mm.width, H = mm.height, c = viewer.camera.positionCartographic, [x, y] = OGE.minimap.xy(deg(c.longitude), deg(c.latitude));
+    mg.clearRect(0, 0, W, H);
+    mmImg.forEach((im, i) => { if (im.complete && im.naturalWidth) mg.drawImage(im, (i * W) / 2, 0, W / 2, H); });
+    if (OGE.minimap.extra) OGE.minimap.extra(mg);
+    mg.save(); mg.translate(x, y); mg.rotate(viewer.camera.heading); mg.fillStyle = '#ff3b30'; mg.strokeStyle = '#fff'; mg.lineWidth = 1.5;
+    mg.beginPath(); mg.moveTo(0, -8); mg.lineTo(5, 6); mg.lineTo(0, 3); mg.lineTo(-5, 6); mg.closePath(); mg.fill(); mg.stroke(); mg.restore();
+  });
+  mm.onclick = (e) => {
+    const b = mm.getBoundingClientRect();
+    viewer.camera.flyTo({ destination: C.Cartesian3.fromDegrees(((e.clientX - b.left) / b.width) * 360 - 180, 90 - ((e.clientY - b.top) / b.height) * 180, Math.max(2e6, viewer.camera.positionCartographic.height)) });
+  };
+  const cbMm = $('layerMinimap'), syncMm = () => { mm.hidden = !cbMm.checked; };
+  cbMm.addEventListener('change', syncMm);
+  syncMm();
+
   // ---------- View screenshot ----------
   $('shotBtn').onclick = () => { viewer.render(); scene.canvas.toBlob((b) => OGE.download('OpenGISEarth.png', b)); };
 
