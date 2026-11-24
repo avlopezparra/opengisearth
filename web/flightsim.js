@@ -124,7 +124,9 @@
     c.translate(size / 2, size / 2); c.scale(size / 200, size / 200); c.lineJoin = 'round'; // paint in a -100..100 box
     paint(c);
     const gl = c.createLinearGradient(0, -70, 0, 10); gl.addColorStop(0, 'rgba(255,255,255,.6)'); gl.addColorStop(1, 'rgba(255,255,255,0)'); // glossy highlight
-    c.globalCompositeOperation = 'source-atop'; c.fillStyle = gl; c.beginPath(); c.ellipse(0, -30, 80, 38, 0, 0, 7); c.fill(); c.globalCompositeOperation = 'source-over';
+    c.globalCompositeOperation = 'source-atop'; c.fillStyle = gl; c.beginPath(); c.ellipse(0, -30, 80, 38, 0, 0, 7); c.fill();
+    const sh = c.createLinearGradient(0, -10, 0, 70); sh.addColorStop(0, 'rgba(0,0,0,0)'); sh.addColorStop(1, 'rgba(0,0,0,.45)'); // shade underneath: gives it volume
+    c.fillStyle = sh; c.fillRect(-100, -10, 200, 110); c.globalCompositeOperation = 'source-over';
     return cv;
   }
   const poly = (c, pts, fill, stroke) => { c.beginPath(); pts.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y))); c.closePath(); c.fillStyle = fill; c.fill(); if (stroke) { c.strokeStyle = stroke; c.lineWidth = 4; c.stroke(); } };
@@ -132,6 +134,8 @@
   const ENEMY = [
     sprite(128, (c) => { // dart: swept wings, seen head-on
       poly(c, [[-95, 10], [-30, -8], [0, -38], [30, -8], [95, 10], [40, 22], [0, 40], [-40, 22]], '#8e1b1b', '#ff6b5e');
+      poly(c, [[-95, 10], [-30, -8], [0, -38], [0, 40], [-40, 22]], '#b52a2a'); // the lit half of the hull, and panel lines
+      c.strokeStyle = 'rgba(40,0,0,.6)'; c.lineWidth = 2; c.beginPath(); c.moveTo(0, -38); c.lineTo(0, 40); c.moveTo(-60, 4); c.lineTo(-26, 18); c.moveTo(60, 4); c.lineTo(26, 18); c.stroke();
       poly(c, [[-18, -10], [0, -30], [18, -10], [0, 8]], '#1c2a44', '#9fd3ff');
       glow(c, -52, 14, 16, '#ff9f0a'); glow(c, 52, 14, 16, '#ff9f0a');
     }),
@@ -368,10 +372,20 @@
       const pr = Math.max(4, (o.size / C.Cartesian3.distance(o.p, viewer.camera.positionWC)) * f);
       g.save(); g.shadowBlur = 8; g.beginPath();
       if (o.kind === 'ring') { g.strokeStyle = g.shadowColor = '#ffd60a'; g.lineWidth = Math.max(2, pr * 0.12); g.arc(q.x, q.y, pr, 0, 7); g.stroke(); }
-      else if (o.kind === 'coin') { // glossy gold coin, spinning
-        const rx = pr * Math.abs(Math.cos(now / 300)) + 1, gr = g.createRadialGradient(q.x - rx * 0.3, q.y - pr * 0.35, 1, q.x, q.y, pr);
-        gr.addColorStop(0, '#fff8c4'); gr.addColorStop(0.45, '#ffd23a'); gr.addColorStop(1, '#d48a00');
-        g.shadowColor = '#ffd23a'; g.shadowBlur = 14; g.fillStyle = gr; g.ellipse(q.x, q.y, rx, pr, 0, 0, 7); g.fill(); g.strokeStyle = '#fff2a8'; g.lineWidth = 1.5; g.stroke();
+      else if (o.kind === 'coin') { // a flat gold coin spinning on its axis: edge, raised rim, face and a stamped star
+        const turn = Math.cos(now / 300), rx = pr * Math.abs(turn) + 0.5, edge = Math.max(1.5, pr * 0.16) * Math.sqrt(1 - turn * turn), side = turn < 0 ? -1 : 1;
+        g.shadowColor = '#ffd23a'; g.shadowBlur = 12;
+        g.fillStyle = '#a86a00'; g.beginPath(); g.ellipse(q.x + side * edge, q.y, rx, pr, 0, 0, 7); g.fill(); // the edge seen as it turns
+        g.fillRect(q.x + Math.min(0, side * edge), q.y - pr, Math.abs(edge), pr * 2);
+        g.shadowBlur = 0;
+        const rim = g.createLinearGradient(q.x - rx, q.y - pr, q.x + rx, q.y + pr); rim.addColorStop(0, '#fff3b0'); rim.addColorStop(0.5, '#e9a800'); rim.addColorStop(1, '#8a5600');
+        g.fillStyle = rim; g.beginPath(); g.ellipse(q.x, q.y, rx, pr, 0, 0, 7); g.fill();
+        const face = g.createLinearGradient(q.x - rx, q.y - pr, q.x + rx, q.y + pr); face.addColorStop(0, '#ffe066'); face.addColorStop(1, '#d99a00');
+        g.fillStyle = face; g.beginPath(); g.ellipse(q.x, q.y, rx * 0.78, pr * 0.78, 0, 0, 7); g.fill();
+        g.save(); g.translate(q.x, q.y); g.scale(Math.max(0.05, rx / pr), 1); g.beginPath(); // the star, squeezed with the turn
+        for (let i = 0; i < 10; i++) { const r = (i % 2 ? 0.22 : 0.5) * pr, a = (i * Math.PI) / 5 - Math.PI / 2; g.lineTo(r * Math.cos(a), r * Math.sin(a)); }
+        g.closePath(); g.fillStyle = '#b87a00'; g.fill(); g.restore();
+        g.fillStyle = 'rgba(255,255,255,.55)'; g.beginPath(); g.ellipse(q.x - rx * 0.3, q.y - pr * 0.45, rx * 0.35, pr * 0.16, -0.4, 0, 7); g.fill(); // shine
       }
       else if (o.kind === 'shield') { g.strokeStyle = g.shadowColor = '#0a84ff'; g.fillStyle = 'rgba(10,132,255,.35)'; g.lineWidth = Math.max(2, pr * 0.15); for (let a = 0; a < 6; a++) g.lineTo(q.x + pr * Math.sin((a * Math.PI) / 3), q.y - pr * Math.cos((a * Math.PI) / 3)); g.closePath(); g.fill(); g.stroke(); }
       else if (o.kind === 'bomb') { g.shadowColor = '#ff9f0a'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = Math.max(12, pr * 2) + 'px sans-serif'; g.fillText('💣', q.x, q.y); }
