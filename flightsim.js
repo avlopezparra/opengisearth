@@ -720,14 +720,20 @@
       beep(200, 500, 0.6);
     }
   }
-  function drawCaps() { // a star over each capital still to collect, when it is near and on this side of the globe
+  function drawCaps() { // a star over each capital still to collect (a green check over the ones already won), when it is near and on this side of the globe
     const toWin = C.SceneTransforms.worldToWindowCoordinates || C.SceneTransforms.wgs84ToWindowCoordinates, cam = viewer.camera.positionWC;
     capOcc.cameraPosition = cam;
     for (const c of caps) {
       const d = C.Cartesian3.distance(c.p, cam);
-      if (got.has(capId(c)) || d > 2.5e6 || !capOcc.isPointVisible(c.p)) continue;
+      if (d > 2.5e6 || !capOcc.isPointVisible(c.p)) continue;
       const q = toWin(scene, c.p);
       if (!q) continue;
+      if (got.has(capId(c))) { // already won: a green seal with a check mark, so it is clear why no boss waits there
+        const r = d < 3e5 ? 13 : 9; g.save(); g.fillStyle = g.shadowColor = '#2fb24a'; g.shadowBlur = 8; g.beginPath(); g.arc(q.x, q.y - r * 0.5, r, 0, 7); g.fill();
+        g.strokeStyle = '#fff'; g.lineWidth = Math.max(2, r * 0.28); g.lineCap = 'round'; g.lineJoin = 'round'; g.beginPath(); g.moveTo(q.x - r * 0.45, q.y - r * 0.5); g.lineTo(q.x - r * 0.1, q.y - r * 0.15); g.lineTo(q.x + r * 0.5, q.y - r * 0.9); g.stroke();
+        g.shadowBlur = 0; g.fillStyle = '#d8ffd8'; g.textAlign = 'center'; g.font = '600 12px sans-serif'; g.fillText(`${c.name} · ${T('obtenida')}`, q.x, q.y + r + 8); g.restore();
+        continue;
+      }
       g.save(); g.fillStyle = g.shadowColor = '#e8112d'; g.shadowBlur = 10; g.textAlign = 'center'; g.strokeStyle = '#fff'; g.lineWidth = 2;
       g.font = (d < 3e5 ? 32 : 20) + 'px sans-serif'; g.strokeText('★', q.x, q.y); g.fillText('★', q.x, q.y); g.fillStyle = '#fff';
       g.font = '600 12px sans-serif'; g.fillText(c.name, q.x, q.y + 20); g.restore();
