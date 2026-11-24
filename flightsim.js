@@ -123,7 +123,7 @@
     hard: { name: 'Difícil', hurt: 1.6, fire: 0.6, shot: 1.4, boss: 1.6, pts: 2 }, ace: { name: 'As', hurt: 2.5, fire: 0.4, shot: 1.8, boss: 2.5, pts: 4 } };
   let diff = DIFF[localStorage.getItem('oge.diff')] ? localStorage.getItem('oge.diff') : 'normal';
   const pts = (n) => Math.round(n * DIFF[diff].pts); // points earned scale with the difficulty
-  let thrT = 0, landing = null; // landing: 'down' while dropping, 'parked' on the ground, 'up' while lifting off
+  let thrT = 0, boost = null, boostCd = 0, eHeld = false, landing = null; // boost: the ship's single burst on E { t0, base } // landing: 'down' while dropping, 'parked' on the ground, 'up' while lifting off
   let calm = false; // free flight chosen from the mode menu: nothing to collect
   const quest = () => !calm && localStorage.getItem('oge.quest') !== '0';
   function sfx(name) {
@@ -970,9 +970,11 @@
     if (mouseCtl) { s.ail = touch.id !== null ? 0 : stick.x; s.elev = stick.y; } else { s.ail += ((shift || turnArrows ? 0 : lr) - s.ail) * ease; s.elev += (ud - s.elev) * ease; }
     const rud = (k('d') || k('enter') ? 1 : 0) - (k('a') || k('insert') ? 1 : 0) + (shift || turnArrows ? lr : 0) + (touch.id !== null ? stick.x : 0);
     s.rud += (clamp(rud, -1, 1) - s.rud) * ease;
-    if ((k('pageup') || k('e')) && s.throttle < 1 && !(thrT > performance.now())) { thrT = performance.now() + 450; sfx('thrust'); } // a whoosh while speeding up
-    if (k('pageup') || k('e')) s.throttle = Math.min(1, s.throttle + 0.8 * dt);
-    if ((k('pageup') || k('e')) && A.ship) s.v = Math.min(A.vMax * 1.3, s.v + A.thrust * 1.5 * dt); // the ship's afterburner: holding E always speeds it up, even at full throttle
+    const gas = k('pageup') || (k('e') && !A.ship); // on the ship E is the boost, not the throttle
+    if (gas && s.throttle < 1 && !(thrT > performance.now())) { thrT = performance.now() + 450; sfx('thrust'); } // a whoosh while speeding up
+    if (gas) s.throttle = Math.min(1, s.throttle + 0.8 * dt);
+    if (A.ship && k('e') && !eHeld && performance.now() > boostCd) { boost = { t0: performance.now(), base: s.v }; boostCd = performance.now() + 2000; sfx('thrust'); sfx('warpUp'); } // one burst per press, as in Star Fox
+    eHeld = A.ship && k('e');
     if (k('pagedown') || k('q')) s.throttle = Math.max(0, s.throttle - 0.8 * dt);
     if (k('home')) s.trim = Math.max(-0.4, s.trim - 0.2 * dt);
     if (k('end')) s.trim = Math.min(0.4, s.trim + 0.2 * dt);
@@ -1021,6 +1023,8 @@
       if (s.v < stallV) s.pitch -= rad(18) * dt; // stall
       s.pitch = clamp(s.pitch, rad(-89), rad(89));
       s.v = clamp(s.v + (s.throttle * A.thrust - drag - airbrake - grav * Math.sin(s.pitch)) * dt, 0, A.vMax * 1.3);
+      if (A.ship && airbrake) { s.v = Math.max(0, s.v - Math.max(A.thrust * 3, s.v * 4) * dt); boost = null; } // Q: the ship stops in about a second and hovers
+      else if (A.ship && boost) { const bk = (performance.now() - boost.t0) / 1200; if (bk >= 1) { s.v = boost.base; boost = null; } else s.v = boost.base + Math.max(1500, A.vMax * 0.35) * Math.sin(Math.PI * bk); } // the burst rises and falls back to the speed it had
       s.vs = s.v * Math.sin(pe);
       s.alt += s.vs * dt * warp;
       if (A.ship && s.alt <= ground + 30) { // the starship bounces off the ground; in the arcade a hard touch costs life
@@ -1146,7 +1150,8 @@
     line(jx - 5 + s.ail * js, jy + s.elev * js, jx + 5 + s.ail * js, jy + s.elev * js); line(jx + s.ail * js, jy - 5 + s.elev * js, jx + s.ail * js, jy + 5 + s.elev * js);
     line(jx - js, jy + js + 8, jx + js, jy + js + 8); g.fillRect(jx + s.rud * js - 3, jy + js + 4, 6, 8);
     text(T(aimMouse ? 'MOUSE: apunta, clic dispara' : mouseCtl ? 'MOUSE: clic suelta la palanca' : 'TECLADO: clic para volar con el mouse'), cx, h - 22, 12);
-    text(A.name.split(' — ')[0], w - 60, h - 22, 12);
+    text(A.name.split(' — ')[0], w - 24, h - 22, 12, 'right');
+    if ($('flyBtns').classList.contains('keyboard')) text(T('K: ver los controles'), w - 24, h - 40, 12, 'right'); // with a keyboard there are no buttons: this is the reminder
   }
 
   scene.preRender.addEventListener(() => {
@@ -1260,7 +1265,7 @@
   for (const b of document.querySelectorAll('#flyActs button')) b.addEventListener('pointerdown', (e) => { e.preventDefault(); document.dispatchEvent(new KeyboardEvent('keydown', { key: b.dataset.key })); setTimeout(() => document.dispatchEvent(new KeyboardEvent('keyup', { key: b.dataset.key })), 80); }); // the same as their keys
   if (!matchMedia('(pointer: coarse)').matches) { // with a keyboard the key buttons are not needed: only Controls and Scores stay at hand
     $('flyBtns').classList.add('keyboard');
-    $('flyMore').before($('flyHelp'), $('flyScores'));
+    $('flyKeys').append(Object.assign(document.createElement('li'), { className: 'keyBtns' })); $('flyKeys').lastChild.append($('flyScores'), $('flyMp'), $('flyReset')); $('flyKeys').style.right = $('flyRules').style.right = '12px'; // no column of buttons beside them // the few actions without a key live in the K panel
   } else $('flyBtns').classList.add('touch'); // on a phone the stick steers (left half of the screen): the right column keeps the touch actions and the speed
   $('flyMore').onclick = () => { const more = $('flyBtns').classList.toggle('more'); localStorage.setItem('oge.flyMore', more ? '1' : ''); }; // remembered
   $('flyBtns').classList.toggle('more', !!localStorage.getItem('oge.flyMore'));

@@ -65,10 +65,14 @@
     const [s, d, ds, dd] = await Promise.all(['50m_cultural/ne_50m_admin_0_countries.shp', '50m_cultural/ne_50m_admin_0_countries.dbf', '10m_cultural/ne_10m_admin_0_disputed_areas.shp', '10m_cultural/ne_10m_admin_0_disputed_areas.dbf'].map(buf));
     const clean = (v) => String(v ?? '').replace(/\0/g, '').trim(), fs = shp.combine([shp.parseShp(s), shp.parseDbf(d)]).features, a3 = (f) => clean(f.properties.ADM0_A3);
     const out = colorize(fs.map((f) => f.geometry)), idx = new Map(fs.map((f, i) => [a3(f), out[i][1]]));
+    OGE.tintOf = (k) => (idx.has(k) ? TINTS[idx.get(k) % TINTS.length] : null); if (OGE.redrawClaims) OGE.redrawClaims(); // the Chilean Antarctic claim takes Chile's color
+    if (OGE.taiwanCN) fs.forEach((f, i) => { if (a3(f) === 'TWN' && idx.has('CHN')) out[i][1] = idx.get('CHN'); }); // Taiwan in China's color from China
     if (OGE.malvinasAR) fs.forEach((f, i) => { if (['FLK', 'SGS'].includes(a3(f)) && idx.has('ARG')) out[i][1] = idx.get('ARG'); }); // Malvinas and South Georgia in Argentina's color from that point of view
     for (const f of shp.combine([shp.parseShp(ds), shp.parseDbf(dd)]).features) { // Crimea and the other areas claimed by Ukraine, in Ukraine's color (painted over the rest)
       const p = f.properties;
-      if (f.geometry && idx.has('UKR') && /Ukrain/i.test(clean(p.NOTE_BRK) + ' ' + clean(p.BRK_NAME) + ' ' + clean(p.NAME))) out.push([f.geometry, idx.get('UKR')]);
+      const pc = OGE.povClaims;
+      if (f.geometry && pc && pc[1].includes(clean(p.BRK_NAME)) && idx.has(pc[0])) { out.push([f.geometry, idx.get(pc[0])]); continue; } // claimed from this point of view
+      if (f.geometry && OGE.pov !== 'RU' && idx.has('UKR') && /Ukrain/i.test(clean(p.NOTE_BRK) + ' ' + clean(p.BRK_NAME) + ' ' + clean(p.NAME))) out.push([f.geometry, idx.get('UKR')]);
     }
     if (OGE.antarticaCL && idx.has('CHL')) out.push([{ type: 'Polygon', coordinates: [[[-90, -60], [-53, -60], [-53, -89.99], [-90, -89.99], [-90, -60]]] }, idx.get('CHL')]); // the Chilean Antarctic Territory in Chile's color
     return out;
@@ -187,7 +191,7 @@
     try {
       const data = await flagData(), bills = viewer.scene.primitives.add(new C.BillboardCollection());
       for (const [key, f] of data) {
-        if (OGE.malvinasAR && (key === 'FLK' || key === 'SGS')) continue; // part of Argentina from that point of view: no flag of their own
+        if ((OGE.malvinasAR && (key === 'FLK' || key === 'SGS')) || (OGE.taiwanCN && key === 'TWN')) continue; // part of Argentina from that point of view: no flag of their own
         // dependencies and other non-sovereign territories are treated as subnational: their flag is optional and their card is a region's
         bills.add({ id: { oge: f.dep ? 'region' : 'country', q: f.q, a3: f.a3, name: f.name }, position: C.Cartesian3.fromDegrees(f.lon, f.lat), image: f.url, scale: 0.4, pixelOffset: new C.Cartesian2(0, -16), disableDepthTestDistance: Number.POSITIVE_INFINITY,
           distanceDisplayCondition: new C.DistanceDisplayCondition(0, 2.2e7 / Math.max(1, f.rank - 1)) })._dep = f.dep; // small countries and islands appear when zooming in, like their names
@@ -409,6 +413,8 @@
   OGE.claims = CLAIMS; // the country card shows its claim too
   const claimOn = (() => { try { return JSON.parse(localStorage.getItem('oge.claims')) || Object.keys(CLAIMS); } catch { return Object.keys(CLAIMS); } })();
   let claimPrims = [];
+  OGE.redrawClaims = () => drawClaims();
+  $('fillCountries').addEventListener('change', () => drawClaims());
   function drawClaims() {
     for (const p of claimPrims) (p instanceof C.ImageryLayer ? viewer.imageryLayers : p instanceof C.BillboardCollection ? viewer.scene.primitives : viewer.scene.groundPrimitives).remove(p);
     claimPrims = [];
@@ -416,8 +422,10 @@
     const rhumb = (pts) => C.Cartesian3.fromDegreesArray(pts.flat());
     const line = (a, b, n = 48) => rhumb(Array.from({ length: n + 1 }, (_, i) => [a[0] + ((b[0] - a[0]) * i) / n, a[1] + ((b[1] - a[1]) * i) / n]));
     const span = ([w, e]) => (e > 180 ? [[w, 180], [-180, e - 360]] : [[w, e]]), box = ([w, e]) => ({ type: 'Polygon', coordinates: [[[w, -60], [e, -60], [e, -89.99], [w, -89.99], [w, -60]]] });
-    const paint = fillLayer(claimOn.flatMap((a3) => (CLAIMS[a3] ? CLAIMS[a3][2].flatMap(span).map((sc) => [box(sc), CLAIMS[a3][1]]) : []))); // each sector in its claimant's color
+    const filled = $('fillCountries').checked, cl = claimOn.includes('CHL') && filled && !OGE.antarticaCL && OGE.tintOf && OGE.tintOf('CHL'); // with the countries painted, the Chilean Antarctic Territory looks like the rest of Chile
+    const paint = fillLayer(claimOn.filter((a3) => !(a3 === 'CHL' && (cl || (filled && OGE.antarticaCL)))).flatMap((a3) => (CLAIMS[a3] ? CLAIMS[a3][2].flatMap(span).map((sc) => [box(sc), CLAIMS[a3][1]]) : []))); // each sector in its claimant's color
     paint.alpha = 0.35;
+    if (cl) claimPrims.push(fillLayer(CLAIMS.CHL[2].flatMap(span).map((sc) => [box(sc), cl]))); // same color and opacity as Chile's own fill
     claimPrims.push(paint);
     const labels = viewer.scene.primitives.add(new C.BillboardCollection());
     claimPrims.push(labels);
