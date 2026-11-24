@@ -361,6 +361,7 @@
   new C.ScreenSpaceEventHandler(viewer.scene.canvas).setInputAction((ev) => {
     if ((OGE.drawing && OGE.drawing()) || document.body.classList.contains('flying')) return; // not while drawing or flying
     const hit = viewer.scene.pick(ev.position), id = hit && hit.id;
+    if (id && id.oge === 'sat') { const s = id.s; OGE.chime(); return OGE.showTable(`🛰 ${s.name}`, [T('Dato'), T('Valor')], [[T('Grupo'), s.group], [T('Altitud'), Math.round(s.alt / 1000).toLocaleString(OGE_LANG) + ' km'], [T('Latitud'), s.lat.toFixed(2) + '°'], [T('Longitud'), s.lon.toFixed(2) + '°'], ['NORAD', s.rec.satnum]], { note: T('Fuente: CelesTrak; posición calculada con SGP4.') }); }
     if (id && id.oge === 'plane') { const p = id.a; OGE.chime(); return OGE.showTable(`✈ ${(p.flight || p.r || p.hex || '').trim()}`, [T('Dato'), T('Valor')], [[T('Vuelo'), (p.flight || '').trim()], [T('Matrícula'), p.r], [T('Modelo'), p.desc || p.t], [T('Operador'), p.ownOp], [T('Altitud'), typeof p.alt_baro === 'number' ? `${Math.round(p.alt_baro * 0.3048).toLocaleString(OGE_LANG)} m (${p.alt_baro} ft)` : p.alt_baro], [T('Velocidad'), p.gs != null ? `${Math.round(p.gs * 1.852)} km/h` : ''], [T('Rumbo'), p.track != null ? Math.round(p.track) + '°' : ''], [T('Origen y destino'), ''], ['ICAO 24', p.hex]].filter((x) => x[1]), { note: T('Fuente: adsb.fi (datos abiertos ADS-B).') }); }
     if (id && FACTS[id.oge] && /^Q\d+$/.test(id.q || '')) return wikiInfo(id);
     // nothing picked: with a regional layer on, the municipality (or else the province) under the click, with OpenStreetMap's data and its Wikidata id
@@ -497,6 +498,49 @@
     planes.show = cbP.checked;
     clearInterval(planeTimer);
     if (cbP.checked) { refreshPlanes(); planeTimer = setInterval(refreshPlanes, 10000); } else OGE.hint('');
+  });
+
+  // ---------- Live satellites: orbital elements from CelesTrak, positions computed here every second (SGP4, satellite.js) ----------
+  let sats = null, satTimer = null, satRecs = null;
+  const cbS = $('layerSats');
+  OGE.satellites = () => satRecs || []; // the flight game shows them too
+  async function loadSats() {
+    const groups = ['stations', 'visual', 'weather', 'gnss'], recs = [];
+    for (const g of groups) {
+      const txt = await (await fetch(`https://celestrak.org/NORAD/elements/gp.php?GROUP=${g}&FORMAT=tle`)).text(), L = txt.split(/\r?\n/);
+      for (let i = 0; i + 2 < L.length; i += 3) if (L[i + 1].startsWith('1 ')) recs.push({ name: L[i].trim(), group: g, rec: satellite.twoline2satrec(L[i + 1], L[i + 2]) });
+    }
+    return recs;
+  }
+  function placeSats() {
+    const now = new Date(), gmst = satellite.gstime(now);
+    sats.removeAll();
+    for (const s of satRecs) {
+      const pv = satellite.propagate(s.rec, now);
+      if (!pv.position) continue;
+      const g = satellite.eciToGeodetic(pv.position, gmst);
+      s.lon = C.Math.toDegrees(g.longitude); s.lat = C.Math.toDegrees(g.latitude); s.alt = g.height * 1000;
+      s.p = C.Cartesian3.fromRadians(g.longitude, g.latitude, s.alt);
+      const iss = /ISS|ZARYA/.test(s.name);
+      sats.add({ position: s.p, image: satIcon(iss), scale: iss ? 0.7 : 0.4, disableDepthTestDistance: 0, id: { oge: 'sat', s } });
+    }
+  }
+  const satIconCache = {};
+  const satIcon = (big) => satIconCache[big] || (satIconCache[big] = (() => { // a body with two solar panels
+    const cv = Object.assign(document.createElement('canvas'), { width: 48, height: 48 }), g = cv.getContext('2d');
+    g.fillStyle = '#2b6fd6'; g.fillRect(2, 18, 15, 12); g.fillRect(31, 18, 15, 12); g.strokeStyle = '#cfe6ff'; g.strokeRect(2, 18, 15, 12); g.strokeRect(31, 18, 15, 12);
+    g.fillStyle = big ? '#ffd60a' : '#e6e9ef'; g.fillRect(18, 15, 12, 18); g.strokeStyle = '#333'; g.strokeRect(18, 15, 12, 18);
+    return cv;
+  })());
+  cbS.addEventListener('change', async () => {
+    if (!sats) sats = viewer.scene.primitives.add(new C.BillboardCollection());
+    sats.show = cbS.checked;
+    clearInterval(satTimer);
+    if (!cbS.checked) return;
+    try {
+      if (!satRecs) { OGE.toast('Cargando satélites…'); satRecs = await loadSats(); OGE.toast(`${satRecs.length} ${T('satélites en órbita, posición en vivo')} (CelesTrak).`); }
+      placeSats(); satTimer = setInterval(placeSats, 1000);
+    } catch (e) { OGE.toast('No se pudieron cargar los satélites: ' + e.message, true); }
   });
 
   // ---------- Watershed: click a point, get the basin that drains to it, plus its rivers ----------
