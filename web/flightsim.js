@@ -183,6 +183,7 @@
     dragon: { name: 'Dragón', hp: 18, every: 1100, shots: 1, color: '#ff9f0a', sway: 1800 },
     crystal: { name: 'Coloso de cristal', hp: 16, every: 1800, shots: 2, color: '#9fe8ff', sway: 0, shield: true }, // only hurt while its shield is open
     hive: { name: 'Colmena', hp: 14, every: 2600, shots: 1, color: '#ffd23a', sway: 900, spawns: true }, // launches escorts; its core is protected while two or more fly
+    hand: { name: 'Mano gigante', hp: 16, every: 2200, shots: 1, color: '#ffcc99', sway: 0, grab: true }, // chases the ship and grabs it: a barrel roll (R) breaks free
     beacon: { name: 'Faro', hp: 20, every: 1500, shots: 2, color: '#ff5c5c', sway: 0, phases: true }, // at half life it spins and fires all around
   };
   const bossKind = (name) => Object.keys(BOSSES)[[...name].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7) % Object.keys(BOSSES).length];
@@ -216,6 +217,18 @@
           g.strokeStyle = '#ff1744'; g.lineWidth = 3; g.beginPath(); g.moveTo(sx - r, sy); g.lineTo(sx - r * 1.6, sy + Math.sin(t * 12) * r * 0.2); g.stroke();
         }
       }
+    } else if (k === 'hand') {
+      const close = o.held ? 1 : 0.25 + 0.2 * Math.sin(t * 4), skin = '#ffcc99', edge = '#8d5a3a';
+      g.lineCap = 'round'; g.strokeStyle = edge; g.lineWidth = 2;
+      g.beginPath(); g.ellipse(x, y + R * 0.2, R * 0.75, R * 0.8, 0, 0, 7); g.fillStyle = skin; g.fill(); g.stroke(); // palm
+      for (let i = 0; i < 4; i++) { // fingers: they curl toward the palm as the hand closes
+        const fx = x + (i - 1.5) * R * 0.38, len = R * (0.9 + (i === 1 || i === 2 ? 0.2 : 0)), ty = y - R * 0.5 - len * (1 - close), tx = fx + (close * (x - fx)) * 0.3;
+        g.beginPath(); g.moveTo(fx, y - R * 0.35); g.quadraticCurveTo(fx, ty, tx, ty + close * R * 0.6); g.strokeStyle = edge; g.lineWidth = R * 0.32; g.stroke(); g.strokeStyle = skin; g.lineWidth = R * 0.24; g.stroke();
+        g.fillStyle = '#fff3e6'; g.beginPath(); g.arc(tx, ty + close * R * 0.6, R * 0.08, 0, 7); g.fill(); // nail
+      }
+      g.beginPath(); g.moveTo(x + R * 0.65, y + R * 0.3); g.quadraticCurveTo(x + R * 1.25, y - R * 0.2 * (1 - close), x + R * (1.1 - close * 0.6), y - R * 0.3); g.strokeStyle = edge; g.lineWidth = R * 0.34; g.stroke(); g.strokeStyle = skin; g.lineWidth = R * 0.26; g.stroke(); // thumb
+      g.strokeStyle = 'rgba(141,90,58,.6)'; g.lineWidth = 2; g.beginPath(); g.arc(x, y + R * 0.3, R * 0.4, 3.6, 5.8); g.stroke(); // a palm line
+      if (o.held) { g.fillStyle = 'rgba(255,0,0,.25)'; g.beginPath(); g.arc(x, y, R * 1.6, 0, 7); g.fill(); }
     } else if (k === 'face') { // a stone face whose mouth opens when it spits
       const open = Math.max(0, 1 - (now - (o.spat || 0)) / 500);
       g.beginPath(); g.ellipse(x, y, R * 1.15, R * 1.4, 0, 0, 7); g.fillStyle = '#8d8f99'; g.fill(); g.strokeStyle = '#3a3c44'; g.lineWidth = 3; g.stroke();
@@ -225,25 +238,46 @@
       }
       g.beginPath(); g.moveTo(x - R * 0.12, y - R * 0.05); g.lineTo(x, y + R * 0.25); g.lineTo(x + R * 0.12, y - R * 0.05); g.strokeStyle = '#3a3c44'; g.stroke();
       g.beginPath(); g.ellipse(x, y + R * 0.7, R * 0.5, R * (0.1 + 0.3 * open), 0, 0, 7); g.fillStyle = open > 0.05 ? BOSSES.face.color : '#111'; g.fill(); g.stroke();
-    } else { // dragon: body, head and two flapping wings
-      const flap = Math.sin(t * 6) * 0.6;
-      for (const e of [-1, 1]) {
-        g.beginPath(); g.moveTo(x, y); g.lineTo(x + e * R * 1.9, y - R * (0.9 + flap)); g.lineTo(x + e * R * 1.5, y + R * 0.1); g.lineTo(x + e * R * 1.0, y - R * 0.2 * flap); g.lineTo(x + e * R * 0.6, y + R * 0.35); g.closePath();
-        g.fillStyle = '#b71c1c'; g.fill(); g.strokeStyle = '#4a0000'; g.lineWidth = 2; g.stroke();
+    } else { // dragon: a long eastern dragon weaving in an S, with scales, spines, clawed legs, horns, whiskers, a fiery mane and a flaming tail
+      const N = 22, pt = (u) => [x + Math.sin(u * 7.5 - t * 2.2) * R * 0.9 * (0.4 + u), y - R * 1.1 + u * R * 3.2]; // u: 0 head … 1 tail
+      const tail = pt(1); // flaming tail tip
+      for (let j = 0; j < 4; j++) { const a = -Math.PI / 2 + (j - 1.5) * 0.5 + Math.sin(t * 9 + j) * 0.15; g.beginPath(); g.moveTo(tail[0], tail[1]); g.quadraticCurveTo(tail[0] + Math.cos(a) * R * 0.3, tail[1] - Math.sin(a) * R * 0.1 + R * 0.2, tail[0] + Math.cos(a + 1.2) * R * 0.5, tail[1] + R * 0.45); g.strokeStyle = j % 2 ? '#ffb300' : '#ff5722'; g.lineWidth = R * 0.09; g.lineCap = 'round'; g.stroke(); }
+      for (const u of [0.3, 0.68]) for (const e of [-1, 1]) { // legs with three claws
+        const [lx, ly] = pt(u), fx = lx + e * R * 0.55, fy = ly + R * 0.25;
+        g.strokeStyle = '#7f0000'; g.lineWidth = R * 0.1; g.lineCap = 'round'; g.beginPath(); g.moveTo(lx, ly); g.quadraticCurveTo(lx + e * R * 0.4, ly - R * 0.1, fx, fy); g.stroke();
+        g.lineWidth = R * 0.04; for (const c of [-0.5, 0, 0.5]) { g.beginPath(); g.moveTo(fx, fy); g.lineTo(fx + e * R * 0.16 * Math.cos(c), fy + R * 0.16 * Math.sin(c) + R * 0.05); g.stroke(); }
       }
-      g.beginPath(); g.ellipse(x, y + R * 0.1, R * 0.55, R * 0.8, 0, 0, 7); g.fillStyle = '#e53935'; g.fill(); g.stroke();
-      g.beginPath(); g.moveTo(x - R * 0.4, y - R * 0.6); g.lineTo(x, y - R * 1.3); g.lineTo(x + R * 0.4, y - R * 0.6); g.closePath(); g.fillStyle = '#c62828'; g.fill(); g.stroke(); // head
-      g.fillStyle = '#ffeb3b'; for (const e of [-1, 1]) { g.beginPath(); g.arc(x + e * R * 0.16, y - R * 0.85, R * 0.07, 0, 7); g.fill(); }
+      for (let i = N; i >= 1; i--) { // body from tail to neck: scaled segments, belly stripe and back spines
+        const u = i / N, [bx, by] = pt(u), r = R * (0.36 - u * 0.26);
+        g.beginPath(); g.arc(bx, by, r, 0, 7); g.fillStyle = i % 2 ? '#c62828' : '#e53935'; g.fill(); g.strokeStyle = '#4a0000'; g.lineWidth = 1.5; g.stroke();
+        g.beginPath(); g.arc(bx, by + r * 0.2, r * 0.55, 0.2, Math.PI - 0.2); g.strokeStyle = '#ffcc80'; g.lineWidth = Math.max(1, r * 0.25); g.stroke(); // belly
+        g.beginPath(); g.moveTo(bx - r * 0.3, by - r * 0.8); g.lineTo(bx, by - r * 1.5); g.lineTo(bx + r * 0.3, by - r * 0.8); g.fillStyle = '#ff8f00'; g.fill(); // spine
+      }
+      const [hx, hy] = pt(0), face = Math.cos(-t * 2.2) >= 0 ? 1 : -1, jaw = 0.15 + 0.15 * Math.abs(Math.sin(t * 3)); // the head turns with the weave
+      for (let j = 0; j < 6; j++) { const a = Math.PI * (0.55 + j * 0.15) * -face + (face < 0 ? Math.PI : 0); g.beginPath(); g.moveTo(hx, hy); g.lineTo(hx + Math.cos(a) * R * 0.75, hy + Math.sin(a) * R * 0.75 - R * 0.1); g.lineTo(hx + Math.cos(a + 0.25) * R * 0.4, hy + Math.sin(a + 0.25) * R * 0.4); g.closePath(); g.fillStyle = j % 2 ? '#ff6f00' : '#ffca28'; g.fill(); } // fiery mane
+      g.beginPath(); g.ellipse(hx, hy, R * 0.42, R * 0.32, 0, 0, 7); g.fillStyle = '#d32f2f'; g.fill(); g.strokeStyle = '#4a0000'; g.lineWidth = 2; g.stroke(); // skull
+      g.beginPath(); g.moveTo(hx + face * R * 0.2, hy - R * 0.2); g.lineTo(hx + face * R * 0.95, hy - R * 0.08); g.lineTo(hx + face * R * 0.9, hy + R * 0.02); g.lineTo(hx + face * R * 0.2, hy + R * 0.05); g.closePath(); g.fillStyle = '#e53935'; g.fill(); g.stroke(); // upper snout
+      g.beginPath(); g.moveTo(hx + face * R * 0.2, hy + R * 0.1); g.lineTo(hx + face * R * 0.8, hy + R * (0.1 + jaw)); g.lineTo(hx + face * R * 0.2, hy + R * 0.25); g.closePath(); g.fillStyle = '#b71c1c'; g.fill(); g.stroke(); // lower jaw
+      g.fillStyle = '#fff'; for (let j = 0; j < 3; j++) { const tx = hx + face * R * (0.4 + j * 0.15); g.beginPath(); g.moveTo(tx, hy + R * 0.04); g.lineTo(tx + face * R * 0.04, hy + R * 0.12); g.lineTo(tx + face * R * 0.08, hy + R * 0.04); g.fill(); } // teeth
+      g.strokeStyle = '#ffe082'; g.lineWidth = R * 0.05; for (const e of [0, 1]) { g.beginPath(); g.moveTo(hx - face * R * 0.15, hy - R * 0.25); g.quadraticCurveTo(hx - face * R * (0.5 + e * 0.15), hy - R * (0.6 + e * 0.1), hx - face * R * (0.75 + e * 0.1), hy - R * (0.45 + e * 0.2)); g.stroke(); } // horns
+      g.strokeStyle = '#ffccbc'; g.lineWidth = 1.5; for (const e of [-1, 1]) { g.beginPath(); g.moveTo(hx + face * R * 0.85, hy - R * 0.04); g.bezierCurveTo(hx + face * R * 1.2, hy + e * R * 0.3, hx + face * R * 1.3, hy + e * R * 0.5 + Math.sin(t * 5) * R * 0.1, hx + face * R * 1.55, hy + e * R * 0.35); g.stroke(); } // whiskers
+      g.fillStyle = '#ffeb3b'; g.beginPath(); g.ellipse(hx + face * R * 0.15, hy - R * 0.12, R * 0.09, R * 0.06, 0, 0, 7); g.fill(); g.fillStyle = '#000'; g.beginPath(); g.arc(hx + face * R * 0.17, hy - R * 0.12, R * 0.03, 0, 7); g.fill(); // eye
+      if (now - (o.spat || 0) < 400) { g.fillStyle = 'rgba(255,140,0,.8)'; g.beginPath(); g.moveTo(hx + face * R * 0.9, hy + R * 0.05); g.lineTo(hx + face * R * 1.9, hy - R * 0.3); g.lineTo(hx + face * R * 1.9, hy + R * 0.4); g.closePath(); g.fill(); } // fire breath when it shoots
     }
   }
 
   // ---------- Guided tutorial: one task at a time; it explains, waits until the pilot does it, then moves on ----------
   // While it runs nothing spawns at random and nothing hurts. Each step: text, an optional setup (what to put ahead) and a test.
   let tut = null; // { i, ref } while the tutorial runs
+  function lift(p, kind, size) { // never underground; rings keep a good margin over the terrain so their lower edge can be flown
+    const c = C.Cartographic.fromCartesian(p), floor = (scene.globe.getHeight(c) || 0) + (kind === 'ring' ? Math.max(700, size * 1.4) : 200);
+    if (c.height < floor) C.Cartesian3.fromRadians(c.longitude, c.latitude, floor, undefined, p);
+  }
   function put(kind, side = 0, up = 0, extra = {}) { // places one object ahead of the ship
     const cam = viewer.camera, D = Math.max(2500, s.v * warp * 3.5), p = C.Cartesian3.clone(cam.positionWC);
     for (const [v, k] of [[cam.directionWC, D], [cam.rightWC, side * D], [cam.upWC, up * D]]) C.Cartesian3.add(p, C.Cartesian3.multiplyByScalar(v, k, new C.Cartesian3()), p);
     const o = { kind, p, size: D * 0.07 * (SIZE[kind] || 1), look: 0, next: 1e15, ...extra };
+    lift(p, kind, o.size);
     objs.push(o);
     return o;
   }
@@ -307,9 +341,8 @@
     const cam = viewer.camera, D = reach() * (0.6 + 0.6 * Math.random()), kind = POOL[Math.floor(Math.random() * POOL.length)];
     const p = C.Cartesian3.clone(cam.positionWC), add = (v, k) => C.Cartesian3.add(p, C.Cartesian3.multiplyByScalar(v, k, new C.Cartesian3()), p);
     add(cam.directionWC, D); add(cam.rightWC, (Math.random() - 0.5) * D * 0.5); add(cam.upWC, (Math.random() - 0.5) * D * 0.25);
-    const c = C.Cartographic.fromCartesian(p), floor = (scene.globe.getHeight(c) || 0) + 200;
-    if (c.height < floor) C.Cartesian3.fromRadians(c.longitude, c.latitude, floor, undefined, p); // never underground
     const big = kind === 'ring' && Math.random() < 0.25;
+    lift(p, kind, D * 0.06 * SIZE[kind] * (big ? 2.5 : 1));
     objs.push({ kind, big, p, size: D * 0.06 * SIZE[kind] * (big ? 2.5 : 1), look: Math.floor(Math.random() * ENEMY.length), next: performance.now() + 3000 + Math.random() * 4000 }); // sized for the speed it was created at; next: when an enemy fires
   }
   function hurt(n) {
@@ -357,10 +390,26 @@
       const d = C.Cartesian3.magnitude(t);
       if (o.kind === 'boss') { // stays at its capital until left far behind
         const sw = BOSSES[o.type].sway; // snakes and dragons weave around their post
-        const bc = C.Cartographic.fromCartesian(o.base), gh = scene.globe.getHeight(bc); // finer terrain may load later: keep 2.5 km over it
-        if (gh !== undefined && bc.height < gh + 2000) { o.base = C.Cartesian3.fromRadians(bc.longitude, bc.latitude, gh + 2500); if (!sw) C.Cartesian3.clone(o.base, o.p); }
-        if (sw) C.Cartesian3.add(o.base, C.Cartesian3.multiplyByScalar(o.east, Math.sin(now / 1300) * sw, t), o.p);
-        const B = BOSSES[o.type];
+        const bc = C.Cartographic.fromCartesian(o.base), gh = scene.globe.getHeight(bc); // finer terrain may load later: keep 6 km over it
+        if (gh !== undefined && bc.height < gh + 5000) o.base = C.Cartesian3.fromRadians(bc.longitude, bc.latitude, gh + 6000);
+        const B = BOSSES[o.type], up = C.Cartesian3.normalize(o.base, new C.Cartesian3());
+        if (B.grab) { // the hand: flies at the ship (never more than 25 km from its capital) and grabs it when close
+          const to = C.Cartesian3.subtract(cam.positionWC, o.p, new C.Cartesian3()), dd = C.Cartesian3.magnitude(to);
+          if (o.held) { C.Cartesian3.clone(cam.positionWC, o.p); C.Cartesian3.add(o.p, C.Cartesian3.multiplyByScalar(cam.directionWC, 250, t), o.p); } // holding the ship right in front of the view
+          else if (dd > 1) C.Cartesian3.add(o.p, C.Cartesian3.multiplyByScalar(to, Math.min(1, (350 * dt) / dd), t), o.p);
+          if (C.Cartesian3.distance(o.p, o.base) > 25000) C.Cartesian3.clone(o.base, o.p);
+          if (!o.held && dd < 700 && now > (o.grabCd || 0) && now > graceT) { o.held = now; OGE.toast(T('¡La mano te atrapó! Haz un tonel (R) para soltarte.')); sfx('shieldBreak'); }
+          if (o.held) {
+            s.v *= Math.max(0, 1 - 4 * dt); // it holds the ship still
+            if (rolling || now - o.held > 4000) { o.held = 0; o.grabCd = now + 5000; sfx('roll'); } // a barrel roll breaks free (it lets go by itself after 4 s)
+            else if (now - (o.squeeze || 0) > 600) { o.squeeze = now; hurt(6); }
+          }
+        } else {
+          const p = C.Cartesian3.clone(o.base); // a slow bob and drift for everyone; snakes and dragons weave wider
+          C.Cartesian3.add(p, C.Cartesian3.multiplyByScalar(up, Math.sin(now / 900) * 400, t), p);
+          C.Cartesian3.add(p, C.Cartesian3.multiplyByScalar(o.east, Math.sin(now / 1300) * (sw || 600), t), p);
+          C.Cartesian3.clone(p, o.p);
+        }
         if (B.spawns && now > (o.spawnT || 0) && escortsUp(o) < 3) { // the hive launches an escort near itself
           o.spawnT = now + 4500;
           const p = C.Cartesian3.add(o.p, C.Cartesian3.multiplyByScalar(cam.rightWC, (Math.random() - 0.5) * 2500, new C.Cartesian3()), new C.Cartesian3());
@@ -606,7 +655,7 @@
       if (!arcade) { if (d < R) collect(c); continue; }
       if (d > 2e5 || objs.some((o) => o.cap === c)) continue; // its boss or its coat of arms is already there
       if (adv && (c.a3 !== adv.a3 || !adv.boss)) continue; // in the adventure the boss comes after the flags
-      const type = bossKind(c.name), B = BOSSES[type], base = C.Cartesian3.fromDegrees(c.lon, c.lat, (scene.globe.getHeight(C.Cartographic.fromDegrees(c.lon, c.lat)) || 0) + 2500);
+      const type = bossKind(c.name), B = BOSSES[type], base = C.Cartesian3.fromDegrees(c.lon, c.lat, (scene.globe.getHeight(C.Cartographic.fromDegrees(c.lon, c.lat)) || 0) + 6000);
       objs.push({ kind: 'boss', born: performance.now(), type, cap: c, base, p: C.Cartesian3.clone(base), east: C.Cartesian3.normalize(C.Cartesian3.cross(C.Cartesian3.UNIT_Z, base, new C.Cartesian3()), new C.Cartesian3()), size: 700, hp: Math.ceil(B.hp * DIFF[diff].boss), max: Math.ceil(B.hp * DIFF[diff].boss), next: performance.now() + 2500 });
       OGE.toast(`⚠ Jefe de ${c.name}: derrótalo para conseguir la capital.`);
       beep(200, 500, 0.6);
@@ -722,7 +771,7 @@
   function useItem() {
     if (!item) return;
     const it = item; item = null;
-    if (it === 'boost') { boost = { t0: performance.now(), base: s.v }; sfx('warpUp'); sfx('thrust'); }
+    if (it === 'boost') startBoost();
     else if (it === 'shield') { shields = Math.min(3, shields + 1); sfx('shield'); }
     else if (it === 'mine') { // dropped right here: whoever flies into it gets hurt (not the one who dropped it)
       const p = C.Cartesian3.fromRadians(s.lon, s.lat, s.alt);
@@ -1017,7 +1066,7 @@
     const gas = k('pageup') || (k('e') && !A.ship); // on the ship E is the boost, not the throttle
     if (gas && s.throttle < 1 && !(thrT > performance.now())) { thrT = performance.now() + 450; sfx('thrust'); } // a whoosh while speeding up
     if (gas) s.throttle = Math.min(1, s.throttle + 0.8 * dt);
-    if (A.ship && k('e') && !eHeld && performance.now() > boostCd) { boost = { t0: performance.now(), base: s.v }; boostCd = performance.now() + 2000; sfx('thrust'); sfx('warpUp'); } // one burst per press, as in Star Fox
+    if (A.ship && k('e') && !eHeld) startBoost(); // one press: a temporary turbo
     eHeld = A.ship && k('e');
     if (k('pagedown') || k('q')) s.throttle = Math.max(0, s.throttle - 0.8 * dt);
     if (k('home')) s.trim = Math.max(-0.4, s.trim - 0.2 * dt);
@@ -1028,6 +1077,12 @@
   // ---------- Simplified physics ----------
   // OpenStarshipEarth maneuvers: barrel roll (R), full loop (V) and half loop with a roll out, to turn back (U).
   let man = null, lastRoll = 1; // man: { type, t0, dur, dir }
+  function startBoost() { // the next turbo level for 5 seconds
+    if (s.v < (A.v0 || 300)) { s.v = A.v0 || 300; s.throttle = Math.max(s.throttle, 0.5); } // stopped with Q: E gets it moving again
+    if (boost || performance.now() < boostCd) return;
+    const to = WARPS[Math.min(WARPS.length - 1, WARPS.indexOf(warp) + 1)];
+    boost = { t0: performance.now(), from: warp, to }; boostCd = performance.now() + 6000; setWarp(to); sfx('thrust');
+  }
   function maneuver(type) {
     if (on && !A.ship) return OGE.toast('Disparar y las maniobras son solo de la OpenStarshipEarth.');
     if (!on || paused || man) return;
@@ -1067,8 +1122,8 @@
       if (s.v < stallV) s.pitch -= rad(18) * dt; // stall
       s.pitch = clamp(s.pitch, rad(-89), rad(89));
       s.v = clamp(s.v + (s.throttle * A.thrust - drag - airbrake - grav * Math.sin(s.pitch)) * dt, 0, A.vMax * 1.3);
-      if (A.ship && airbrake) { s.v = Math.max(0, s.v - Math.max(A.thrust * 3, s.v * 4) * dt); boost = null; } // Q: the ship stops in about a second and hovers
-      else if (A.ship && boost) { const bk = (performance.now() - boost.t0) / 1200; if (bk >= 1) { s.v = boost.base; boost = null; } else s.v = boost.base + Math.max(1500, A.vMax * 0.35) * Math.sin(Math.PI * bk); } // the burst rises and falls back to the speed it had
+      if (A.ship && airbrake) { s.v = Math.max(0, s.v - Math.max(A.thrust * 3, s.v * 4) * dt); if (boost) { if (warp === boost.to) setWarp(boost.from); boost = null; } } // Q: the ship stops in about a second and hovers
+      else if (A.ship && boost && performance.now() - boost.t0 > 5000) { if (warp === boost.to) setWarp(boost.from); boost = null; } // after 5 s, back to the turbo it had (unless changed by hand) // the burst rises and falls back to the speed it had
       s.vs = s.v * Math.sin(pe);
       s.alt += s.vs * dt * warp;
       if (A.ship && s.alt <= ground + 30) { // the starship bounces off the ground; in the arcade a hard touch costs life

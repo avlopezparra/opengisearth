@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1600 500" width="1600" height="500">
+  <!-- README banner: aqua sky, bubbles, the app icon and the title (Frutiger Aero style) -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#c8f6ff"/><stop offset="0.5" stop-color="#46bdf2"/><stop offset="1" stop-color="#0b4fa8"/>
+    </linearGradient>
+    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.7"/><stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="bubble" cx="0.35" cy="0.3" r="0.7">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.9"/><stop offset="0.5" stop-color="#fff" stop-opacity="0.12"/><stop offset="1" stop-color="#fff" stop-opacity="0.35"/>
+    </radialGradient>
+    <linearGradient id="grass" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#b6f26a"/><stop offset="1" stop-color="#2e9e3e"/>
+    </linearGradient>
+    <filter id="soft" x="-10%" y="-30%" width="120%" height="160%"><feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#06306b" flood-opacity="0.45"/></filter>
+  </defs>
+  <rect width="1600" height="500" rx="36" fill="url(#bg)"/>
+  <path d="M36 0 H1564 A36 36 0 0 1 1600 36 V170 C 1100 120 500 120 0 190 V36 A36 36 0 0 1 36 0 Z" fill="url(#gloss)"/>
+  <!-- rolling green hills -->
+  <path d="M0 430 C 260 360 520 420 760 400 C 1040 376 1300 330 1600 380 V464 A36 36 0 0 1 1564 500 H36 A36 36 0 0 1 0 464 Z" fill="url(#grass)" opacity="0.9"/>
+  <path d="M0 455 C 300 410 640 470 980 440 C 1220 420 1420 400 1600 420" fill="none" stroke="#fff" stroke-opacity="0.35" stroke-width="5"/>
+  <!-- bubbles -->
+  <g stroke="#fff" stroke-opacity="0.6" stroke-width="3" fill="url(#bubble)">
+    <circle cx="1480" cy="110" r="44"/><circle cx="1380" cy="70" r="22"/><circle cx="1530" cy="250" r="26"/>
+    <circle cx="560" cy="80" r="18"/><circle cx="1440" cy="330" r="16"/><circle cx="80" cy="90" r="20"/>
+  </g>
+  <image href="../web/icon.svg" xlink:href="../web/icon.svg" x="70" y="55" width="360" height="360"/>
+  <g filter="url(#soft)" font-family="Segoe UI, Frutiger, Myriad Pro, Helvetica, Arial, sans-serif">
+    <text x="470" y="215" font-size="118" font-weight="700" fill="#fff">OpenGISEarth</text>
+    <text x="474" y="285" font-size="40" font-weight="600" fill="#eafaff">Open-source 3D globe &amp; GIS editor</text>
+    <text x="474" y="338" font-size="30" fill="#eafaff" fill-opacity="0.95">Maps · borders · history · live satellites · OpenStarshipEarth arcade</text>
+  </g>
+</svg>
