@@ -1032,7 +1032,7 @@
       s.alt += s.vs * dt * warp;
       if (A.ship && s.alt <= ground + 30) { // the starship bounces off the ground; in the arcade a hard touch costs life
         s.alt = ground + 30; s.pitch = Math.max(s.pitch, rad(arcade ? 8 : 2));
-        if (arcade && !landing && performance.now() - hit > 800) hurt(15); // an intended landing (Z) does no harm
+        if (arcade && !landing && !shields && performance.now() - hit > 800) hurt(15); // an intended landing (Z) does no harm, nor touching the ground with a shield up
       }
       else if (s.alt <= ground + GEAR_H) { // soft touchdown with the gear down, or crash
         if (!(s.gear && s.vs > -4 && Math.abs(s.roll) < rad(12) && s.pitch > rad(-6))) {
