@@ -271,6 +271,7 @@
     'F-16 — caza a reacción, rápido y nervioso': 'F-16 — jet fighter, fast and twitchy',
     'Mantén pulsado para doblar a la izquierda (A)': 'Hold to turn left (A)', 'Mantén pulsado para doblar a la derecha (D)': 'Hold to turn right (D)',
     '? Controles (K)': '? Controls (K)',
+    'Más vida': 'More life', 'Vida máxima': 'Maximum life', 'Recoge el escudo de': 'Collect the coat of arms of', 'Jefe derrotado: recoge el escudo de': 'Boss beaten: collect the coat of arms of',
     'Vuela la Starship en modo arcade, sin pasar por el diálogo': 'Fly the Starship in arcade mode, skipping the dialog',
     'Consultando Wikidata…': 'Querying Wikidata…', 'Dato': 'Fact', 'Valor': 'Value', 'Fuente: Wikidata (CC0).': 'Source: Wikidata (CC0).',
     'Población': 'Population', 'Superficie': 'Area', 'Moneda': 'Currency', 'Idioma oficial': 'Official language', 'Jefe de Estado': 'Head of state', 'Jefe de Gobierno': 'Head of government',

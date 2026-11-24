@@ -155,17 +155,17 @@
     const clean = (v) => String(v ?? '').replace(/\0/g, '').trim();
     const rows = shp.parseDbf(await buf('50m_cultural/ne_50m_admin_0_countries.dbf')).map((p) => ({ a3: clean(p.ADM0_A3), q: clean(p.WIKIDATAID), lon: +p.LABEL_X, lat: +p.LABEL_Y, rank: +p.LABELRANK || 5, name: clean(p.NAME_ES) || clean(p.NAME), cont: clean(p.CONTINENT) }))
       .filter((r) => /^Q\d+$/.test(r.q) && isFinite(r.lon) && isFinite(r.lat));
-    const sparql = `SELECT ?c ?f WHERE { VALUES ?c { ${rows.map((r) => 'wd:' + r.q).join(' ')} } ?c wdt:P41 ?f }`;
+    const sparql = `SELECT ?c ?f ?a WHERE { VALUES ?c { ${rows.map((r) => 'wd:' + r.q).join(' ')} } OPTIONAL { ?c wdt:P41 ?f } OPTIONAL { ?c wdt:P94 ?a } }`; // flag and coat of arms
     const wd = await (await fetch('https://query.wikidata.org/sparql?format=json&query=' + encodeURIComponent(sparql))).json();
-    const file = new Map(); // Wikidata id -> Commons file name
-    for (const b of wd.results.bindings) { const q = b.c.value.split('/').pop(); if (!file.has(q)) file.set(q, decodeURIComponent(b.f.value.split('FilePath/')[1]).replace(/_/g, ' ')); }
-    const names = [...new Set(file.values())], thumb = new Map(); // file name -> thumbnail URL
+    const file = new Map(), arms = new Map(), name = (u) => decodeURIComponent(u.split('FilePath/')[1]).replace(/_/g, ' '); // Wikidata id -> Commons file name
+    for (const b of wd.results.bindings) { const q = b.c.value.split('/').pop(); if (b.f && !file.has(q)) file.set(q, name(b.f.value)); if (b.a && !arms.has(q)) arms.set(q, name(b.a.value)); }
+    const names = [...new Set([...file.values(), ...arms.values()])], thumb = new Map(); // file name -> thumbnail URL
     for (let i = 0; i < names.length; i += 50) { // the Commons API takes 50 titles per request
       const js = await (await fetch('https://commons.wikimedia.org/w/api.php?action=query&prop=imageinfo&iiprop=url&iiurlwidth=48&format=json&origin=*&titles=' + encodeURIComponent(names.slice(i, i + 50).map((n) => 'File:' + n).join('|')))).json();
       for (const p of Object.values(js.query.pages)) if (p.imageinfo) thumb.set(p.title.replace(/^File:/, ''), p.imageinfo[0].thumburl);
     }
     const out = new Map();
-    for (const r of rows) { const url = thumb.get(file.get(r.q)); if (url) out.set(r.a3, { ...r, url }); }
+    for (const r of rows) { const url = thumb.get(file.get(r.q)), crest = thumb.get(arms.get(r.q)); if (url) out.set(r.a3, { ...r, url, arms: crest ? crest.replace(/\/\d+px-/, '/160px-') : null }); } // a bigger thumbnail for the coat of arms
     if (OGE.malvinasAR && out.has('ARG') && out.has('FLK')) { const ar = out.get('ARG'), fk = out.get('FLK'); out.set('FLK', { ...fk, url: ar.url, a3: 'ARG', name: ar.name, cont: ar.cont }); } // Argentina's flag over the Malvinas from that point of view
     return out;
   })().catch((e) => { flagsP = null; throw e; }));
