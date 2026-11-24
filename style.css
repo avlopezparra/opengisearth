@@ -195,7 +195,7 @@ dialog table td { border-color: rgba(47, 155, 224, .3); }
 @media (max-width: 700px) { #flyBtns { right: 6px; bottom: 8px; flex-direction: row; flex-wrap: wrap; width: 150px; gap: 4px; } #flyBtns button { padding: 6px 8px; font-size: 11px; flex: 1 1 64px; } #flyBtns > div { flex-basis: 100%; } }
 
 /* OpenStarship page: only the game, without the atlas panels */
-body.game-only #panel, body.game-only #splitter { display: none; }
+
 
 /* Flight buttons: the ship's actions and the main controls; the rest folded behind "⋯ Más" */
 #flyActs { display: flex; gap: 6px; }
@@ -264,3 +264,7 @@ body.history-mode .cesium-viewer-bottom { display: none; }
 #flyTL { display: none; }
 body.flying.touchdev #flyTL { display: flex; position: absolute; top: 8px; left: 8px; z-index: 4; gap: 5px; flex-wrap: wrap; max-width: 46vw; }
 #flyTL button { padding: 6px 9px; font-size: 12px; opacity: .88; touch-action: none; user-select: none; }
+
+/* the panel's own close button, for touch screens */
+#sideClose { display: none; }
+@media (pointer: coarse) { #sideClose { display: block; position: sticky; top: 0; z-index: 2; width: 100%; margin-bottom: 8px; } }

@@ -271,6 +271,7 @@
     'F-16 — caza a reacción, rápido y nervioso': 'F-16 — jet fighter, fast and twitchy',
     'Mantén pulsado para doblar a la izquierda (A)': 'Hold to turn left (A)', 'Mantén pulsado para doblar a la derecha (D)': 'Hold to turn right (D)',
     '? Controles (K)': '? Controls (K)',
+    'Cerrar el panel': 'Close the panel', '✕ Cerrar panel': '✕ Close panel',
     'Aterrizar (Z)': 'Land (Z)',
     'Aterrizar': 'Land',
     'Despegar (C)': 'Take off (C)',
