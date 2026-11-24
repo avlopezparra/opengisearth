@@ -189,3 +189,6 @@ dialog table td { border-color: rgba(47, 155, 224, .3); }
 #compass { background: radial-gradient(circle at 35% 30%, #fff, #cfeaff 60%, #8fc9f2); border: 1px solid #1873b8; }
 #minimap { border: 2px solid var(--glass-edge); border-radius: 10px; box-shadow: 0 3px 10px rgba(0, 70, 130, .4); }
 #statusbar { font-family: "Segoe UI", system-ui, sans-serif; }
+
+/* Flight buttons on phones: two columns, smaller, so the view stays free */
+@media (max-width: 700px) { #flyBtns { right: 6px; bottom: 8px; flex-direction: row; flex-wrap: wrap; width: 150px; gap: 4px; } #flyBtns button { padding: 6px 8px; font-size: 11px; flex: 1 1 64px; } #flyBtns > div { flex-basis: 100%; } }
