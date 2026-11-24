@@ -73,7 +73,7 @@
       C.Cartesian3.subtract(o.p, cam.positionWC, t);
       const d = C.Cartesian3.magnitude(t);
       if (d < o.size * (o.kind === 'ring' ? 1 : 1.6) + slack) { // touched: rings and coins score, ramming an enemy costs points
-        if (o.kind === 'enemy') { score = Math.max(0, score - 50); beep(200, 80, 0.25); }
+        if (o.kind === 'enemy') { if (!(man && man.type === 'roll')) { score = Math.max(0, score - 50); beep(200, 80, 0.25); } } // a barrel roll deflects it
         else { score += o.kind === 'ring' ? 50 : 10; if (o.kind === 'coin') coins++; beep(o.kind === 'coin' ? 1500 : 800, o.kind === 'coin' ? 2200 : 1300, 0.12); }
         return false;
       }
@@ -113,6 +113,7 @@
   }
   function start(plane, useMouse, useArcade = true) {
     A = PLANES[plane];
+    man = null;
     arcade = !!A.ship && !!useArcade; objs = []; booms = []; score = coins = 0;
     const la = OGE.lookAt(), c = la ? la.carto : viewer.camera.positionCartographic; // above the look-at point, not from orbit
     const ground = scene.globe.getHeight(c) || 0;
@@ -154,8 +155,25 @@
   }
 
   // ---------- Simplified physics ----------
+  // Starship maneuvers: barrel roll (R), full loop (V) and half loop with a roll out, to turn back (U).
+  let man = null, lastRoll = 1; // man: { type, t0, dur, dir }
+  function maneuver(type) {
+    if (!on || paused || !A.ship || man) return;
+    const dir = keys.has('a') ? -1 : keys.has('d') ? 1 : (lastRoll = -lastRoll);
+    man = { type, t0: performance.now(), dur: type === 'roll' ? 600 : type === 'loop' ? 2400 : 1500, dir };
+    beep(500, 1200, 0.25);
+  }
   function step(dt) {
     controls(dt);
+    let pe = s.pitch, rollOff = 0; // effective pitch and extra roll while a maneuver runs
+    if (man) {
+      const k = (performance.now() - man.t0) / man.dur;
+      if (k >= 1) { // the half loop ends inverted and flying back: same attitude as heading + 180° rolled over, then it rolls upright
+        if (man.type === 'uturn') { s.heading += Math.PI; s.pitch = -s.pitch; pe = s.pitch; rollOff = Math.PI; man = { type: 'unroll', t0: performance.now(), dur: 500, dir: 1 }; } else man = null;
+      } else if (man.type === 'roll') rollOff = man.dir * 2 * Math.PI * k;
+      else if (man.type === 'unroll') rollOff = Math.PI * (1 - k);
+      else pe += (man.type === 'loop' ? 2 : 1) * Math.PI * k;
+    }
     const stallV = A.vStall * (1 - 0.1 * s.flaps), q = A.ship ? 1 : clamp(s.v / (1.4 * A.vStall), 0, 1); // q: control effectiveness with speed
     const grav = A.ship ? 0 : G;
     const elev = clamp(s.elev + s.trim, -1, 1), ground = scene.globe.getHeight(new C.Cartographic(s.lon, s.lat)) || 0;
@@ -176,7 +194,7 @@
       if (s.v < stallV) s.pitch -= rad(18) * dt; // stall
       s.pitch = clamp(s.pitch, rad(-89), rad(89));
       s.v = clamp(s.v + (s.throttle * A.thrust - drag - grav * Math.sin(s.pitch)) * dt, 0, A.vMax * 1.3);
-      s.vs = s.v * Math.sin(s.pitch);
+      s.vs = s.v * Math.sin(pe);
       s.alt += s.vs * dt * warp;
       if (A.ship && s.alt <= ground + 30) { s.alt = ground + 30; s.pitch = Math.max(s.pitch, rad(2)); } // the starship skims the ground
       else if (s.alt <= ground + GEAR_H) { // soft touchdown with the gear down, or crash
@@ -186,12 +204,12 @@
         s.ground = true; s.alt = ground + GEAR_H; s.pitch = Math.max(0, s.pitch);
       }
     }
-    const horiz = s.v * Math.cos(s.pitch) * dt * warp;
+    const horiz = s.v * Math.cos(pe) * dt * warp; // negative over the top of a loop: it flies backwards
     s.lat = clamp(s.lat + (horiz * Math.cos(s.heading)) / R, rad(-89), rad(89));
     s.lon = C.Math.negativePiToPi(s.lon + (horiz * Math.sin(s.heading)) / (R * Math.cos(s.lat)));
     s.heading = C.Math.zeroToTwoPi(s.heading);
     s.agl = s.alt - ground;
-    viewer.camera.setView({ destination: C.Cartesian3.fromRadians(s.lon, s.lat, s.alt), orientation: { heading: s.heading, pitch: s.pitch, roll: s.roll } });
+    viewer.camera.setView({ destination: C.Cartesian3.fromRadians(s.lon, s.lat, s.alt), orientation: { heading: s.heading, pitch: pe, roll: s.roll + rollOff } });
     if (arcade) arcadeStep();
   }
 
@@ -302,6 +320,7 @@
     else if (k === 'c') { stick.x = stick.y = 0; s.trim = 0; }
     else if (k === 'x') fire();
     else if (k === 't') nextWarp();
+    else if (A.ship && (k === 'r' || k === 'v' || k === 'u')) maneuver(k === 'r' ? 'roll' : k === 'v' ? 'loop' : 'uturn');
     else if (k === 'k') $('flyKeys').hidden = !$('flyKeys').hidden;
     else keys.add(k);
     e.preventDefault(); e.stopPropagation();
@@ -320,5 +339,5 @@
     for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => keys.delete(key));
   }
   $('flyBtn').onclick = open;
-  OGE.flight = { start, stop, state: () => s, flying: () => on, game: () => ({ score, coins, objs }) };
+  OGE.flight = { start, stop, maneuver, state: () => s, flying: () => on, game: () => ({ score, coins, objs }) };
 })();

@@ -279,6 +279,7 @@
     'E / Q: aumentar / disminuir la velocidad (gas)': 'E / Q: increase / decrease speed (throttle)',
     'T: turbo, multiplica la velocidad (×2, ×5, ×10, ×25)': 'T: turbo, multiplies the speed (×2, ×5, ×10, ×25)',
     'X o clic derecho: disparar (Starship)': 'X or right click: fire (Starship)',
+    'R: tonel · V: rizo completo · U: media vuelta (Starship)': 'R: barrel roll · V: full loop · U: turn back (Starship)',
     'G: tren de aterrizaje · F: flaps · B: frenos': 'G: landing gear · F: flaps · B: brakes',
     'Clic: tomar o soltar la palanca con el mouse': 'Click: grab or release the stick with the mouse',
     'Espacio: pausa · H: ocultar el HUD · K: esta ayuda · Esc: salir': 'Space: pause · H: hide the HUD · K: this help · Esc: exit',
