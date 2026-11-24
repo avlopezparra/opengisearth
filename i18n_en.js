@@ -271,6 +271,7 @@
     'F-16 — caza a reacción, rápido y nervioso': 'F-16 — jet fighter, fast and twitchy',
     'Mantén pulsado para doblar a la izquierda (A)': 'Hold to turn left (A)', 'Mantén pulsado para doblar a la derecha (D)': 'Hold to turn right (D)',
     '? Controles (K)': '? Controls (K)',
+    'Clima actual': 'Current weather', 'Hoy: máxima y mínima': 'Today: high and low', 'Mañana': 'Tomorrow', 'Índice UV de hoy': 'UV index today', 'Pronóstico de 5 días': '5-day forecast',
     'Sonido': 'Sound', 'Silencia o activa la música y los efectos (P)': 'Mutes or unmutes the music and the effects (P)', 'P: silenciar o activar el sonido': 'P: mute or unmute the sound',
     'Jefe de': 'Boss of', 'MOUSE: apunta, clic dispara': 'MOUSE: aim, click fires',
     'Starship: apuntar los disparos con el mouse (clic dispara; se vuela con el teclado)': 'Starship: aim the shots with the mouse (click fires; fly with the keyboard)',
