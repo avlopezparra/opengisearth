@@ -271,6 +271,7 @@
     'F-16 — caza a reacción, rápido y nervioso': 'F-16 — jet fighter, fast and twitchy',
     'Mantén pulsado para doblar a la izquierda (A)': 'Hold to turn left (A)', 'Mantén pulsado para doblar a la derecha (D)': 'Hold to turn right (D)',
     '? Controles (K)': '? Controls (K)',
+    'Gira el teléfono: OpenStarshipEarth se juega en horizontal.': 'Turn the phone: OpenStarshipEarth is played in landscape.',
     'Retroceder varios años': 'Go back several years',
     'Avanzar varios años': 'Go forward several years',
     'Reproducir: avanza solo': 'Play: moves on by itself',
