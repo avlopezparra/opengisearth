@@ -17,7 +17,8 @@
   let on = false, paused = false, mouseCtl = false, showHud = true, A = null, s = null, last = 0;
   const WARPS = [1, 2, 5, 10, 25, 50, 100];
   let warp = 1; // turbo: multiplies the distance covered, to cross long stretches quickly
-  const setWarp = (v) => { if (on && v !== warp) sfx(v > warp ? 'warpUp' : 'warpDown'); warp = v; $('flyWarp').textContent = 'Turbo ×' + v + ' ▲ (Espacio)'; $('flyWarp').classList.toggle('active', v > 1); };
+  const setWarp = (v) => { if (typeof race !== 'undefined' && race && race.maxWarp && v > race.maxWarp) v = race.maxWarp; // a race may cap the turbo
+ if (on && v !== warp) sfx(v > warp ? 'warpUp' : 'warpDown'); warp = v; $('flyWarp').textContent = 'Turbo ×' + v + ' ▲ (Espacio)'; $('flyWarp').classList.toggle('active', v > 1); };
   const TURNS = [1, 2, 3, 5];
   let turn = +localStorage.getItem('oge.flyTurn2') || 3; // quick turns by default // multiplies how fast A/D turn
   const setTurn = (v) => { turn = v; localStorage.setItem('oge.flyTurn2', v); $('flyTurn').textContent = T('Giro') + ' ×' + v + ' (N)'; $('flyTurn').classList.toggle('active', v > 1); };
@@ -328,17 +329,20 @@
   const STEPS = [
     { text: 'Dobla a la izquierda y a la derecha con A y D.', test: (r) => turned(s.heading, r.heading) > rad(25) },
     { text: 'Sube y baja la nariz con S y W.', test: (r) => Math.abs(s.pitch - r.pitch) > rad(8) },
-    { text: 'Acelera con E y frena con Q.', test: (r) => Math.abs(s.v - r.v) > r.v * 0.3 + 30 },
+    { text: 'Pulsa E para un turbo breve y Q para detenerte (Q otra vez sigue).', test: (r) => Math.abs(s.v - r.v) > r.v * 0.3 + 30 },
+    { text: 'Espacio sube el turbo y Shift izquierdo lo baja; T te eleva un poco.', test: (r) => warp !== r.warp },
     { text: 'Ese es un enemigo: apúntale con el centro de la mira y dispara con B o clic derecho.', need: 'enemy', make: () => put('enemy'), test: (r) => score >= r.score + 100 },
     { text: 'Atraviesa el aro: da puntos y repara la nave.', need: 'ring', make: () => put('ring', 0.05), test: (r) => score >= r.score + 50 },
     { text: 'Recoge la moneda, el corazón (vida) y el escudo (absorbe un golpe).', need: 'coin', make: () => { put('coin', -0.08); put('heart'); put('shield', 0.08); }, test: (r) => coins > r.coins },
     { text: 'Los rectángulos grises son obstáculos: esquívalo.', need: 'wall', make: () => put('wall'), test: (r, age) => age > 1500 && !has('wall') },
     { text: 'Haz un tonel con R: desvía disparos y choques.', test: () => !!man && man.type === 'roll' },
+    { text: 'Rizo con X y media vuelta con F.', test: () => !!man && (man.type === 'loop' || man.type === 'uturn' || man.type === 'unroll') },
+    { text: 'Y cambia la cámara a tercera persona (y Y otra vez vuelve). Z aterriza, C despega; en tierra se maneja como un auto.', test: (r, age) => age > 7000 },
     { text: 'Lanza una bomba con V: destruye a todos los enemigos cercanos.', need: 'enemy', make: () => { bombs = Math.max(bombs, 1); put('enemy', -0.1); put('enemy'); put('enemy', 0.1); }, test: (r) => bombs < r.bombs || (r.bombs === 0 && !has('enemy')) },
     { text: 'Un jefe custodia cada capital. Este es de práctica: dispárale hasta vaciar su barra de vida.', need: 'boss', make: () => { const o = put('boss', 0, 0.05, { type: 'fortress', hp: 5, max: 5, cap: null }); o.base = C.Cartesian3.clone(o.p); o.east = viewer.camera.rightWC.clone(); o.size = Math.max(o.size, 400); }, test: (r, age) => age > 1000 && !has('boss') },
     { text: '¡Listo! Ahora colecciona banderas, derrota jefes en las capitales y suma puntos. I: ayuda · O: repetir el tutorial.', test: (r, age) => age > 6000 },
   ];
-  const snap = () => ({ heading: s.heading, pitch: s.pitch, v: s.v, score, coins, bombs, t: performance.now() });
+  const snap = () => ({ warp, heading: s.heading, pitch: s.pitch, v: s.v, score, coins, bombs, t: performance.now() });
   function tutorial(startIt) {
     if (!startIt) { tut = null; return; }
     if (!A || !A.ship) return OGE.toast('El tutorial guiado es para la OpenStarshipEarth: elígela al pulsar Volar.');
@@ -855,6 +859,7 @@
       setTimeout(() => {
         if (remote && remote.p) { mpSend({ t: 'hit', n: 25 }); booms.push({ p: remote.p, t: performance.now() }); OGE.toast(`🚀 ${T('¡Misil en el blanco!')} ${remote.name || ''}`); }
         else if (p2 && !p2.out) { p2Hurt(25); OGE.toast(`🚀 ${T('¡Misil en el blanco!')} ${T('Jugador 2')}`); }
+        else if (race && race.cpus.length && race.cpus.some((c) => c.f < 1)) { const me = myProgress(), c = race.cpus.filter((x) => x.f < 1).sort((x, y) => Math.abs(x.f - me) - Math.abs(y.f - me))[0]; c.stunT = performance.now() + 4000; OGE.toast(`🚀 ${T('¡Misil en el blanco!')} ${c.name}`); }
         else { const cam = viewer.camera.positionWC, e = objs.filter((o) => o.kind === 'enemy').sort((x, y) => C.Cartesian3.distance(x.p, cam) - C.Cartesian3.distance(y.p, cam))[0]; if (e) { objs.splice(objs.indexOf(e), 1); booms.push({ p: e.p, t: performance.now() }); score += pts(100); } }
         sfx('down');
       }, 1200);
@@ -873,7 +878,10 @@
     const last = (() => { try { return JSON.parse(localStorage.getItem('oge.raceLast')) || {}; } catch { return {}; } })();
     const v = await OGE.ask({ title: '🏁 Carrera entre ciudades', ok: 'Despegar',
       help: 'Vuela de una ciudad a otra lo más rápido que puedas. La meta se marca en la pantalla y en el minimapa; se guarda tu mejor tiempo de cada ruta.',
-      fields: [{ id: 'from', label: 'Salida', type: 'text', value: last.from || 'Santiago de Chile' }, { id: 'to', label: 'Meta', type: 'text', value: last.to || 'Valparaíso' }] });
+      fields: [{ id: 'from', label: 'Salida', type: 'text', value: last.from || 'Santiago de Chile' }, { id: 'to', label: 'Meta', type: 'text', value: last.to || 'Valparaíso' },
+        { id: 'cpus', label: 'Rivales de la CPU (si no hay otros jugadores)', type: 'select', value: String(last.cpus ?? 5), options: Array.from({ length: 13 }, (_, i) => [String(i), i ? String(i) : 'Ninguno']) },
+        { id: 'maxWarp', label: 'Turbo máximo', type: 'select', value: String(last.maxWarp ?? 100), options: WARPS.map((x) => [String(x), x === 100 ? '×100 (sin límite)' : '×' + x]) },
+        { id: 'lands', label: 'Volar solo sobre estos países (separados por comas; vacío = todos)', type: 'text', value: last.lands || '' }] });
     if (!v || !v.from || !v.to) return;
     localStorage.setItem('oge.raceLast', JSON.stringify(v));
     let a, b;
@@ -884,18 +892,65 @@
     adv = null; advShape = null;
     start('ship', true, true, true, false);
     s.heading = hd;
-    race = { key: `${v.from}|${v.to}`.toLowerCase(), from: a, to: b, t0: performance.now() };
+    race = { key: `${v.from}|${v.to}|${v.maxWarp}|${v.lands}`.toLowerCase(), from: a, to: b, t0: performance.now(), km: raceKmFrom(a, b), cpus: [], maxWarp: +v.maxWarp || 100, others: null };
+    if (warp > race.maxWarp) setWarp(race.maxWarp);
+    if (v.lands && v.lands.trim()) raceLands(v.lands); // only these countries (the sea and Antarctica stay open)
+    if (!p2 && !remote) race.cpus = Array.from({ length: +v.cpus || 0 }, (_, i) => ({ // rivals: each flies the route at its own pace
+      name: CPU_NAMES[i], color: CPU_COLORS[i], f: 0, side: ((i % 2 ? 1 : -1) * (1 + Math.floor(i / 2))) * 0.004, speed: (1200 + Math.random() * 2600) * Math.min(1, race.maxWarp / 5 + 0.2), stunT: 0, itemT: performance.now() + 8000 + Math.random() * 10000 }));
     items = []; placeBoxes(a, b);
     graceT = performance.now() + 6000;
     const best = +localStorage.getItem('oge.race.' + race.key) || 0;
     OGE.toast(`🏁 ${a.name} → ${b.name}: ${Math.round(raceKm())} km.` + (best ? ` ${T('Mejor tiempo')}: ${fmtT(best)}.` : ''));
   }
+  const CPU_NAMES = ['Cóndor', 'Halcón', 'Albatros', 'Gaviota', 'Colibrí', 'Pelícano', 'Águila', 'Petrel', 'Garza', 'Flamenco', 'Tucán', 'Búho'];
+  const CPU_COLORS = ['#ff453a', '#ff9f0a', '#ffd60a', '#34c759', '#64d2ff', '#bf5af2', '#ff375f', '#ac8e68', '#30d158', '#5e5ce6', '#ffffff', '#8e8e93'];
+  const raceKmFrom = (a, b) => C.Cartesian3.distance(C.Cartesian3.fromDegrees(a.lon, a.lat, 0), C.Cartesian3.fromDegrees(b.lon, b.lat, 0)) / 1000;
+  const cpuPos = (c) => { // along the straight route, a little to one side, 1.5 km over the ground
+    const a = race.from, b = race.to, f = Math.min(1, c.f), lon = a.lon + (b.lon - a.lon) * f, lat = a.lat + (b.lat - a.lat) * f, L = Math.hypot(b.lat - a.lat, (b.lon - a.lon) * Math.cos(rad(lat))) || 1;
+    const x = lon + (c.side * (b.lat - a.lat)) / L / Math.cos(rad(lat)), y = lat - (c.side * (b.lon - a.lon) * Math.cos(rad(lat))) / L;
+    return C.Cartesian3.fromDegrees(x, y, (scene.globe.getHeight(C.Cartographic.fromDegrees(x, y)) || 0) + 1500);
+  };
+  const myProgress = () => Math.max(0, 1 - raceKm() / race.km);
+  async function raceLands(list) { // the countries named (by name or ISO code) are allowed; any other one turns the ship back, as in the adventure
+    try {
+      const [s2, d2] = await Promise.all([fetch(NE + '50m_cultural/ne_50m_admin_0_countries.shp').then((r) => r.arrayBuffer()), fetch(NE + '50m_cultural/ne_50m_admin_0_countries.dbf').then((r) => r.arrayBuffer())]);
+      const all = shp.combine([shp.parseShp(s2), shp.parseDbf(d2)]).features, cl = (v) => String(v ?? '').replace(/\0/g, '').trim().toLowerCase();
+      const want = list.split(',').map((x) => x.trim().toLowerCase()).filter(Boolean), ok = (f) => { const p = f.properties; return want.some((w) => [p.ADM0_A3, p.ISO_A3, p.ISO_A2, p.NAME, p.NAME_ES, p.NAME_EN, p.ADMIN].some((x) => cl(x) === w)); };
+      if (!all.some(ok)) return OGE.toast(T('No reconocí esos países: la carrera no tiene límites.'), true);
+      if (race) race.others = all.filter((f) => f.geometry && !ok(f) && cl(f.properties.ADM0_A3) !== 'ata').map((f) => ({ f, box: turf.bbox(f) }));
+    } catch { /* without the map of countries the race has no limits */ }
+  }
+  function borderStep(st, others) { // shared by the adventure and the races: inside a forbidden country, back to the last free point and turned around
+    const now = performance.now();
+    if (!others || now - (st.checkT || 0) < 150) return;
+    st.checkT = now;
+    const here = [C.Math.toDegrees(s.lon), C.Math.toDegrees(s.lat)], inside = others.find((o) => here[0] >= o.box[0] && here[0] <= o.box[2] && here[1] >= o.box[1] && here[1] <= o.box[3] && turf.booleanPointInPolygon(here, o.f));
+    if (!inside) { st.safe = [s.lon, s.lat]; return; }
+    if (st.safe) { s.lon = st.safe[0]; s.lat = st.safe[1]; }
+    s.heading = C.Math.zeroToTwoPi(s.heading + Math.PI); boost = null;
+    if (now - (st.warned || 0) > 2500) { st.warned = now; OGE.toast(`${T('No puedes entrar en otro país en esta etapa')}: ${String(inside.f.properties.NAME_ES || inside.f.properties.NAME).replace(/\0/g, '').trim()}`); sfx('shieldBreak'); }
+  }
+  function cpuStep(dt) {
+    const now = performance.now(), me = myProgress();
+    for (const c of race.cpus) {
+      if (c.f >= 1) continue;
+      const pace = now < c.stunT ? 0.15 : 1, rubber = me > c.f + 0.15 ? 1.25 : me < c.f - 0.15 ? 0.85 : 1; // hit by a missile it crawls; a little rubber band keeps the race close
+      c.f += (c.speed * pace * rubber * dt) / (race.km * 1000);
+      if (now > c.itemT) { // now and then a rival close behind fires at the player
+        c.itemT = now + 10000 + Math.random() * 12000;
+        if (c.f < me && me - c.f < 0.08 && now > graceT) { OGE.toast(`${c.name} ${T('te lanzó un misil')}`); hurt(10); }
+      }
+    }
+  }
   function raceStep() {
+    if (race.cpus.length) cpuStep(1 / 60);
+    if (race.others) borderStep(race, race.others);
     if (raceKm() > Math.max(3, (s.v * warp * 0.06) / 1000)) return; // within 3 km, or a couple of frames at high speed
     const ms = performance.now() - race.t0, key = 'oge.race.' + race.key, best = +localStorage.getItem(key) || 0, rec = !best || ms < best;
     if (rec) localStorage.setItem(key, String(Math.round(ms)));
     score += pts(1000);
-    OGE.toast(`🏁 ${T('¡Llegaste a')} ${race.to.name}! ${T('Tiempo')}: ${fmtT(ms)}` + (rec ? ` · ${T('¡Nuevo récord!')}` : ` · ${T('Mejor tiempo')}: ${fmtT(best)}`));
+    const place = race.cpus.length ? 1 + race.cpus.filter((c) => c.f >= 1).length : 0;
+    OGE.toast(`🏁 ${T('¡Llegaste a')} ${race.to.name}! ${T('Tiempo')}: ${fmtT(ms)}` + (place ? ` · ${T('Puesto')} ${place}/${race.cpus.length + 1}` : '') + (rec ? ` · ${T('¡Nuevo récord!')}` : ` · ${T('Mejor tiempo')}: ${fmtT(best)}`));
     sfx('achieve');
     race = null;
     setTimeout(() => { if (on) stop(); }, 3000);
@@ -906,7 +961,16 @@
     if (q && ahead && new C.EllipsoidalOccluder(C.Ellipsoid.WGS84, viewer.camera.positionWC).isPointVisible(race.to.p)) { g.save(); g.font = '28px sans-serif'; g.textAlign = 'center'; g.fillText('🏁', q.x, q.y); g.fillStyle = '#fff'; g.font = '600 12px sans-serif'; g.fillText(race.to.name, q.x, q.y + 18); g.restore(); }
     const c = viewer.camera.positionCartographic, rel = bearing({ lon: deg(c.longitude), lat: deg(c.latitude) }, race.to) - viewer.camera.heading;
     g.save(); g.translate(w / 2, 70); g.rotate(rel); g.fillStyle = g.shadowColor = '#34c759'; g.shadowBlur = 10; g.beginPath(); g.moveTo(0, -16); g.lineTo(11, 10); g.lineTo(0, 4); g.lineTo(-11, 10); g.closePath(); g.fill(); g.restore();
-    text(`🏁 ${race.to.name} · ${raceKm().toFixed(1)} km · ${fmtT(performance.now() - race.t0)}`, 24, 156, 14, 'left');
+    const me = myProgress(), place = 1 + race.cpus.filter((c) => c.f > me).length;
+    text(`🏁 ${race.to.name} · ${raceKm().toFixed(1)} km · ${fmtT(performance.now() - race.t0)}` + (race.cpus.length ? ` · ${T('Puesto')} ${place}/${race.cpus.length + 1}` : ''), 24, 156, 14, 'left');
+    const occ = new C.EllipsoidalOccluder(C.Ellipsoid.WGS84, viewer.camera.positionWC);
+    for (const c of race.cpus) { // the rivals, as ships in their colors with their names
+      const p = cpuPos(c), d = C.Cartesian3.distance(p, viewer.camera.positionWC);
+      if (d > 6e4 || !occ.isPointVisible(p) || C.Cartesian3.dot(C.Cartesian3.subtract(p, viewer.camera.positionWC, new C.Cartesian3()), viewer.camera.directionWC) < 0) continue;
+      const q = toWin(scene, p); if (!q) continue;
+      const R = clamp(2.4e5 / d, 8, 40); shipBack(q.x, q.y, R, c.color, Math.sin(performance.now() / 700 + c.side * 900) * 0.2, c.stunT > performance.now() ? performance.now() : 0);
+      g.save(); g.fillStyle = c.color; g.textAlign = 'center'; g.font = '600 11px sans-serif'; g.fillText(c.name, q.x, q.y + R + 12); g.restore();
+    }
     text(`${T('OBJETOS')} (U): ` + [0, 1, 2].map((i) => (items[i] ? `[${ITEMS[items[i]][0]} ${T(ITEMS[items[i]][1])}]` : '[ ]')).join(' '), 24, 176, 14, 'left'); // three slots, the first is used next
   }
 
@@ -949,18 +1013,7 @@
   function advStep() {
     if (!adv) return;
     const here = [C.Math.toDegrees(s.lon), C.Math.toDegrees(s.lat)];
-    // the sea, its islands (Easter Island…) and Antarctica are free: only the other countries are off limits; flying into one turns the ship back
-    const now = performance.now();
-    if (advOthers && now - (adv.checkT || 0) > 150) {
-      adv.checkT = now;
-      const inside = advOthers.find((o) => here[0] >= o.box[0] && here[0] <= o.box[2] && here[1] >= o.box[1] && here[1] <= o.box[3] && turf.booleanPointInPolygon(here, o.f));
-      if (!inside) adv.safe = [s.lon, s.lat];
-      else {
-        if (adv.safe) { s.lon = adv.safe[0]; s.lat = adv.safe[1]; } // back to the last free point
-        s.heading = C.Math.zeroToTwoPi(s.heading + Math.PI); boost = null; // and facing the way it came
-        if (now - (adv.warned || 0) > 2500) { adv.warned = now; OGE.toast(`${T('No puedes entrar en otro país en esta etapa')}: ${String(inside.f.properties.NAME_ES || inside.f.properties.NAME).replace(/\0/g, '').trim()}`); sfx('shieldBreak'); }
-      }
-    }
+    borderStep(adv, advOthers); // the sea, its islands (Easter Island…) and Antarctica are free: only the other countries are off limits
     if (!regs) return; // the flags of the stage are still loading
     const mine = regs.filter((r) => r.a3 === adv.a3), left = mine.filter((r) => !gotReg.has(r.id)).length;
     adv.left = left;
@@ -1421,7 +1474,8 @@
     line(jx - js, jy + js + 8, jx + js, jy + js + 8); g.fillRect(jx + s.rud * js - 3, jy + js + 4, 6, 8);
     text(T(aimMouse ? 'MOUSE: apunta, clic dispara' : mouseCtl ? 'MOUSE: clic suelta la palanca' : 'TECLADO: clic para volar con el mouse'), cx, h - 22, 12);
     text(A.name.split(' — ')[0], w - 24, h - 22, 12, 'right');
-    if ($('flyBtns').classList.contains('keyboard')) text(T('K: ver los controles'), w - 24, h - 40, 12, 'right'); // with a keyboard there are no buttons: this is the reminder
+    if ($('flyBtns').classList.contains('keyboard')) text(T('K: ver los controles'), w - 24, h - 40, 12, 'right');
+    if (third && A.ship) text(T('Cámara en tercera persona · Y: volver a primera persona'), w - 24, h - 58, 12, 'right'); // with a keyboard there are no buttons: this is the reminder
   }
 
   scene.preRender.addEventListener(() => {
@@ -1460,7 +1514,7 @@
     stick.x = clamp((e.clientX - b.left - b.width / 2) / (b.width * 0.3), -1, 1);
     stick.y = clamp((e.clientY - b.top - b.height / 2) / (b.height * 0.3), -1, 1);
   });
-  hud.addEventListener('click', () => { if (aimMouse) return fire(); mouseCtl = !mouseCtl; stick.x = stick.y = 0; });
+  hud.addEventListener('click', () => { if (race && A && A.ship && items.length) return useItem(); if (aimMouse) return fire(); mouseCtl = !mouseCtl; stick.x = stick.y = 0; });
   hud.addEventListener('contextmenu', (e) => e.preventDefault());
   hud.addEventListener('mousedown', (e) => { if (e.button === 2) fire(); }); // right button: fires even where the context menu event is suppressed
   document.addEventListener('keydown', (e) => {
