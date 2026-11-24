@@ -92,6 +92,10 @@
     for (const f of shp.combine([shp.parseShp(ds), shp.parseDbf(dd)]).features) { // Crimea and the other areas claimed by Ukraine, in Ukraine's color (painted over the rest)
       const p = f.properties;
       const pc = OGE.povClaims;
+      if (f.geometry && OGE.pov === 'RU' && ['Abkhazia', 'South Ossetia'].includes(clean(p.BRK_NAME))) { // their own country color from Russia: one not used by Georgia or Russia
+        const busy = [idx.get('GEO'), idx.get('RUS'), ...out.filter((x) => x[2] === 'cauc').map((x) => x[1])];
+        out.push([f.geometry, TINTS.findIndex((_, c) => !busy.some((b) => b === c || NEAR[b]?.[c])), 'cauc']); continue;
+      }
       if (f.geometry && pc && pc[1].includes(clean(p.BRK_NAME)) && idx.has(pc[0])) { out.push([f.geometry, idx.get(pc[0])]); continue; } // claimed from this point of view
       if (f.geometry && OGE.pov !== 'RU' && idx.has('UKR') && /Ukrain/i.test(clean(p.NOTE_BRK) + ' ' + clean(p.BRK_NAME) + ' ' + clean(p.NAME))) out.push([f.geometry, idx.get('UKR')]);
     }

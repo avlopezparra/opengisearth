@@ -70,6 +70,8 @@
       if (p.LABEL_X != null) labels.put(p.LABEL_X, p.LABEL_Y, flk ? 'Islas Malvinas' + (OGE.pov === 'AR' ? ' (Argentina)' : '') : OGE.taiwanCN && clean(p.ADM0_A3) === 'TWN' ? (OGE_LANG === 'en' ? 'Taiwan (China)' : 'Taiwán (China)') : OGE.malvinasAR && clean(p.ADM0_A3) === 'SGS' ? 'Islas Georgias del Sur' + (OGE.pov === 'AR' ? ' (Argentina)' : '') : clean(OGE_LANG === 'en' ? p.NAME_EN : p.NAME_ES) || clean(p.NAME), 1.5e5, 2.2e7 / Math.max(1, (p.LABELRANK || 5) - 1),
         { oge: /country/i.test(clean(p.TYPE)) ? 'country' : 'region', q: clean(p.WIKIDATAID), a3: clean(p.ADM0_A3), name: clean(OGE_LANG === 'en' ? p.NAME_EN : p.NAME_ES) || clean(p.NAME) }); // a click shows the country's data (a region's card for dependencies)
     }
+    if (OGE.pov === 'RU') for (const [lon, lat, es, en, q] of [[41.0, 43.05, 'Abjasia', 'Abkhazia', 'Q23334'], [44.0, 42.35, 'Osetia del Sur', 'South Ossetia', 'Q23427']]) // countries from Russia's point of view
+      labels.put(lon, lat, OGE_LANG === 'en' ? en : es, 1.5e5, 2.2e7 / 6, { oge: 'country', q, a3: '', name: OGE_LANG === 'en' ? en : es });
     return labels;
   }, 'los nombres de países');
 
