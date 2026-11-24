@@ -100,3 +100,8 @@ dialog [hidden] { display: none; }
   #right { top: 8px; left: 8px; right: 8px; width: auto; z-index: 4; }
   #statusbar { font-size: 10px; }
 }
+
+/* Flight buttons: only while flying, above the HUD canvas */
+#flyBtns { display: none; position: absolute; right: 12px; bottom: 60px; z-index: 4; flex-direction: column; gap: 8px; }
+body.flying #flyBtns { display: flex; }
+#flyBtns button { padding: 10px 14px; font-size: 14px; opacity: .85; touch-action: none; user-select: none; }

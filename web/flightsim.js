@@ -15,6 +15,9 @@
   };
   const hud = $('hud'), g = hud.getContext('2d');
   let on = false, paused = false, mouseCtl = false, showHud = true, A = null, s = null, last = 0;
+  const WARPS = [1, 2, 5, 10, 25];
+  let warp = 1; // turbo: multiplies the distance covered, to cross long stretches quickly
+  const setWarp = (v) => { warp = v; $('flyWarp').textContent = 'Turbo ×' + v; $('flyWarp').classList.toggle('active', v > 1); };
   const keys = new Set(), stick = { x: 0, y: 0 };
 
   // ---------- Starship lasers: bolts on the HUD, a flash where the aim hits the ground, and a short sound ----------
@@ -52,6 +55,7 @@
     const ground = scene.globe.getHeight(c) || 0;
     s = { lon: c.longitude, lat: c.latitude, alt: ground + A.agl, heading: viewer.camera.heading, pitch: 0, roll: 0, v: A.v0, vs: 0,
       throttle: 0.7, flaps: 0, gear: false, brake: false, ail: 0, elev: 0, rud: 0, trim: 0, ground: false, agl: A.agl };
+    setWarp(1);
     on = true; paused = false; mouseCtl = !!useMouse; stick.x = stick.y = 0; keys.clear(); last = performance.now();
     if (OGE.activate) OGE.activate(null);
     if (OGE.setEdit) OGE.setEdit(false);
@@ -108,7 +112,7 @@
       s.pitch = clamp(s.pitch, rad(-89), rad(89));
       s.v = clamp(s.v + (s.throttle * A.thrust - drag - grav * Math.sin(s.pitch)) * dt, 0, A.vMax * 1.3);
       s.vs = s.v * Math.sin(s.pitch);
-      s.alt += s.vs * dt;
+      s.alt += s.vs * dt * warp;
       if (A.ship && s.alt <= ground + 30) { s.alt = ground + 30; s.pitch = Math.max(s.pitch, rad(2)); } // the starship skims the ground
       else if (s.alt <= ground + GEAR_H) { // soft touchdown with the gear down, or crash
         if (!(s.gear && s.vs > -4 && Math.abs(s.roll) < rad(12) && s.pitch > rad(-6))) {
@@ -117,7 +121,7 @@
         s.ground = true; s.alt = ground + GEAR_H; s.pitch = Math.max(0, s.pitch);
       }
     }
-    const horiz = s.v * Math.cos(s.pitch) * dt;
+    const horiz = s.v * Math.cos(s.pitch) * dt * warp;
     s.lat = clamp(s.lat + (horiz * Math.cos(s.heading)) / R, rad(-89), rad(89));
     s.lon = C.Math.negativePiToPi(s.lon + (horiz * Math.sin(s.heading)) / (R * Math.cos(s.lat)));
     s.heading = C.Math.zeroToTwoPi(s.heading);
@@ -230,11 +234,19 @@
     else if (k === 'f' || k === ']' || k === '[') s.flaps = clamp(s.flaps + (e.shiftKey || k === '[' ? -1 : 1), 0, 2);
     else if (k === 'c') { stick.x = stick.y = 0; s.trim = 0; }
     else if (k === 'x') fire();
+    else if (k === 't') nextWarp();
     else keys.add(k);
     e.preventDefault(); e.stopPropagation();
   }, true);
   document.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()), true);
   window.addEventListener('blur', () => keys.clear());
+  const nextWarp = () => setWarp(WARPS[(WARPS.indexOf(warp) + 1) % WARPS.length]);
+  $('flyWarp').onclick = nextWarp;
+  for (const [id, key] of [['flyUp', 'pageup'], ['flyDown', 'pagedown']]) { // held down like the keys
+    const b = $(id);
+    b.addEventListener('pointerdown', (e) => { e.preventDefault(); keys.add(key); });
+    for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => keys.delete(key));
+  }
   $('flyBtn').onclick = open;
   OGE.flight = { start, stop, state: () => s, flying: () => on };
 })();
