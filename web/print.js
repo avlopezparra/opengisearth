@@ -26,8 +26,42 @@
     return new Blob(parts, { type: 'application/pdf' });
   }
 
-  // ---------- Composition: title, map (the current view), north arrow, scale, legend and footer ----------
-  function compose(v) {
+  // ---------- Area: the user drags a rectangle over the map; resolves to { x, y, w, h } in CSS pixels of the globe, or null ----------
+  function pickRect() {
+    return new Promise((done) => {
+      const host = $('main'), veil = Object.assign(document.createElement('div'), { style: 'position:absolute;inset:0;z-index:10;cursor:crosshair;touch-action:none' });
+      const band = Object.assign(document.createElement('div'), { style: 'position:absolute;border:2px dashed #ffd60a;background:rgba(255,214,10,.15);display:none' });
+      let x0 = 0, y0 = 0, r = null;
+      const end = (res) => { veil.remove(); document.removeEventListener('keydown', esc, true); OGE.hint(''); done(res); };
+      const esc = (e) => { if (e.key === 'Escape') { e.stopPropagation(); end(null); } };
+      const at = (e) => { const b = veil.getBoundingClientRect(); return [e.clientX - b.left, e.clientY - b.top]; };
+      veil.onpointerdown = (e) => { [x0, y0] = at(e); veil.setPointerCapture(e.pointerId); band.style.display = 'block'; veil.onpointermove(e); };
+      veil.onpointermove = (e) => {
+        if (band.style.display === 'none') return;
+        const [x, y] = at(e);
+        r = { x: Math.min(x0, x), y: Math.min(y0, y), w: Math.abs(x - x0), h: Math.abs(y - y0) };
+        Object.assign(band.style, { left: r.x + 'px', top: r.y + 'px', width: r.w + 'px', height: r.h + 'px' });
+      };
+      veil.onpointerup = () => end(r && r.w > 10 && r.h > 10 ? r : null);
+      veil.append(band); host.append(veil);
+      document.addEventListener('keydown', esc, true);
+      OGE.hint('Arrastra un rectángulo sobre el mapa para marcar el área; Esc cancela.');
+    });
+  }
+  // Extent [w, s, e, n] of a screen rectangle, sampling its border on the globe.
+  function rectBbox(r) {
+    const lls = [];
+    for (let i = 0; i <= 8; i++) for (let j = 0; j <= 8; j++) {
+      if (i % 8 && j % 8) continue; // border only
+      const p = viewer.camera.pickEllipsoid(new C.Cartesian2(r.x + (r.w * i) / 8, r.y + (r.h * j) / 8));
+      if (p) lls.push(geo.toLL(p));
+    }
+    if (lls.length < 4) return null;
+    return [Math.min(...lls.map((c) => c[0])), Math.min(...lls.map((c) => c[1])), Math.max(...lls.map((c) => c[0])), Math.max(...lls.map((c) => c[1]))];
+  }
+
+  // ---------- Composition: title, map (the current view or the chosen area), north arrow, scale, legend and footer ----------
+  function compose(v, rect) {
     const DPI = 150, mm = DPI / 25.4;
     let [pw, ph] = PAPER[v.paper];
     if (v.orient === 'v') [pw, ph] = [ph, pw];
@@ -39,8 +73,14 @@
     if (v.sub) { g.font = `${4 * mm}px sans-serif`; g.fillStyle = '#444'; g.fillText(v.sub, m, 20 * mm); }
     // map: centered crop of the view with the frame's aspect ratio
     viewer.render();
-    const src = viewer.scene.canvas, k = Math.max(fw / src.width, fh / src.height), sw = fw / k, sh = fh / k;
-    g.drawImage(src, (src.width - sw) / 2, (src.height - sh) / 2, sw, sh, fx, fy, fw, fh);
+    const src = viewer.scene.canvas, px = src.width / src.clientWidth; // device pixels per CSS pixel
+    let k, sx, sy, sw, sh;
+    if (rect) { // the chosen area, widened on one axis to the frame's aspect ratio so that all of it fits
+      k = Math.min(fw / (rect.w * px), fh / (rect.h * px)); sw = fw / k; sh = fh / k;
+      sx = (rect.x + rect.w / 2) * px - sw / 2; sy = (rect.y + rect.h / 2) * px - sh / 2;
+    } else { k = Math.max(fw / src.width, fh / src.height); sw = fw / k; sh = fh / k; sx = (src.width - sw) / 2; sy = (src.height - sh) / 2; }
+    g.fillStyle = '#000'; g.fillRect(fx, fy, fw, fh); g.fillStyle = '#111'; // outside the globe view
+    g.drawImage(src, sx, sy, sw, sh, fx, fy, fw, fh);
     g.strokeStyle = '#111'; g.lineWidth = 0.4 * mm; g.strokeRect(fx, fy, fw, fh);
     const box = (x, y, w, h) => { g.fillStyle = 'rgba(255,255,255,.88)'; g.fillRect(x, y, w, h); g.strokeStyle = '#111'; g.lineWidth = 0.25 * mm; g.strokeRect(x, y, w, h); g.fillStyle = '#111'; };
     if (v.north) { // the arrow rotates with the camera heading
@@ -77,8 +117,8 @@
 
   // ---------- Vector map in SVG: the visible layers within the view, in equirectangular projection ----------
   // data-bounds stores the extent so it can be re-imported georeferenced (here or in another editor).
-  function svgMap(title, graticule) {
-    const b = OGE.viewBbox();
+  function svgMap(title, graticule, rect) {
+    const b = rect ? rectBbox(rect) : OGE.viewBbox();
     if (!b) throw new Error('no se pudo determinar la zona visible');
     const [w, s, e, n] = b, Wp = 1200, Hp = Math.round((Wp * (n - s)) / ((e - w) * Math.cos((((s + n) / 2) * Math.PI) / 180)));
     const X = (lon) => (((lon - w) / (e - w)) * Wp).toFixed(2), Y = (lat) => (((n - lat) / (n - s)) * Hp).toFixed(2);
@@ -109,15 +149,18 @@
   async function layout() {
     const v = await OGE.ask({ title: 'Diseño de impresión', ok: 'Crear', help: 'Compone la vista actual del mapa en una hoja. El SVG es vectorial: lleva las capas visibles (sin la imagen satelital) y se puede abrir en Inkscape.',
       fields: [{ id: 'title', label: 'Título', value: T('Mapa') }, { id: 'sub', label: 'Subtítulo' },
+        { id: 'area', label: 'Área del mapa', type: 'select', options: [['view', 'La vista actual'], ['rect', 'Marcar un rectángulo en el mapa']] },
         { id: 'fmt', label: 'Formato', type: 'select', options: [['pdf', 'PDF'], ['png', 'PNG (imagen)'], ['svg', 'SVG vectorial (solo capas)']] },
         { id: 'paper', label: 'Papel (PDF/PNG)', type: 'select', options: Object.keys(PAPER) }, { id: 'orient', label: 'Orientación', type: 'select', options: [['h', 'Horizontal'], ['v', 'Vertical']] },
         { id: 'legend', label: 'Leyenda de capas', type: 'checkbox', value: true }, { id: 'scale', label: 'Barra de escala', type: 'checkbox', value: true },
         { id: 'north', label: 'Flecha de norte', type: 'checkbox', value: true }, { id: 'grat', label: 'Meridianos y paralelos (SVG)', type: 'checkbox', value: true }] });
     if (!v) return;
+    const rect = v.area === 'rect' ? await pickRect() : null;
+    if (v.area === 'rect' && !rect) return OGE.toast('Mapa cancelado: no se marcó un área.');
     const name = (v.title || 'mapa').replace(/[\\/:*?"<>|]+/g, '_');
     try {
-      if (v.fmt === 'svg') return OGE.download(name + '.svg', svgMap(v.title, v.grat), 'image/svg+xml');
-      const { cv, wPt, hPt } = compose(v);
+      if (v.fmt === 'svg') return OGE.download(name + '.svg', svgMap(v.title, v.grat, rect), 'image/svg+xml');
+      const { cv, wPt, hPt } = compose(v, rect);
       const blob = await new Promise((r) => cv.toBlob(r, v.fmt === 'png' ? 'image/png' : 'image/jpeg', 0.92));
       OGE.download(name + '.' + v.fmt, v.fmt === 'png' ? blob : pdf(new Uint8Array(await blob.arrayBuffer()), cv.width, cv.height, wPt.toFixed(1), hPt.toFixed(1)));
     } catch (e) { OGE.toast('No se pudo crear el mapa: ' + e.message, true); }
