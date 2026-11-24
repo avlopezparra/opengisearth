@@ -52,8 +52,9 @@
       else if (ang < Math.atan((o.size * 1.5) / d) + rad(1.2) && ang < bestAng) { best = o; bestAng = ang; }
     }
     if (!best) best = bossHit; // shots at the enemies around a boss go to those enemies, not to the boss
+    const occ = new C.EllipsoidalOccluder(C.Ellipsoid.WGS84, cam.positionWC);
     if (!best && $('layerSats').checked) for (const sat of OGE.satellites()) { // a satellite hit gives life back and disappears until the page is reloaded
-      if (!sat.p || OGE.satHidden.has(sat.name)) continue;
+      if (!sat.p || OGE.satHidden.has(sat.name) || !occ.isPointVisible(sat.p)) continue; // the Earth in between stops the laser
       C.Cartesian3.subtract(sat.p, cam.positionWC, to);
       const d = C.Cartesian3.magnitude(to);
       if (Math.acos(clamp(C.Cartesian3.dot(to, ray.direction) / d, -1, 1)) < rad(1.5)) { OGE.satHidden.add(sat.name); hp = Math.min(maxHp, hp + 25); sfx('heart'); booms.push({ p: sat.p, t: performance.now() }); OGE.toast(`🛰 ${sat.name}: +25 ${T('de vida')}`); return; }
@@ -457,9 +458,10 @@
             else if (now - (o.squeeze || 0) > 600) { o.squeeze = now; hurt(6); }
           }
         } else {
-          const p = C.Cartesian3.clone(o.base); // a slow bob and drift for everyone; snakes and dragons weave wider
-          C.Cartesian3.add(p, C.Cartesian3.multiplyByScalar(up, Math.sin(now / 900) * 400, t), p);
-          C.Cartesian3.add(p, C.Cartesian3.multiplyByScalar(o.east, Math.sin(now / 1300) * (sw || 600), t), p);
+          const p = C.Cartesian3.clone(o.base), north = C.Cartesian3.cross(up, o.east, new C.Cartesian3()), wide = Math.max(2500, (sw || 0) * 1.6); // they roam around their post
+          C.Cartesian3.add(p, C.Cartesian3.multiplyByScalar(up, Math.sin(now / 1700) * 900, t), p);
+          C.Cartesian3.add(p, C.Cartesian3.multiplyByScalar(o.east, Math.sin(now / 2300) * wide, t), p);
+          C.Cartesian3.add(p, C.Cartesian3.multiplyByScalar(north, Math.sin(now / 1150) * wide * 0.6, t), p); // a slow figure eight
           C.Cartesian3.clone(p, o.p);
         }
         if (B.spawns && now > (o.spawnT || 0) && escortsUp(o) < 3) { // the hive launches an escort near itself
@@ -516,7 +518,7 @@
       if (boss) o.spat = now;
       for (let i = 0; i < n; i++) {
         const spread = o.rage ? 0.18 : panels ? 0.09 : 0.05, aim = C.Cartesian3.add(target, C.Cartesian3.multiplyByScalar(o.rage && i % 2 ? cam.upWC : cam.rightWC, (i - (n - 1) / 2) * d * spread, new C.Cartesian3()), new C.Cartesian3());
-        incoming.push({ p: C.Cartesian3.clone(o.p), vel: C.Cartesian3.multiplyByScalar(C.Cartesian3.subtract(aim, o.p, t), 1 / tt, new C.Cartesian3()), t: now, color: boss ? BOSSES[o.type].color : '#ff2df5', panel: panels, spin: Math.random() * 6 });
+        incoming.push({ p: C.Cartesian3.clone(o.p), vel: C.Cartesian3.multiplyByScalar(C.Cartesian3.subtract(aim, o.p, t), 1 / tt, new C.Cartesian3()), t: now, color: boss ? BOSSES[o.type].color : '#ff2df5', panel: panels, fire: boss && o.type === 'dragon', spin: Math.random() * 6 });
       }
     }
     incoming = incoming.filter((b) => {
@@ -599,6 +601,7 @@
       const q = toWin(scene, b.p);
       if (!q) continue;
       const br = Math.max(3, (60 / C.Cartesian3.distance(b.p, viewer.camera.positionWC)) * f);
+      if (b.fire) { const r = br * 2.4, gr = g.createRadialGradient(q.x, q.y, 0, q.x, q.y, r); gr.addColorStop(0, '#fff6c0'); gr.addColorStop(0.35, '#ffb300'); gr.addColorStop(0.75, '#ff3d00'); gr.addColorStop(1, 'rgba(255,61,0,0)'); g.save(); g.fillStyle = gr; g.beginPath(); g.arc(q.x, q.y, r, 0, 7); g.fill(); g.fillStyle = 'rgba(255,120,0,.35)'; for (let k = 1; k < 4; k++) { g.beginPath(); g.arc(q.x + Math.sin(b.spin + k) * r * 0.4, q.y + k * r * 0.45, r * (0.7 - k * 0.15), 0, 7); g.fill(); } g.restore(); continue; } // a fireball with a flaming tail
       if (b.panel) { const a = b.spin + performance.now() / 150, sq = Math.abs(Math.cos(a * 0.7)); g.save(); g.translate(q.x, q.y); g.rotate(a); g.fillStyle = '#d7dde5'; g.fillRect(-br * 2, -br * 1.3 * sq, br * 4, br * 2.6 * sq); g.strokeStyle = '#ff7a1a'; g.lineWidth = Math.max(1.5, br * 0.35); g.strokeRect(-br * 2, -br * 1.3 * sq, br * 4, br * 2.6 * sq); g.restore(); continue; } // a tumbling panel
       g.save(); g.fillStyle = g.shadowColor = b.color || '#ff2df5'; g.shadowBlur = 10; g.beginPath(); g.arc(q.x, q.y, br, 0, 7); g.fill(); g.restore();
     }
@@ -1303,8 +1306,9 @@
     if (paused) text(T('PAUSA — Espacio para seguir'), cx, cy - r - 46, 16);
     else if (s.ground) text(T('EN TIERRA'), cx, cy - r - 46, 16);
     else if (s.v < A.vStall * (1 - 0.1 * s.flaps)) text(T('PÉRDIDA — baja la nariz y da gas'), cx, cy - r - 46, 16);
+    const satOcc = new C.EllipsoidalOccluder(C.Ellipsoid.WGS84, viewer.camera.positionWC); // behind the Earth: not drawn
     if ($('layerSats').checked) for (const sat of OGE.satellites()) { // live satellites, as bright moving dots when they are in view
-      if (!sat.p || OGE.satHidden.has(sat.name) || C.Cartesian3.distance(sat.p, viewer.camera.positionWC) > 2.5e6) continue; // only the satellites near the ship, and not the ones shot down
+      if (!sat.p || OGE.satHidden.has(sat.name) || C.Cartesian3.distance(sat.p, viewer.camera.positionWC) > 2.5e6 || !satOcc.isPointVisible(sat.p)) continue; // only the satellites near the ship, and not the ones shot down
       const q = (C.SceneTransforms.worldToWindowCoordinates || C.SceneTransforms.wgs84ToWindowCoordinates)(scene, sat.p);
       if (!q || q.x < 0 || q.y < 0 || q.x > w || q.y > h) continue;
       const sd = C.Cartesian3.distance(sat.p, viewer.camera.positionWC), iss = /ISS|ZARYA/.test(sat.name);
