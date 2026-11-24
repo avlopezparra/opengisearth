@@ -33,6 +33,27 @@
     layer.alpha = 0.45;
     return layer;
   }
+  function lineLayer(lines, color, width = 1.2) { // lines: arrays of [lon, lat]; drawn per tile like fillLayer
+    const scheme = new C.GeographicTilingScheme(), TS = 256, deg = C.Math.toDegrees;
+    const ls = lines.filter((p) => p.length > 1).map((p) => ({ p, box: turf.bbox({ type: 'LineString', coordinates: p }) }));
+    return viewer.imageryLayers.addImageryProvider({
+      tilingScheme: scheme, rectangle: scheme.rectangle, tileWidth: TS, tileHeight: TS, minimumLevel: 0, maximumLevel: 14,
+      hasAlphaChannel: true, errorEvent: new C.Event(), credit: undefined, tileDiscardPolicy: undefined, proxy: undefined,
+      getTileCredits: () => undefined, pickFeatures: () => undefined,
+      requestImage(x, y, level) {
+        const cv = document.createElement('canvas'), ctx = cv.getContext('2d'), r = scheme.tileXYToRectangle(x, y, level);
+        cv.width = cv.height = TS;
+        const w = deg(r.west), e = deg(r.east), s = deg(r.south), n = deg(r.north), kx = TS / (e - w), ky = TS / (n - s);
+        ctx.strokeStyle = color; ctx.lineWidth = width; ctx.lineJoin = 'round'; ctx.beginPath();
+        for (const { p, box } of ls) {
+          if (box[0] > e || box[2] < w || box[1] > n || box[3] < s) continue;
+          p.forEach((c, i) => (i ? ctx.lineTo((c[0] - w) * kx, (n - c[1]) * ky) : ctx.moveTo((c[0] - w) * kx, (n - c[1]) * ky)));
+        }
+        ctx.stroke();
+        return Promise.resolve(cv);
+      },
+    });
+  }
   // Greedy coloring: each territory takes the color least used by the earlier ones whose bounding box touches its own,
   // so neighbors differ wherever the palette allows.
   const rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)), NEAR = TINTS.map((x) => TINTS.map((y) => Math.hypot(...rgb(x).map((v, k) => v - rgb(y)[k])) < 80));
@@ -238,7 +259,7 @@
         for (const c of (capital ? await placeData() : [...await placeData(), ...await moreData()]).filter((x) => x.capital === capital)) {
           const far = capital ? 2.5e7 : c.rank <= 1 ? 2e7 : c.rank <= 4 ? 9e6 : c.rank <= 7 ? 3e6 : 1.2e6; // smaller towns appear as one zooms in
           const common = { position: C.Cartesian3.fromDegrees(c.lon, c.lat), disableDepthTestDistance: Number.POSITIVE_INFINITY, id: { oge: 'place', q: c.q, name: c.name, capital } };
-          bills.add({ ...common, scale: capital ? 0.32 : 0.4, image, distanceDisplayCondition: new C.DistanceDisplayCondition(0, far) });
+          bills.add({ ...common, scale: capital ? 0.32 : 0.4, image, distanceDisplayCondition: new C.DistanceDisplayCondition(0, capital ? 7e6 : far) });
           bills.add({ ...common, scale: 0.5, image: OGE.textImage(c.name, '600 12px sans-serif', C.Color.WHITE), pixelOffset: new C.Cartesian2(0, 15), distanceDisplayCondition: new C.DistanceDisplayCondition(0, Math.min(5e6, far / 2)) }); // names when zooming in
         }
         const occluder = new C.EllipsoidalOccluder(C.Ellipsoid.WGS84, viewer.camera.positionWC);
@@ -536,16 +557,19 @@
   }
   function placeSats() {
     const now = new Date(), gmst = satellite.gstime(now);
-    sats.removeAll();
-    for (const s of satRecs) {
+    const fresh = sats.length !== satRecs.length; // first time: add them; then only move them
+    const cam = viewer.camera.positionCartographic, near = $('layerSatsNear').checked, R = C.Math.clamp(cam.height / 6.371e6, 0.25, 1); // "only nearby": within an angle around the point below the camera (wider when far away)
+    const close = (s) => !near || /ISS|ZARYA/.test(s.name) || Math.acos(C.Math.clamp(Math.sin(cam.latitude) * Math.sin(C.Math.toRadians(s.lat)) + Math.cos(cam.latitude) * Math.cos(C.Math.toRadians(s.lat)) * Math.cos(cam.longitude - C.Math.toRadians(s.lon)), -1, 1)) < R;
+    if (fresh) sats.removeAll();
+    satRecs.forEach((s, i) => {
       const pv = satellite.propagate(s.rec, now);
-      if (!pv.position) continue;
+      if (!pv.position) { if (!fresh) sats.get(i).show = false; else sats.add({ position: C.Cartesian3.ZERO, image: satIcon(false), show: false, id: { oge: 'sat', s } }); return; } // decayed or bad elements: hidden, keeps its slot
       const g = satellite.eciToGeodetic(pv.position, gmst);
       s.lon = C.Math.toDegrees(g.longitude); s.lat = C.Math.toDegrees(g.latitude); s.alt = g.height * 1000;
       s.p = C.Cartesian3.fromRadians(g.longitude, g.latitude, s.alt);
       const iss = /ISS|ZARYA/.test(s.name);
-      sats.add({ position: s.p, image: satIcon(iss), scale: iss ? 0.7 : 0.4, disableDepthTestDistance: 0, id: { oge: 'sat', s } });
-    }
+      if (fresh) sats.add({ show: close(s), position: s.p, image: satIcon(iss), scale: iss ? 0.7 : 0.4, disableDepthTestDistance: 0, id: { oge: 'sat', s } }); else { const b = sats.get(i); b.position = s.p; b.show = close(s); }
+    });
   }
   const satIconCache = {};
   const satIcon = (big) => satIconCache[big] || (satIconCache[big] = (() => { // a body with two solar panels
@@ -709,11 +733,9 @@
     try {
       const res = await fetch(FORK + '10m_cultural/ne_10m_admin_1_states_provinces_lines.shp');
       if (!res.ok) throw new Error('HTTP ' + res.status);
-      const BLUE = C.ColorGeometryInstanceAttribute.fromColor(C.Color.fromCssColorString('#64b5f6')), inst = [];
-      for (const g of shp.parseShp(await res.arrayBuffer())) for (const p of !g ? [] : g.type === 'LineString' ? [g.coordinates] : g.coordinates) {
-        if (p.length > 1) inst.push(new C.GeometryInstance({ geometry: new C.GroundPolylineGeometry({ positions: C.Cartesian3.fromDegreesArray(p.flatMap((c) => [c[0], c[1]])), width: 1.5 }), attributes: { color: BLUE } }));
-      }
-      admin1 = viewer.scene.groundPrimitives.add(new C.GroundPolylinePrimitive({ geometryInstances: inst, appearance: new C.PolylineColorAppearance() }));
+      const inst = [];
+      for (const g of shp.parseShp(await res.arrayBuffer())) for (const p of !g ? [] : g.type === 'LineString' ? [g.coordinates] : g.coordinates) if (p.length > 1) inst.push(p);
+      admin1 = lineLayer(inst, '#64b5f6', 1.3); // as imagery: light to draw, and it lies on the terrain
       admin1.show = cbA.checked;
       OGE.toast(`Límites regionales cargados: ${inst.length.toLocaleString('es')} tramos.`);
     } catch (e) { OGE.toast('No se pudieron cargar los límites regionales: ' + e.message, true); }

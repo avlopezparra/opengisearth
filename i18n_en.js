@@ -271,6 +271,7 @@
     'F-16 — caza a reacción, rápido y nervioso': 'F-16 — jet fighter, fast and twitchy',
     'Mantén pulsado para doblar a la izquierda (A)': 'Hold to turn left (A)', 'Mantén pulsado para doblar a la derecha (D)': 'Hold to turn right (D)',
     '? Controles (K)': '? Controls (K)',
+    'solo los cercanos': 'only nearby ones',
     'E: acelerón (en la nave, uno por pulsación) · Q: frenar hasta detenerse · RePág / AvPág: gas': 'E: boost (on the ship, one per press) · Q: brake to a stop · PgUp / PgDn: throttle',
     'K: ver los controles': 'K: show the controls',
     'Hecho por Alejandro Víctor López Parra @avlopezparra (github)': 'Made by Alejandro Víctor López Parra @avlopezparra (GitHub)',

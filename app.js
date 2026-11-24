@@ -8,6 +8,7 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
   const deg = C.Math.toDegrees;
 
   // The Layers checkboxes remember their state between sessions (restored before each module reads them).
+  if (!localStorage.getItem('oge.fix.liveOff')) { localStorage.removeItem('oge.ui.layerSats'); localStorage.removeItem('oge.ui.layerPlanes'); localStorage.setItem('oge.fix.liveOff', '1'); }
   document.querySelectorAll('.layers input[type=checkbox], .layers select').forEach((c) => {
     const key = 'oge.ui.' + c.id, saved = localStorage.getItem(key);
     if (saved !== null) { if (c.type === 'checkbox') c.checked = saved === '1'; else c.value = saved; }
