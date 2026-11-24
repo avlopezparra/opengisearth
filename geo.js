@@ -14,8 +14,9 @@
 
   const DEF = { stroke: '#ffd400', strokeOpacity: 1, width: 3, fill: '#ffd400', fillOpacity: 0.35, color: '#e53935', marker: 'pin', scale: 1, opacity: 0.7, rotation: 0 };
   const NEAR = 5e5; // under 500 km it is not clipped against the terrain; from afar the globe does hide what is on the other side
-  const labelStyle = (text) => ({ text, font: '600 14px sans-serif', fillColor: C.Color.WHITE, outlineColor: C.Color.BLACK, outlineWidth: 2,
-    style: C.LabelStyle.FILL_AND_OUTLINE, heightReference: C.HeightReference.CLAMP_TO_GROUND, disableDepthTestDistance: NEAR });
+  // names on a soft dark plate: the thin outline alone broke into speckles over bright imagery
+  const labelStyle = (text) => ({ text, font: '600 14px sans-serif', fillColor: C.Color.WHITE, outlineColor: C.Color.BLACK, outlineWidth: 1,
+    style: C.LabelStyle.FILL, showBackground: true, backgroundColor: C.Color.fromCssColorString('rgba(10,30,60,0.6)'), backgroundPadding: new C.Cartesian2(6, 3), heightReference: C.HeightReference.CLAMP_TO_GROUND, disableDepthTestDistance: NEAR });
   const pinLabel = (text) => ({ ...labelStyle(text), pixelOffset: new C.Cartesian2(0, -44) });
 
   // ---------- Placemark icons: drawn here (open designs), in the placemark's color ----------
