@@ -241,3 +241,14 @@ body.flying #flyBtns.touch { display: grid; grid-template-columns: auto 48px 48p
 #flyKeys .kc b { font-size: 13px; } #flyKeys .kc i { font-style: normal; font-size: 9px; }
 #flyKeys .kc.wide { width: 70px; } #flyKeys .kc.space { width: 200px; }
 #flyKeys li.padmap { list-style: none; margin: 0 0 8px -14px; padding: 6px 8px; border-radius: 6px; background: #e8f6e8; border: 1px solid #8fcf8f; }
+
+/* OpenHistoryTimeLine: the timeline bar at the bottom of the map */
+#histBar { position: absolute; left: 50%; bottom: 34px; transform: translateX(-50%); z-index: 3; display: flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 14px;
+  background: linear-gradient(rgba(255, 255, 255, .92), rgba(214, 238, 255, .88)); border: 1px solid #9cc9ec; box-shadow: 0 6px 18px #0005; width: min(92vw, 760px); }
+#histBar[hidden] { display: none; }
+#histBar .ht { color: #1c7fc2; white-space: nowrap; }
+#histBar .hy { min-width: 7em; text-align: center; font-size: 22px; font-weight: 700; color: #0b3d6b; }
+#histBar .hr { flex: 1; min-width: 80px; }
+#histBar button { padding: 4px 9px; }
+body.history-mode .cesium-viewer-bottom { display: none; }
+@media (max-width: 700px) { #histBar { flex-wrap: wrap; bottom: 8px; } #histBar .ht { width: 100%; text-align: center; } }
