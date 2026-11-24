@@ -90,11 +90,15 @@
     musicBus = audio.createGain();
     const echo = audio.createDelay(1), fb = audio.createGain(), lp = audio.createBiquadFilter(), wet = audio.createGain();
     echo.delayTime.value = 0.19; fb.gain.value = 0.32; lp.type = 'lowpass'; lp.frequency.value = 2800; wet.gain.value = 0.28;
-    musicBus.connect(master); musicBus.connect(echo); echo.connect(lp).connect(fb).connect(echo); lp.connect(wet).connect(master);
+    musicBus.connect(master); musicBus.connect(echo); echo.connect(lp).connect(fb).connect(echo); lp.connect(wet).connect(master); musicBus.wet = wet;
     return musicBus;
   }
+  const STYLE = { // per theme: index multiplier, decay multiplier, echo amount, bass modulator ratio
+    race: { idx: 1.5, dec: 0.6, echo: 0.18, bass: 0.5 }, adventure: { idx: 0.8, dec: 1.8, echo: 0.42, bass: 1 }, boss: { idx: 1.2, dec: 1, echo: 0.3, bass: 1 }, main: { idx: 1, dec: 1, echo: 0.28, bass: 1 } };
+  let style = STYLE.main;
   function fmTone(k, midi, t, dur) { // a carrier sine whose frequency is swung by a modulator sine: bright at the attack, mellower after
-    const [ratio, i0, i1, dec, vol, cents] = FM[k], f = 440 * 2 ** ((midi - 69) / 12) * 2 ** (cents / 1200);
+    let [ratio, i0, i1, dec, vol, cents] = FM[k]; i0 *= style.idx; i1 *= style.idx; dec *= style.dec; if (k === 'bass') ratio = style.bass;
+    const f = 440 * 2 ** ((midi - 69) / 12) * 2 ** (cents / 1200);
     const car = audio.createOscillator(), mod = audio.createOscillator(), depth = audio.createGain(), v = audio.createGain();
     car.frequency.value = f; mod.frequency.value = f * ratio;
     depth.gain.setValueAtTime(f * i0, t); depth.gain.exponentialRampToValueAtTime(f * i1, t + Math.min(dec, dur));
@@ -125,6 +129,8 @@
   let tune = null; // the theme playing now: Main Theme or Boss Fight OpenStarshipEarth
   function music(play, th = TH) {
     clearInterval(musicTimer); musicTimer = null; tune = play ? th : null;
+    style = th === window.OGE_RACE_THEME ? STYLE.race : th === window.OGE_ADV_THEME ? STYLE.adventure : th === window.OGE_BOSS_THEME ? STYLE.boss : STYLE.main;
+    if (musicBus) musicBus.wet.gain.value = style.echo;
     if (!play || !th) return;
     try { ac(); } catch { return; } // no audio device
     const u = 60 / th.bpm / th.unit, loop = th.beats * th.unit, idx = { lead: 0, harmony: 0, bass: 0, drums: 0 }; // u: seconds per stored unit
@@ -322,12 +328,12 @@
     { text: 'Dobla a la izquierda y a la derecha con A y D.', test: (r) => turned(s.heading, r.heading) > rad(25) },
     { text: 'Sube y baja la nariz con S y W.', test: (r) => Math.abs(s.pitch - r.pitch) > rad(8) },
     { text: 'Acelera con E y frena con Q.', test: (r) => Math.abs(s.v - r.v) > r.v * 0.3 + 30 },
-    { text: 'Ese es un enemigo: apúntale con el centro de la mira y dispara con V o clic derecho.', need: 'enemy', make: () => put('enemy'), test: (r) => score >= r.score + 100 },
+    { text: 'Ese es un enemigo: apúntale con el centro de la mira y dispara con B o clic derecho.', need: 'enemy', make: () => put('enemy'), test: (r) => score >= r.score + 100 },
     { text: 'Atraviesa el aro: da puntos y repara la nave.', need: 'ring', make: () => put('ring', 0.05), test: (r) => score >= r.score + 50 },
     { text: 'Recoge la moneda, el corazón (vida) y el escudo (absorbe un golpe).', need: 'coin', make: () => { put('coin', -0.08); put('heart'); put('shield', 0.08); }, test: (r) => coins > r.coins },
     { text: 'Los rectángulos grises son obstáculos: esquívalo.', need: 'wall', make: () => put('wall'), test: (r, age) => age > 1500 && !has('wall') },
     { text: 'Haz un tonel con R: desvía disparos y choques.', test: () => !!man && man.type === 'roll' },
-    { text: 'Lanza una bomba con B: destruye a todos los enemigos cercanos.', need: 'enemy', make: () => { bombs = Math.max(bombs, 1); put('enemy', -0.1); put('enemy'); put('enemy', 0.1); }, test: (r) => bombs < r.bombs || (r.bombs === 0 && !has('enemy')) },
+    { text: 'Lanza una bomba con V: destruye a todos los enemigos cercanos.', need: 'enemy', make: () => { bombs = Math.max(bombs, 1); put('enemy', -0.1); put('enemy'); put('enemy', 0.1); }, test: (r) => bombs < r.bombs || (r.bombs === 0 && !has('enemy')) },
     { text: 'Un jefe custodia cada capital. Este es de práctica: dispárale hasta vaciar su barra de vida.', need: 'boss', make: () => { const o = put('boss', 0, 0.05, { type: 'fortress', hp: 5, max: 5, cap: null }); o.base = C.Cartesian3.clone(o.p); o.east = viewer.camera.rightWC.clone(); o.size = Math.max(o.size, 400); }, test: (r, age) => age > 1000 && !has('boss') },
     { text: '¡Listo! Ahora colecciona banderas, derrota jefes en las capitales y suma puntos. I: ayuda · O: repetir el tutorial.', test: (r, age) => age > 6000 },
   ];
@@ -610,7 +616,7 @@
     if (on) return stop();
     const last = (() => { try { return JSON.parse(localStorage.getItem('oge.flyOpts')) || {}; } catch { return {}; } })(); // the dialog remembers the last choices
     const v = await OGE.ask({ title: 'Simulador de vuelo', ok: 'Iniciar vuelo',
-      help: 'Arranca en el aire sobre el punto que estás mirando. Mouse: clic toma o suelta la palanca. Teclado: flechas, RePág/AvPág para el gas, L tren, F flaps, Intro pausa, Espacio sube, Esc salir. OpenStarshipEarth: V o clic derecho dispara.',
+      help: 'Arranca en el aire sobre el punto que estás mirando. Mouse: clic toma o suelta la palanca. Teclado: flechas, RePág/AvPág para el gas, L tren, F flaps, Intro pausa, Espacio sube, Esc salir. OpenStarshipEarth: B o clic derecho dispara.',
       fields: [{ id: 'plane', label: 'Avión', type: 'select', value: PLANES[last.plane] ? last.plane : 'ship', options: Object.entries(PLANES).map(([k, p]) => [k, p.name]) },
         { id: 'mouse', label: 'Controlar con el mouse (como en Earth)', type: 'checkbox', value: last.mouse ?? true },
         { id: 'arcade', label: 'OpenStarshipEarth: modo arcade con enemigos y puntaje (desmárcalo para volar libre)', type: 'checkbox', value: last.arcade ?? true },
@@ -1114,7 +1120,7 @@
   // Gamepad, Xbox 360 layout by default (browsers report XInput pads in the 'standard' mapping):
   // left stick steers, right stick aims; A fire · B bomb · X barrel roll · Y loop · LB / RB turbo − / + · LT stop · RT turbo burst
   // Back controls · Start pause · L3 turn back · R3 camera · D-pad ↑ climb · ↓ land · ← race item · → take off
-  const PAD = ['v', 'b', 'r', 'x', 'shift', ' ', 'q', 'e', 'k', 'enter', 'f', 'y', 't', 'z', 'u', 'c'];
+  const PAD = ['b', 'v', 'r', 'x', 'shift', ' ', 'q', 'e', 'k', 'enter', 'f', 'y', 't', 'z', 'u', 'c'];
   const padPrev = [], pad = { x: 0, y: 0, on: false };
   let padFireT = 0;
   function readPad() {
@@ -1128,7 +1134,7 @@
       const b = gp.buttons[i], down = !!b && (b.pressed || b.value > 0.5);
       if (down && !padPrev[i]) document.dispatchEvent(new KeyboardEvent('keydown', { key, code: key === 'shift' ? 'ShiftLeft' : '' }));
       if (!down && padPrev[i]) document.dispatchEvent(new KeyboardEvent('keyup', { key }));
-      if (down && key === 'v' && performance.now() > padFireT) { padFireT = performance.now() + 160; if (padPrev[i]) fire(); } // A held: keeps firing
+      if (down && key === 'b' && performance.now() > padFireT) { padFireT = performance.now() + 160; if (padPrev[i]) fire(); } // A held: keeps firing
       padPrev[i] = down;
     });
   }
@@ -1445,8 +1451,8 @@
     else if (k === 'c' && A.ship && landing) $('flyLift').click(); // C takes off again after landing
     else if (k === 'c') { stick.x = stick.y = 0; s.trim = 0; }
     else if (k === 'q' && A && A.ship && !e.repeat) { stopped = !stopped; if (!stopped) { s.v = Math.max(s.v, A.v0 || 300); s.throttle = Math.max(s.throttle, 0.5); } } // Q: stop and hover; Q again: fly on
-    else if (k === 'v') fire(); // V fires
-    else if (k === 'b' && A.ship) bomb();
+    else if (k === 'b') fire(); // B fires
+    else if (k === 'v' && A.ship) bomb(); // V drops a bomb
     else if (k === 'g') nextWarp(-1);
     else if (k === '+' || k === '=' || k === '-') OGE.minimap.zoom(k === '-' ? -1 : 1);
     else if (k === 'm') OGE.minimap.toggle();
