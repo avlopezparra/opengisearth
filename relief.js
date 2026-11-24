@@ -63,7 +63,7 @@
   lazyFill($('fillCountries'), async () => { // MAPCOLOR7 gives neighbors different colors
     const [s, d] = await Promise.all([buf('50m_cultural/ne_50m_admin_0_countries.shp'), buf('50m_cultural/ne_50m_admin_0_countries.dbf')]);
     const fs = shp.combine([shp.parseShp(s), shp.parseDbf(d)]).features, a3 = (f) => String(f.properties.ADM0_A3 ?? '').replace(/\0/g, '').trim(), arg = fs.find((f) => a3(f) === 'ARG');
-    const out = fs.map((f) => [f.geometry, (OGE.malvinasAR && arg && a3(f) === 'FLK' ? arg : f).properties.MAPCOLOR7 || 0]); // Malvinas in Argentina's color from that point of view
+    const out = fs.map((f) => [f.geometry, (OGE.malvinasAR && arg && ['FLK', 'SGS'].includes(a3(f)) ? arg : f).properties.MAPCOLOR7 || 0]); // Malvinas in Argentina's color from that point of view
     const chl = fs.find((f) => a3(f) === 'CHL');
     if (OGE.antarticaCL && chl) out.push([{ type: 'Polygon', coordinates: [[[-90, -60], [-53, -60], [-53, -89.99], [-90, -89.99], [-90, -60]]] }, chl.properties.MAPCOLOR7 || 0]); // the Antarctic sector in Chile's color
     return out;
@@ -263,6 +263,9 @@
         const extra = party.length ? ` — ${party.join(', ')}${pos.length ? ` (${T('posición política')}: ${pos.join(', ')})` : ''}` : '';
         if (vals.length) table.push([T(label), vals.join(', ') + extra]);
       }
+      if (id.osm) table.push(...osmRows(id.osm)); // OpenStreetMap adds its own facts to a municipality or region
+      const claim = id.oge === 'country' && OGE.claims && OGE.claims[id.a3];
+      if (claim) table.push([T('Reclamación antártica'), `${T(claim[0])} (${claim[2].map(([w, e]) => `${Math.abs(w)}° ${w < 0 ? 'O' : 'E'} – ${Math.abs(((e + 540) % 360) - 180)}° ${((e + 540) % 360) - 180 < 0 ? 'O' : 'E'}`).join(', ')}, ${T('al sur de 60° S')}) — ${T('congelada por el Tratado Antártico')}`]);
       if (!table.length) throw new Error('sin datos');
       const rawOf = (k) => { const r = rows.find((x) => x.k.value === k); return r ? +r.v.value : NaN; }, dens = rawOf('pop') / rawOf('area');
       if (isFinite(dens) && dens > 0) table.splice(table.findIndex((r) => r[0] === T('Superficie')) + 1, 0, [T('Densidad'), num(Math.round(dens * 10) / 10) + ' ' + T('hab./km²')]);
@@ -328,37 +331,106 @@
         return span;
       };
       for (const r of table) r[1] = chips(r[1]);
-      OGE.showTable(id.name, [T('Dato'), T('Valor')], table, { note: T('Fuente: Wikidata (CC0).') + (head.childNodes.length ? ' ' + T('Imágenes y sonido: Wikimedia Commons.') : ''), content: head.childNodes.length ? head : undefined });
+      OGE.showTable(id.name, [T('Dato'), T('Valor')], table, { note: T('Fuente: Wikidata (CC0).') + (id.osm ? ' ' + T('Fuente: OpenStreetMap (ODbL).') : '') + (head.childNodes.length ? ' ' + T('Imágenes y sonido: Wikimedia Commons.') : ''), content: head.childNodes.length ? head : undefined });
     } catch (e) { OGE.toast('No se pudieron obtener los datos: ' + e.message, true); }
   }
   new C.ScreenSpaceEventHandler(viewer.scene.canvas).setInputAction((ev) => {
     if ((OGE.drawing && OGE.drawing()) || document.body.classList.contains('flying')) return; // not while drawing or flying
     const hit = viewer.scene.pick(ev.position), id = hit && hit.id;
     if (id && FACTS[id.oge] && /^Q\d+$/.test(id.q || '')) return wikiInfo(id);
-    // nothing picked: with the regional layers on, the state or province under the click (OpenStreetMap's reverse geocoder gives its Wikidata id)
-    if (hit || !($('layerAdmin1').checked || $('fillAdmin1').checked)) return;
+    // nothing picked: with a regional layer on, the municipality (or else the province) under the click, with OpenStreetMap's data and its Wikidata id
+    if (hit || !['layerAdmin1', 'fillAdmin1', 'layerRegionNames'].some((k) => $(k).checked)) return;
     const p = viewer.camera.pickEllipsoid(ev.position);
     if (!p) return;
     const [lon, lat] = geo.toLL(p);
-    fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=5&extratags=1&accept-language=${OGE_LANG}&lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}`).then((r) => r.json()).then((j) => {
-      const q = j && j.extratags && j.extratags.wikidata;
-      if (q) wikiInfo({ oge: 'region', q, name: j.name || (j.address && (j.address.state || j.address.region)) || q });
+    const rev = (zoom) => fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=${zoom}&extratags=1&namedetails=1&accept-language=${OGE_LANG}&lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}`).then((r) => r.json());
+    OGE.toast('Consultando OpenStreetMap…');
+    rev(10).then(async (j) => {
+      if (!j || j.error || !/city|town|village|municipality|county/.test(j.addresstype || '')) j = await rev(5); // no municipality there: the province
+      if (!j || j.error) return;
+      const q = j.extratags && j.extratags.wikidata;
+      if (q) wikiInfo({ oge: 'region', q, name: j.name, osm: j });
+      else OGE.showTable(j.name || j.display_name, [T('Dato'), T('Valor')], osmRows(j), { note: T('Fuente: OpenStreetMap (ODbL).') });
     }).catch(() => {});
   }, C.ScreenSpaceEventType.LEFT_CLICK);
-
-
-  // ---------- Chilean Antarctic Territory, from Chile's point of view: its limits and its name, shown with the borders ----------
-  if (OGE.antarticaCL) {
-    const arc = (lon0, lat0, lon1, lat1, n = 40) => C.Cartesian3.fromDegreesArray(Array.from({ length: n + 1 }, (_, i) => [lon0 + ((lon1 - lon0) * i) / n, lat0 + ((lat1 - lat0) * i) / n]).flat());
-    const inst = [arc(-90, -60, -90, -89.9), arc(-53, -60, -53, -89.9), arc(-90, -60, -53, -60)].map((positions) => new C.GeometryInstance({
-      geometry: new C.GroundPolylineGeometry({ positions, width: 2.5, arcType: C.ArcType.RHUMB }), attributes: { color: C.ColorGeometryInstanceAttribute.fromColor(C.Color.YELLOW) } }));
-    const lines = viewer.scene.groundPrimitives.add(new C.GroundPolylinePrimitive({ geometryInstances: inst, appearance: new C.PolylineColorAppearance() }));
-    const label = viewer.scene.primitives.add(new C.BillboardCollection());
-    label.add({ position: C.Cartesian3.fromDegrees(-71.5, -76), image: OGE.textImage('Territorio Chileno Antártico', '600 14px sans-serif', C.Color.WHITE), scale: 0.5, disableDepthTestDistance: Number.POSITIVE_INFINITY, distanceDisplayCondition: new C.DistanceDisplayCondition(0, 1.2e7) });
-    const sync = () => { lines.show = label.show = $('borders').checked; };
-    $('borders').addEventListener('change', sync);
-    sync();
+  // Facts that OpenStreetMap adds to a card (its reverse geocoder result).
+  function osmRows(j) {
+    const x = j.extratags || {}, a = j.address || {}, n = (v) => Number(v).toLocaleString(OGE_LANG), out = [];
+    const add = (label, v) => { if (v) out.push([T(label), v]); };
+    add('Tipo (OSM)', j.addresstype);
+    add('Nombre oficial (OSM)', (j.namedetails || {}).official_name);
+    add('Pertenece a', [a.county, a.state, a.country].filter((v) => v && v !== j.name).join(', '));
+    add('Población (OSM)', x.population && n(x.population) + (x['population:date'] ? ` (${x['population:date']})` : ''));
+    add('Código ISO 3166-2', x['ISO3166-2']);
+    add('Código postal', a.postcode);
+    add('Sitio web (OSM)', x.website);
+    return out;
   }
+
+  // ---------- Antarctic claims: sectors south of 60° S, frozen by the Antarctic Treaty; each claimant can be switched on or off ----------
+  const CLAIMS = { ARG: ['Antártida Argentina', '#74acdf', [[-74, -25]]], CHL: ['Territorio Chileno Antártico', '#d52b1e', [[-90, -53]]], GBR: ['Territorio Antártico Británico', '#1f4fbf', [[-80, -20]]],
+    NOR: ['Tierra de la Reina Maud (Noruega)', '#e0457b', [[-20, 45]]], AUS: ['Territorio Antártico Australiano', '#00a651', [[45, 136], [142, 160]]], FRA: ['Tierra Adelia (Francia)', '#5b8def', [[136, 142]]], NZL: ['Dependencia Ross (Nueva Zelanda)', '#c9a227', [[160, 210]]] };
+  OGE.claims = CLAIMS; // the country card shows its claim too
+  const claimOn = (() => { try { return JSON.parse(localStorage.getItem('oge.claims')) || Object.keys(CLAIMS); } catch { return Object.keys(CLAIMS); } })();
+  let claimPrims = [];
+  function drawClaims() {
+    for (const p of claimPrims) (p instanceof C.BillboardCollection ? viewer.scene.primitives : viewer.scene.groundPrimitives).remove(p);
+    claimPrims = [];
+    if (!$('layerClaims').checked) return;
+    const rhumb = (pts) => C.Cartesian3.fromDegreesArray(pts.flat());
+    const line = (a, b, n = 48) => rhumb(Array.from({ length: n + 1 }, (_, i) => [a[0] + ((b[0] - a[0]) * i) / n, a[1] + ((b[1] - a[1]) * i) / n]));
+    const labels = viewer.scene.primitives.add(new C.BillboardCollection());
+    claimPrims.push(labels);
+    for (const a3 of claimOn) {
+      const [name, color, sectors] = CLAIMS[a3] || [];
+      if (!name) continue;
+      const inst = sectors.flatMap(([w, e]) => [line([w, -60], [w, -89.8]), line([e, -60], [e, -89.8]), line([w, -60], [e, -60])]).map((positions) => new C.GeometryInstance({
+        geometry: new C.GroundPolylineGeometry({ positions, width: 2.5, arcType: C.ArcType.RHUMB }), attributes: { color: C.ColorGeometryInstanceAttribute.fromColor(C.Color.fromCssColorString(color)) } }));
+      claimPrims.push(viewer.scene.groundPrimitives.add(new C.GroundPolylinePrimitive({ geometryInstances: inst, appearance: new C.PolylineColorAppearance() })));
+      const [w, e] = sectors[0];
+      labels.add({ position: C.Cartesian3.fromDegrees(((w + e) / 2 + 540) % 360 - 180, -73 - (Object.keys(CLAIMS).indexOf(a3) % 3) * 3), image: OGE.textImage(name, '600 13px sans-serif', C.Color.fromCssColorString(color).brighten(0.4, new C.Color())),
+        scale: 0.5, disableDepthTestDistance: Number.POSITIVE_INFINITY, distanceDisplayCondition: new C.DistanceDisplayCondition(0, 1.5e7) });
+    }
+  }
+  $('claimList').replaceChildren(...Object.entries(CLAIMS).map(([a3, [name, color]]) => { // one checkbox per claimant
+    const cb = Object.assign(document.createElement('input'), { type: 'checkbox', checked: claimOn.includes(a3) });
+    cb.onchange = () => { if (cb.checked) claimOn.push(a3); else claimOn.splice(claimOn.indexOf(a3), 1); localStorage.setItem('oge.claims', JSON.stringify(claimOn)); drawClaims(); };
+    const lab = document.createElement('label');
+    lab.append(cb, Object.assign(document.createElement('span'), { textContent: ' ■ ', style: `color:${color}` }), T(name));
+    return Object.assign(document.createElement('li'), {}).appendChild(lab).parentNode;
+  }));
+  $('layerClaims').addEventListener('change', () => {
+    $('claimList').hidden = !$('layerClaims').checked;
+    if ($('layerClaims').checked) OGE.toast('Reclamaciones congeladas por el Tratado Antártico (1959, art. IV): no se reconocen ni se rechazan, y no se pueden hacer nuevas mientras esté vigente.');
+    drawClaims();
+  });
+  $('claimList').hidden = !$('layerClaims').checked;
+  drawClaims();
+
+  // ---------- Region names (states, provinces): a click opens their card (Wikidata + OpenStreetMap) ----------
+  let regionNames = null, regionBusy = false;
+  const cbRN = $('layerRegionNames');
+  const syncRegionNames = async () => {
+    if (regionNames) regionNames.show = cbRN.checked;
+    if (!cbRN.checked || regionNames || regionBusy) return;
+    regionBusy = true;
+    OGE.toast('Cargando los nombres de regiones…');
+    try {
+      const clean = (v) => String(v ?? '').replace(/\0/g, '').trim(), bills = viewer.scene.primitives.add(new C.BillboardCollection()); // only the attribute table is needed: it has the label point
+      for (const p of shp.parseDbf(await buf('10m_cultural/ne_10m_admin_1_states_provinces.dbf'))) {
+        const lon = +p.longitude, lat = +p.latitude, name = clean(OGE_LANG === 'en' ? p.name : p.name_es) || clean(p.name);
+        if (!isFinite(lon) || !isFinite(lat) || !name) continue;
+        bills.add({ position: C.Cartesian3.fromDegrees(lon, lat), image: OGE.textImage(name, 'italic 600 12px sans-serif', C.Color.fromCssColorString('#ffe9a8')), scale: 0.5, disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          distanceDisplayCondition: new C.DistanceDisplayCondition(0, (+p.min_label || 5) <= 4 ? 4e6 : 2e6), id: { oge: 'region', q: clean(p.wikidataid), name } });
+      }
+      const occluder = new C.EllipsoidalOccluder(C.Ellipsoid.WGS84, viewer.camera.positionWC);
+      viewer.scene.preRender.addEventListener(() => { if (!bills.show) return; occluder.cameraPosition = viewer.camera.positionWC; for (let i = 0; i < bills.length; i++) { const b = bills.get(i); b.show = occluder.isPointVisible(b.position); } });
+      regionNames = bills; regionNames.show = cbRN.checked;
+    } catch (e) { OGE.toast('No se pudieron cargar los nombres de regiones: ' + e.message, true); }
+    regionBusy = false;
+  };
+  cbRN.addEventListener('change', syncRegionNames);
+  syncRegionNames();
 
   // ---------- Watershed: click a point, get the basin that drains to it, plus its rivers ----------
   let picking = null;
