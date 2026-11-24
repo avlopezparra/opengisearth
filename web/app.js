@@ -383,6 +383,7 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
   if (PHONE) document.body.classList.add('noside'); // phones start on the map; the panel opens over it with the ☰ button
   if (PHONE || matchMedia('(pointer: coarse)').matches) { scene.msaaSamples = 1; scene.globe.showGroundAtmosphere = false; } // mobile GPUs: antialiasing costs too much memory, and the ground atmosphere shader can turn the far globe black
   $('sideBtn').onclick = () => hideSide(!document.body.classList.contains('noside'));
+  OGE.hideSide = hideSide; // the flight closes the panel and gives it back afterwards
   const sp = $('splitter');
   sp.onpointerdown = (e) => { sp.setPointerCapture(e.pointerId); sp.classList.add('drag'); };
   sp.onpointermove = (e) => { if (sp.classList.contains('drag')) setSide(Math.max(180, Math.min(window.innerWidth - 200, e.clientX))); };
