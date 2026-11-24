@@ -131,6 +131,7 @@
     hard: { name: 'Difícil', hurt: 1.6, fire: 0.6, shot: 1.4, boss: 1.6, pts: 2 }, ace: { name: 'As', hurt: 2.5, fire: 0.4, shot: 1.8, boss: 2.5, pts: 4 } };
   let diff = DIFF[localStorage.getItem('oge.diff')] ? localStorage.getItem('oge.diff') : 'normal';
   const pts = (n) => Math.round(n * DIFF[diff].pts); // points earned scale with the difficulty
+  let stopped = false, airports = null, airBusy = false, refuelMsg = false; // stopped: Q toggles a hover; airports: [[lon, lat]] (Natural Earth) where landing heals
   let thrT = 0, boost = null, boostCd = 0, eHeld = false, landing = null; // boost: the ship's single burst on E { t0, base } // landing: 'down' while dropping, 'parked' on the ground, 'up' while lifting off
   let calm = false; // free flight chosen from the mode menu: nothing to collect
   const quest = () => !calm && localStorage.getItem('oge.quest') !== '0';
@@ -593,6 +594,8 @@
     arcade = !!A.ship && !!useArcade;
     autoOn = arcade && window.__TAURI__ && !$('layerPlanes').checked ? ['layerPlanes'] : []; // live aircraft join the arcade in the desktop app, only for this flight
     for (const id of autoOn) { $(id).checked = true; $(id).dispatchEvent(new Event('change')); } // live satellites and aircraft join the arcade
+    stopped = false;
+    if (arcade && !airports && !airBusy) { airBusy = true; fetch(NE + '10m_cultural/ne_10m_airports.shp').then((r) => r.arrayBuffer()).then((b) => { airports = shp.parseShp(b).filter((g) => g && g.type === 'Point').map((g) => g.coordinates); }).catch(() => {}).finally(() => { airBusy = false; }); } // 25 KB: only the points
     maxHp = 100; usedTowns.clear(); hp = 100; bombs = 2; incoming = []; flash = hit = 0; shields = 0;
     run = { flags: 0, caps: 0, bosses: 0 };
     p2 = mpMode === 'local' && arcade ? { x: 0.35, y: 0.6, z: 200, hp: 100, score: 0, tilt: 0 } : null; // the second local player starts beside the first
@@ -1086,9 +1089,11 @@
   // OpenStarshipEarth maneuvers: barrel roll (R), full loop (V) and half loop with a roll out, to turn back (U).
   let man = null, lastRoll = 1; // man: { type, t0, dur, dir }
   function startBoost() { // the next turbo level for 5 seconds
+    stopped = false;
     if (s.v < (A.v0 || 300)) { s.v = A.v0 || 300; s.throttle = Math.max(s.throttle, 0.5); } // stopped with Q: E gets it moving again
     if (boost || performance.now() < boostCd) return;
-    const to = WARPS[Math.min(WARPS.length - 1, WARPS.indexOf(warp) + 1)];
+    stopped = false;
+    const to = WARPS[Math.min(WARPS.length - 1, WARPS.indexOf(warp) + 2)]; // two turbo levels up
     boost = { t0: performance.now(), from: warp, to }; boostCd = performance.now() + 6000; setWarp(to); sfx('thrust');
   }
   function maneuver(type) {
@@ -1111,7 +1116,7 @@
     }
     const stallV = A.vStall * (1 - 0.1 * s.flaps), q = A.ship ? 1 : clamp(s.v / (1.4 * A.vStall), 0, 1); // q: control effectiveness with speed
     const grav = A.ship ? 0 : G;
-    const airbrake = keys.has('q') || keys.has('pagedown') ? (A.ship ? A.thrust * 1.5 + s.v * 2 : 6) : 0; // Q also brakes: drag alone is too weak at low speed; the ship halves its speed about every 0.3 s and stops
+    const airbrake = (A.ship ? stopped : keys.has('q')) || keys.has('pagedown') ? (A.ship ? A.thrust * 1.5 + s.v * 2 : 6) : 0; // Q also brakes: drag alone is too weak at low speed; the ship halves its speed about every 0.3 s and stops
     const elev = clamp(s.elev + s.trim, -1, 1), ground = scene.globe.getHeight(new C.Cartographic(s.lon, s.lat)) || 0;
     const drag = A.thrust * (s.v / A.vMax) ** 2 * (1 + 0.35 * s.flaps + (s.gear ? 0.15 : 0)); // at full throttle and level, vMax is reached
     if (s.ground) { // taxiing: rudder steers, brakes brake; takeoff by pulling with enough speed
@@ -1153,8 +1158,11 @@
     viewer.camera.setView({ destination: C.Cartesian3.fromRadians(s.lon, s.lat, s.alt), orientation: { heading: s.heading, pitch: pe, roll: s.roll + rollOff } });
     if (landing && A && A.ship) {
       const gnd = (scene.globe.getHeight(new C.Cartographic(s.lon, s.lat)) || 0) * scene.verticalExaggeration;
+      if (landing !== 'parked') refuelMsg = false;
       if (landing === 'down') { s.v = Math.min(s.v, 60); s.pitch = 0; s.alt = Math.max(gnd + 30, s.alt - Math.max(400, (s.alt - gnd) * 1.6) * dt); if (s.alt <= gnd + 31) { landing = 'parked'; sfx('down'); OGE.toast('Aterrizaste. Pulsa Despegar (C) para volver a volar.'); } }
       else if (landing === 'parked') { // on the ground it rolls slowly: forward with W / ↑ / E, back with S / ↓ / Q; A, D and the arrows steer
+        const lo = C.Math.toDegrees(s.lon), la = C.Math.toDegrees(s.lat), field = arcade && airports && airports.find(([x, y]) => Math.abs(y - la) < 0.04 && Math.abs((x - lo) * Math.cos(s.lat)) < 0.04); // ~4 km
+        if (field && hp < maxHp) { hp = Math.min(maxHp, hp + 8 * dt); if (!refuelMsg) { refuelMsg = true; OGE.toast(T('🛬 Aeródromo: recuperando vida…')); sfx('heart'); } }
         s.v = 0; s.throttle = 0; s.alt = gnd + 30; s.pitch = 0;
         const kd = (x) => keys.has(x), want = (kd('w') || kd('arrowup') || kd('e') || kd('pageup') || stick.y < -0.2 ? 25 : 0) - (kd('s') || kd('arrowdown') || kd('q') || kd('pagedown') || stick.y > 0.2 ? 10 : 0);
         s.taxi = (s.taxi || 0) + (want - (s.taxi || 0)) * Math.min(1, 3 * dt);
@@ -1192,6 +1200,15 @@
       g.save(); g.fillStyle = g.shadowColor = /ISS|ZARYA/.test(sat.name) ? '#ffd60a' : '#bfe6ff'; g.shadowBlur = 10; const sr = clamp(3 + 4e5 / C.Cartesian3.distance(sat.p, viewer.camera.positionWC), 3, 26); g.beginPath(); g.arc(q.x, q.y, sr, 0, 7); g.fill(); // bigger as it gets closer
       if (sr > 7) { g.fillStyle = '#2b6fd6'; g.fillRect(q.x - sr * 2.6, q.y - sr * 0.45, sr * 1.5, sr * 0.9); g.fillRect(q.x + sr * 1.1, q.y - sr * 0.45, sr * 1.5, sr * 0.9); } // solar panels when close
       if (/ISS|ZARYA/.test(sat.name)) { g.font = '600 11px sans-serif'; g.fillText('ISS', q.x + 6, q.y + 4); } g.restore();
+    }
+    if (arcade && airports) { // airfields within ~150 km: land on one (Z) to heal
+      const lo = C.Math.toDegrees(s.lon), la = C.Math.toDegrees(s.lat);
+      for (const [x, y] of airports) {
+        if (Math.abs(y - la) > 1.4 || Math.abs(x - lo) > 1.4 / Math.max(0.2, Math.cos(s.lat))) continue;
+        const p = C.Cartesian3.fromDegrees(x, y, (scene.globe.getHeight(C.Cartographic.fromDegrees(x, y)) || 0) + 50), q = (C.SceneTransforms.worldToWindowCoordinates || C.SceneTransforms.wgs84ToWindowCoordinates)(scene, p);
+        if (!q || q.x < 0 || q.y < 0 || q.x > w || q.y > h || C.Cartesian3.dot(C.Cartesian3.subtract(p, viewer.camera.positionWC, new C.Cartesian3()), viewer.camera.directionWC) < 0) continue;
+        g.save(); g.font = '18px sans-serif'; g.textAlign = 'center'; g.fillStyle = g.shadowColor = '#34c759'; g.shadowBlur = 8; g.fillText('🛬', q.x, q.y); g.font = '600 10px sans-serif'; g.fillText('+ VIDA', q.x, q.y + 14); g.restore();
+      }
     }
     if (regs && quest()) drawRegs();
     if (caps && quest()) drawCaps();
@@ -1324,6 +1341,7 @@
     else if (k === 'f' || k === ']' || k === '[') s.flaps = clamp(s.flaps + (e.shiftKey || k === '[' ? -1 : 1), 0, 2);
     else if (k === 'c' && A.ship && landing) $('flyLift').click(); // C takes off again after landing
     else if (k === 'c') { stick.x = stick.y = 0; s.trim = 0; }
+    else if (k === 'q' && A && A.ship && !e.repeat) { stopped = !stopped; if (!stopped) { s.v = Math.max(s.v, A.v0 || 300); s.throttle = Math.max(s.throttle, 0.5); } } // Q: stop and hover; Q again: fly on
     else if (k === 'x') fire();
     else if (k === 'b' && A.ship) bomb();
     else if (k === 't') nextWarp(e.shiftKey ? -1 : 1);
