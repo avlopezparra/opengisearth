@@ -63,10 +63,12 @@
   let arcade = false, objs = [], booms = [], score = 0, coins = 0;
   let hp = 100, bombs = 3, incoming = [], flash = 0, hit = 0; // incoming: enemy shots { p, vel, t }; flash/hit: time of the last bomb / damage
   const SIZE = { ring: 1, coin: 0.35, enemy: 0.5, wall: 0.6, heart: 0.4, shield: 0.4, bomb: 0.4 };
+  // How often each kind appears: hearts and shields are rare, bombs are scarce (about 1 in 40).
+  const POOL = Object.entries({ ring: 4, coin: 12, enemy: 12, wall: 8, heart: 2, shield: 2, bomb: 1 }).flatMap(([k, n]) => Array(n).fill(k));
   let shields = 0, broke = 0; // each shield absorbs one hit and breaks; broke: when the last one broke
   const reach = () => Math.max(4000, s.v * warp * 7); // they appear about 7 s ahead, whatever the speed
   function spawn() {
-    const cam = viewer.camera, D = reach() * (0.6 + 0.6 * Math.random()), kind = ['ring', 'coin', 'coin', 'coin', 'enemy', 'enemy', 'enemy', 'wall', 'wall', 'heart', 'shield', 'bomb'][Math.floor(Math.random() * 12)]; // hearts, shields and bombs are rare
+    const cam = viewer.camera, D = reach() * (0.6 + 0.6 * Math.random()), kind = POOL[Math.floor(Math.random() * POOL.length)];
     const p = C.Cartesian3.clone(cam.positionWC), add = (v, k) => C.Cartesian3.add(p, C.Cartesian3.multiplyByScalar(v, k, new C.Cartesian3()), p);
     add(cam.directionWC, D); add(cam.rightWC, (Math.random() - 0.5) * D * 0.5); add(cam.upWC, (Math.random() - 0.5) * D * 0.25);
     const c = C.Cartographic.fromCartesian(p), floor = (scene.globe.getHeight(c) || 0) + 200;
@@ -80,7 +82,7 @@
   }
   function bomb() { // clears every enemy and shot in range
     if (!on || paused || !arcade) return;
-    if (!bombs) return OGE.toast('Sin bombas: cada 10 monedas ganas una.');
+    if (!bombs) return OGE.toast('Sin bombas: cada 25 monedas ganas una.');
     const cam = viewer.camera, R = reach() * 1.3;
     bombs--; incoming = []; flash = performance.now(); beep(160, 40, 0.6);
     objs = objs.filter((o) => {
@@ -104,7 +106,7 @@
         else {
           score += o.kind === 'ring' ? 50 : 10;
           if (o.kind === 'ring') hp = Math.min(100, hp + 10); // rings repair the ship
-          else if (++coins % 10 === 0) bombs++;
+          else if (++coins % 25 === 0) bombs++;
           beep(o.kind === 'coin' ? 1500 : 800, o.kind === 'coin' ? 2200 : 1300, 0.12);
         }
         return false;
@@ -177,7 +179,8 @@
     A = PLANES[plane];
     man = null;
     loadCaps();
-    arcade = !!A.ship && !!useArcade; hp = 100; bombs = 3; incoming = []; flash = hit = 0; shields = 0; objs = []; booms = []; score = coins = 0;
+    if (A.ship) OGE.minimap.zoom(99); // the starship starts with the minimap zoomed all the way in
+    arcade = !!A.ship && !!useArcade; hp = 100; bombs = 2; incoming = []; flash = hit = 0; shields = 0; objs = []; booms = []; score = coins = 0;
     const la = OGE.lookAt(), c = la ? la.carto : viewer.camera.positionCartographic; // above the look-at point, not from orbit
     const ground = scene.globe.getHeight(c) || 0;
     s = { lon: c.longitude, lat: c.latitude, alt: ground + A.agl, heading: viewer.camera.heading, pitch: 0, roll: 0, v: A.v0, vs: 0,
