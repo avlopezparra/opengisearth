@@ -195,3 +195,12 @@ dialog table td { border-color: rgba(47, 155, 224, .3); }
 
 /* OpenStarship page: only the game, without the atlas panels */
 body.game-only #panel, body.game-only #splitter { display: none; }
+
+/* Flight buttons: the ship's actions and the main controls; the rest folded behind "⋯ Más" */
+#flyActs { display: flex; gap: 6px; }
+#flyActs button { flex: 1; font-size: 20px; padding: 8px 0; }
+#flyBtns > #flyExtra { display: none; flex-direction: column; gap: 6px; }
+#flyBtns.more > #flyExtra { display: flex; }
+
+/* With a keyboard: no buttons that only repeat keys */
+#flyBtns.keyboard > #flyActs, #flyBtns.keyboard > div:not(#flyExtra):not(#flyActs), #flyBtns.keyboard > #flyUp, #flyBtns.keyboard > #flyDown, #flyBtns.keyboard > #flyWarp, #flyBtns.keyboard > #flyWarpDown { display: none; }
