@@ -49,6 +49,10 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
   });
 
   const OGE = window.OGE = { viewer, $, el };
+  // Point of view of the visitor's country (from the browser language or time zone), as Natural Earth does with its POV fields.
+  // In Argentina and Spain the Malvinas / Falkland Islands are shown as part of Argentina.
+  OGE.pov = (() => { const l = navigator.language || '', tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; return /-AR$/i.test(l) || /Argentina|Buenos_Aires/.test(tz) ? 'AR' : /-ES$/i.test(l) || tz === 'Europe/Madrid' ? 'ES' : ''; })();
+  OGE.malvinasAR = !!OGE.pov;
 
   // Sunlight: lights the globe according to the current time (day side and night side), like "Sun" in Earth.
   const sun = $('layerSun'), syncSun = () => { scene.globe.enableLighting = sun.checked; };
@@ -273,12 +277,27 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
   cbMm.addEventListener('change', syncMm);
   syncMm();
 
+  // ---------- Chime when an information box opens (a place, a city's weather, a country's data) ----------
+  let chimeAc = null;
+  OGE.chime = () => {
+    if (localStorage.getItem('oge.mute')) return;
+    try {
+      chimeAc = chimeAc || new AudioContext();
+      [[880, 0], [1320, 0.09]].forEach(([f, d]) => { // two soft bell notes
+        const o = chimeAc.createOscillator(), v = chimeAc.createGain(), t = chimeAc.currentTime + d;
+        o.type = 'sine'; o.frequency.value = f; v.gain.setValueAtTime(0.07, t); v.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+        o.connect(v).connect(chimeAc.destination); o.start(t); o.stop(t + 0.36);
+      });
+    } catch { /* no audio device */ }
+  };
+  viewer.selectedEntityChanged.addEventListener((e) => { if (e) OGE.chime(); });
+
   // ---------- Zoom sounds: sounds/zoom_in.wav and sounds/zoom_out.wav if they exist, otherwise a short synthesized sweep ----------
   const zoomClip = { in: new Audio('sounds/zoom_in.wav'), out: new Audio('sounds/zoom_out.wav') };
   for (const a of Object.values(zoomClip)) { a.preload = 'auto'; a.volume = 0.5; a.onerror = () => { a.bad = true; }; }
   let zoomAc = null, zoomH = null, zoomT = 0;
   function zoomSound(dir) {
-    if (localStorage.getItem('oge.mute') || document.body.classList.contains('flying')) return; // muted, or the flight has its own sounds
+    if (!$('layerZoomSound').checked || localStorage.getItem('oge.mute') || document.body.classList.contains('flying')) return; // switched off, muted, or the flight has its own sounds
     const clip = zoomClip[dir];
     if (!clip.bad && clip.readyState >= 2) { clip.currentTime = 0; clip.play().catch(() => {}); return; }
     try {

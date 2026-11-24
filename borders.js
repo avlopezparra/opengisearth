@@ -51,7 +51,8 @@
       occluder.cameraPosition = viewer.camera.positionWC;
       for (let i = 0; i < labels.length; i++) { const l = labels.get(i); l.show = occluder.isPointVisible(l.position); }
     });
-    labels.put = (lon, lat, text, near, far) => labels.add({
+    labels.put = (lon, lat, text, near, far, id) => labels.add({
+      id,
       position: C.Cartesian3.fromDegrees(lon, lat), image: OGE.textImage(text, `600 ${px}px sans-serif`, color), scale: 0.5,
       horizontalOrigin: C.HorizontalOrigin.CENTER, verticalOrigin: C.VerticalOrigin.CENTER,
       distanceDisplayCondition: new C.DistanceDisplayCondition(near, far), disableDepthTestDistance: Number.POSITIVE_INFINITY,
@@ -65,7 +66,9 @@
     for (const f of gj.features) {
       const p = f.properties;
       // smaller countries appear when zooming in (LABELRANK 2 = large … 10 = very small); very close up they get in the way
-      if (p.LABEL_X != null) labels.put(p.LABEL_X, p.LABEL_Y, clean(OGE_LANG === 'en' ? p.NAME_EN : p.NAME_ES) || clean(p.NAME), 1.5e5, 2.2e7 / Math.max(1, (p.LABELRANK || 5) - 1));
+      const flk = OGE.malvinasAR && clean(p.ADM0_A3) === 'FLK'; // point of view of Argentina and Spain
+      if (p.LABEL_X != null) labels.put(p.LABEL_X, p.LABEL_Y, flk ? 'Islas Malvinas (Argentina)' : clean(OGE_LANG === 'en' ? p.NAME_EN : p.NAME_ES) || clean(p.NAME), 1.5e5, 2.2e7 / Math.max(1, (p.LABELRANK || 5) - 1),
+        { oge: 'country', q: clean(p.WIKIDATAID), name: clean(OGE_LANG === 'en' ? p.NAME_EN : p.NAME_ES) || clean(p.NAME) }); // a click shows the country's data
     }
     return labels;
   }, 'los nombres de países');
