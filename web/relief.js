@@ -79,12 +79,29 @@
     cv.width = 220; cv.height = 110;
     g.textAlign = 'center'; g.lineJoin = 'round'; g.strokeStyle = '#000'; g.fillStyle = '#fff';
     g.font = '52px sans-serif'; g.fillText(icon, 66, 56);
-    g.font = '700 38px sans-serif'; g.lineWidth = 6; g.strokeText(temp, 150, 50); g.fillText(temp, 150, 50);
+    g.font = '700 38px sans-serif'; g.lineWidth = 6; g.strokeText(temp, 152, 50, 128); g.fillText(temp, 152, 50, 128);
     g.font = '600 24px sans-serif'; g.lineWidth = 5; g.strokeText(name, 110, 96, 212); g.fillText(name, 110, 96, 212);
     return cv;
   }
   let weather = null, weatherBusy = false;
-  const cbW = $('layerWeather');
+  const cbW = $('layerWeather'), wx = []; // wx: { e, w, name } per city
+  // What the icons show; switched with the arrows of the bar at the top of the map.
+  const MODES = ['Clima actual', 'Hoy: máxima y mínima', 'Mañana', 'Índice UV de hoy'];
+  let wxMode = 0;
+  const wxBar = Object.assign(document.createElement('div'), { id: 'wxBar', hidden: true, style: 'position:absolute;top:104px;left:50%;transform:translateX(-50%);z-index:1;background:rgba(20,110,40,.92);color:#fff;border-radius:16px;padding:3px 6px;font-weight:700;display:flex;gap:8px;align-items:center' });
+  wxBar.innerHTML = '<button class="mini">◀</button><span></span><button class="mini">▶</button>';
+  $('main').append(wxBar);
+  function paintWeather() {
+    wxBar.children[1].textContent = T(MODES[wxMode]);
+    for (const { e, w, name } of wx) {
+      const d = w.daily, j = wxMode === 2 ? 1 : 0;
+      const [icon, val] = wxMode === 0 ? [WMO(w.current.weather_code, w.current.is_day)[0], Math.round(w.current.temperature_2m) + '°']
+        : wxMode === 3 ? ['☀️', 'UV ' + Math.round(d.uv_index_max[0] ?? 0)] : [WMO(d.weather_code[j], 1)[0], Math.round(d.temperature_2m_max[j]) + '°/' + Math.round(d.temperature_2m_min[j]) + '°'];
+      e.billboard.image = weatherImage(icon, val, name);
+    }
+  }
+  wxBar.children[0].onclick = () => { wxMode = (wxMode + MODES.length - 1) % MODES.length; paintWeather(); };
+  wxBar.children[2].onclick = () => { wxMode = (wxMode + 1) % MODES.length; paintWeather(); };
   async function loadWeather() {
     const [s, d] = await Promise.all([buf('110m_cultural/ne_110m_populated_places_simple.shp'), buf('110m_cultural/ne_110m_populated_places_simple.dbf')]);
     const cities = shp.combine([shp.parseShp(s), shp.parseDbf(d)]).features.filter((f) => f.geometry);
@@ -93,17 +110,22 @@
     for (let i = 0; i < cities.length; i += 100) { // Open-Meteo takes many places per request
       const part = cities.slice(i, i + 100), ll = part.map((f) => f.geometry.coordinates);
       const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${ll.map((c) => c[1].toFixed(2))}&longitude=${ll.map((c) => c[0].toFixed(2))}` +
-        '&current=temperature_2m,weather_code,is_day&daily=weather_code,temperature_2m_max,temperature_2m_min&forecast_days=5&timezone=auto');
+        '&current=temperature_2m,weather_code,is_day&daily=weather_code,temperature_2m_max,temperature_2m_min,uv_index_max&forecast_days=5&timezone=auto');
       if (!res.ok) throw new Error('HTTP ' + res.status);
       [].concat(await res.json()).forEach((w, k) => {
         const p = part[k].properties, name = clean(p.name || p.NAME), rank = +(p.scalerank ?? p.SCALERANK ?? 5);
         const [icon, text] = WMO(w.current.weather_code, w.current.is_day), temp = Math.round(w.current.temperature_2m) + '°';
-        const rows = w.daily.time.map((t, j) => `<tr><td>${new Date(t + 'T12:00').toLocaleDateString(OGE_LANG, { weekday: 'long', day: 'numeric' })}</td><td style="font-size:20px">${WMO(w.daily.weather_code[j], 1)[0]}</td>` +
-          `<td>${T(WMO(w.daily.weather_code[j], 1)[1])}</td><td>${Math.round(w.daily.temperature_2m_min[j])}° / ${Math.round(w.daily.temperature_2m_max[j])}°</td></tr>`).join('');
-        ds.entities.add({ name: `${name}: ${temp}C, ${T(text)}`, position: C.Cartesian3.fromDegrees(ll[k][0], ll[k][1]),
+        // forecast as five columns: weekday, icon, maximum and minimum
+        const day = (t) => new Date(t + 'T12:00').toLocaleDateString(OGE_LANG, { weekday: 'short' }).toUpperCase(), cell = 'style="padding:4px 10px;text-align:center"';
+        const row = (fn, st) => `<tr style="${st}">${w.daily.time.map((t, j) => `<td ${cell}>${fn(t, j)}</td>`).join('')}</tr>`;
+        const table = `<table style="border-collapse:collapse;background:linear-gradient(#1a4fa0,#0b2a66);color:#fff;border-radius:6px">` +
+          row((t) => day(t), 'font-weight:700;background:#0b2a66') + row((t, j) => WMO(w.daily.weather_code[j], 1)[0], 'font-size:26px') +
+          row((t, j) => Math.round(w.daily.temperature_2m_max[j]) + '°', 'font-size:18px;font-weight:700;color:#ffd60a') + row((t, j) => Math.round(w.daily.temperature_2m_min[j]) + '°', 'font-size:18px;font-weight:700;color:#9fd3ff') + '</table>';
+        const e = ds.entities.add({ name: `${name}: ${temp}C, ${T(text)}`, position: C.Cartesian3.fromDegrees(ll[k][0], ll[k][1]),
           billboard: { image: weatherImage(icon, temp, name), scale: 0.5, disableDepthTestDistance: Number.POSITIVE_INFINITY,
             distanceDisplayCondition: new C.DistanceDisplayCondition(0, rank <= 1 ? 4e7 : rank <= 3 ? 1.2e7 : 6e6) }, // smaller cities appear when zooming in
-          description: `<p style="font-size:18px">${icon} <b>${temp}C</b> · ${T(text)}</p><table>${rows}</table><p><a href="https://open-meteo.com/" target="_blank">Open-Meteo</a> (CC BY 4.0)</p>` });
+          description: `<p style="font-size:18px">${icon} <b>${temp}C</b> · ${T(text)}</p><p><b>${T('Pronóstico de 5 días')}</b></p>${table}<p><a href="https://open-meteo.com/" target="_blank">Open-Meteo</a> (CC BY 4.0)</p>` });
+        wx.push({ e, w, name });
       });
     }
     const occluder = new C.EllipsoidalOccluder(C.Ellipsoid.WGS84, viewer.camera.positionWC); // the icons are not depth-tested: hide the far side by hand
@@ -117,9 +139,10 @@
   }
   const syncWeather = async () => {
     if (weather) weather.show = cbW.checked;
+    wxBar.hidden = !cbW.checked || !weather;
     if (!cbW.checked || weather || weatherBusy) return;
     weatherBusy = true;
-    try { weather = await loadWeather(); weather.show = cbW.checked; } catch (e) { OGE.toast('No se pudo cargar el clima: ' + e.message, true); }
+    try { weather = await loadWeather(); weather.show = cbW.checked; wxBar.hidden = !cbW.checked; paintWeather(); } catch (e) { OGE.toast('No se pudo cargar el clima: ' + e.message, true); }
     weatherBusy = false;
   };
   cbW.addEventListener('change', syncWeather);

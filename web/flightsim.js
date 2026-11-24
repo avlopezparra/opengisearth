@@ -257,7 +257,7 @@
     if (on) return stop();
     const v = await OGE.ask({ title: 'Simulador de vuelo', ok: 'Iniciar vuelo',
       help: 'Arranca en el aire sobre el punto que estás mirando. Mouse: clic toma o suelta la palanca. Teclado: flechas, RePág/AvPág para el gas, L tren, F flaps, Espacio pausa, Esc salir. Starship: X o clic derecho dispara.',
-      fields: [{ id: 'plane', label: 'Avión', type: 'select', options: Object.entries(PLANES).map(([k, p]) => [k, p.name]) },
+      fields: [{ id: 'plane', label: 'Avión', type: 'select', value: 'ship', options: Object.entries(PLANES).map(([k, p]) => [k, p.name]) },
         { id: 'mouse', label: 'Controlar con el mouse (como en Earth)', type: 'checkbox', value: true },
         { id: 'arcade', label: 'Starship: modo arcade con enemigos y puntaje (desmárcalo para volar libre)', type: 'checkbox', value: true },
         { id: 'aim', label: 'Starship: apuntar los disparos con el mouse (clic dispara; se vuela con el teclado)', type: 'checkbox', value: false }] });
