@@ -352,7 +352,7 @@
     { text: 'Los rectángulos grises son obstáculos: esquívalo.', need: 'wall', make: () => put('wall'), test: (r, age) => age > 1500 && !has('wall') },
     { text: 'Haz un tonel con R: desvía disparos y choques.', test: () => !!man && man.type === 'roll' },
     { text: 'Rizo con X y media vuelta con F.', test: () => !!man && (man.type === 'loop' || man.type === 'uturn' || man.type === 'unroll') },
-    { text: 'Y cambia la cámara a tercera persona (y Y otra vez vuelve). Z aterriza, C despega; en tierra se maneja como un auto.', test: (r, age) => age > 7000 },
+    { text: 'Z aterriza y C despega; en tierra se maneja como un auto.', test: (r, age) => age > 6000 },
     { text: 'Lanza una bomba con V: destruye a todos los enemigos cercanos.', need: 'enemy', make: () => { bombs = Math.max(bombs, 1); put('enemy', -0.1); put('enemy'); put('enemy', 0.1); }, test: (r) => bombs < r.bombs || (r.bombs === 0 && !has('enemy')) },
     { text: 'Un jefe custodia cada capital. Este es de práctica: dispárale hasta vaciar su barra de vida.', need: 'boss', make: () => { const o = put('boss', 0, 0.05, { type: 'fortress', hp: 5, max: 5, cap: null }); o.base = C.Cartesian3.clone(o.p); o.east = viewer.camera.rightWC.clone(); o.size = Math.max(o.size, 400); }, test: (r, age) => age > 1000 && !has('boss') },
     { text: '¡Listo! Ahora colecciona banderas, derrota jefes en las capitales y suma puntos. I: ayuda · O: repetir el tutorial.', test: (r, age) => age > 6000 },
@@ -495,6 +495,7 @@
         return d < 4e5;
       }
       if (o.kind === 'mine' && performance.now() > o.until) return false; // mines go off after a while
+      if (o.kind === 'itembox' && !o.lifted) { const gh = scene.globe.getHeight(C.Cartographic.fromDegrees(o.lon, o.lat)); if (gh !== undefined) { o.p = C.Cartesian3.fromDegrees(o.lon, o.lat, gh + 1200); o.lifted = true; } } // over the terrain once it is known
       const fixed = o.kind === 'crest' || o.kind === 'life' || o.kind === 'airliner' || o.kind === 'itembox' || o.kind === 'mine'; // these wait where they are instead of being left behind
       if (o.kind === 'ring') {
         const along = C.Cartesian3.dot(t, cam.directionWC), side = Math.sqrt(Math.max(0, d * d - along * along)), was = o.along; o.along = along;
@@ -772,6 +773,7 @@
     }
   }
   OGE.minimap.extra = (mg) => {
+    if (race && race.path && race.path.length > 1) { mg.save(); mg.strokeStyle = 'rgba(52,199,89,.85)'; mg.lineWidth = 1.5; mg.beginPath(); race.path.forEach(([x, y], i) => { const [px, py] = OGE.minimap.xy(x, y); if (i) mg.lineTo(px, py); else mg.moveTo(px, py); }); mg.stroke(); mg.restore(); } // the race route
     if (adv) for (const gl of adv.goals) if (!gl.done) { const [x, y] = OGE.minimap.xy(gl.lon, gl.lat); mg.strokeStyle = '#40e0ff'; mg.lineWidth = 2; mg.beginPath(); mg.arc(x, y, 4, 0, 7); mg.stroke(); } // collected capitals in green, the rest in yellow; the race goal, kept at the edge when it is outside
     if (remote && remote.to) { const c = C.Cartographic.fromCartesian(remote.to), [x, y] = OGE.minimap.xy(deg(c.longitude), deg(c.latitude)); mg.fillStyle = remote.skin; mg.beginPath(); mg.arc(x, y, 4, 0, 7); mg.fill(); } // the other online player
     if (race) {
@@ -856,16 +858,34 @@
   let race = null; // { key, from, to: { name, lon, lat, p }, t0 }
   let items = []; // the race items held (up to 3): 'missile' | 'mine' | 'boost' | 'shield'; U uses the first
   const ITEMS = { missile: ['🚀', 'Misil'], mine: ['⚫', 'Mina'], boost: ['⚡', 'Turbo'], shield: ['🛡', 'Escudo'] };
-  function placeBoxes(a, b) { // a row of three boxes every few kilometres between the two cities
-    const km = raceKm(), n = Math.max(3, Math.min(30, Math.round(km / 8)));
+  function placeBoxes() { // a row of three boxes every few kilometres along the race path
+    objs = objs.filter((o) => o.kind !== 'itembox');
+    const n = Math.max(3, Math.min(40, Math.round(race.pathLen / 8000)));
     for (let i = 1; i < n; i++) {
-      const f = i / n, lon = a.lon + (b.lon - a.lon) * f, lat = a.lat + (b.lat - a.lat) * f, side = Math.cos(rad(lat));
+      const [lon, lat, hd] = pathAt(i / n), side = Math.cos(rad(lat));
       for (const o of [-1, 0, 1]) { // across the route
-        const L = Math.hypot(b.lat - a.lat, (b.lon - a.lon) * side) || 1e-9, dl = (o * 0.012 * (b.lat - a.lat)) / L, dn = (-o * 0.012 * (b.lon - a.lon) * side) / L;
-        const x = lon + dl / side, y = lat + dn, gh = scene.globe.getHeight(C.Cartographic.fromDegrees(x, y)) || 0;
-        objs.push({ kind: 'itembox', p: C.Cartesian3.fromDegrees(x, y, gh + 1200), size: 350, next: 1e15 });
+        const x = lon + (o * 0.012 * Math.cos(hd)) / side, y = lat - o * 0.012 * Math.sin(hd), gh = scene.globe.getHeight(C.Cartographic.fromDegrees(x, y));
+        objs.push({ kind: 'itembox', lon: x, lat: y, lifted: gh !== undefined, p: C.Cartesian3.fromDegrees(x, y, (gh || 0) + 1200), size: 350, next: 1e15 });
       }
     }
+  }
+  function setPath(pts) { // [[lon, lat]...] with cumulative lengths in metres
+    const cum = [0];
+    for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + C.Cartesian3.distance(C.Cartesian3.fromDegrees(pts[i - 1][0], pts[i - 1][1]), C.Cartesian3.fromDegrees(pts[i][0], pts[i][1])));
+    Object.assign(race, { path: pts, cum, pathLen: cum[cum.length - 1] || 1, myT: 0 });
+  }
+  function pathAt(f) { // position and heading (radians from north) at a fraction of the path
+    const P = race.path, cum = race.cum, d = Math.min(1, Math.max(0, f)) * race.pathLen;
+    let i = 1; while (i < P.length - 1 && cum[i] < d) i++;
+    const a = P[i - 1], b = P[i], k = (d - cum[i - 1]) / ((cum[i] - cum[i - 1]) || 1);
+    return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, Math.atan2((b[0] - a[0]) * Math.cos(rad(a[1])), b[1] - a[1])];
+  }
+  async function roadPath(a, b) { // OSRM (OpenStreetMap routing): roads and ferries between the two cities; none: the straight line stays
+    try {
+      const j = await (await fetch(`https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=simplified&geometries=geojson`)).json();
+      const pts = j.routes && j.routes[0] && j.routes[0].geometry.coordinates;
+      return pts && pts.length > 1 ? pts : null;
+    } catch { return null; }
   }
   function useItem() {
     if (!items.length) return;
@@ -902,7 +922,7 @@
       help: 'Vuela de una ciudad a otra lo más rápido que puedas. La meta se marca en la pantalla y en el minimapa; se guarda tu mejor tiempo de cada ruta.',
       fields: [{ id: 'from', label: 'Salida', type: 'text', value: last.from || 'Santiago de Chile' }, { id: 'to', label: 'Meta', type: 'text', value: last.to || 'Valparaíso' },
         { id: 'cpus', label: 'Rivales de la CPU (si no hay otros jugadores)', type: 'select', value: String(last.cpus ?? 5), options: Array.from({ length: 13 }, (_, i) => [String(i), i ? String(i) : 'Ninguno']) },
-        { id: 'maxWarp', label: 'Turbo máximo', type: 'select', value: String(last.maxWarp ?? 100), options: WARPS.map((x) => [String(x), x === 100 ? '×100 (sin límite)' : '×' + x]) },
+        { id: 'maxWarp', label: 'Turbo máximo', type: 'select', value: String(last.maxWarp ?? 2), options: WARPS.map((x) => [String(x), x === 100 ? '×100 (sin límite)' : '×' + x]) },
         { id: 'lands', label: 'Volar solo sobre estos países (separados por comas; vacío = todos)', type: 'text', value: last.lands || '' }] });
     if (!v || !v.from || !v.to) return;
     localStorage.setItem('oge.raceLast', JSON.stringify(v));
@@ -923,7 +943,8 @@
     if (v.lands && v.lands.trim()) raceLands(v.lands); // only these countries (the sea and Antarctica stay open)
     if (!p2 && !remote) race.cpus = Array.from({ length: +v.cpus || 0 }, (_, i) => ({ // rivals: each flies the route at its own pace
       name: CPU_NAMES[i], color: CPU_COLORS[i], f: 0, side: ((i % 2 ? 1 : -1) * (1 + Math.floor(i / 2))) * 0.004, speed: (1200 + Math.random() * 2600) * Math.min(1, race.maxWarp / 5 + 0.2), stunT: 0, itemT: performance.now() + 8000 + Math.random() * 10000 }));
-    items = []; placeBoxes(a, b);
+    items = []; setPath([[a.lon, a.lat], [b.lon, b.lat]]); placeBoxes();
+    const me = race; roadPath(a, b).then((pts) => { if (pts && race === me) { setPath(pts); placeBoxes(); OGE.toast(`${T('Ruta por carreteras y ferris')}: ${Math.round(race.pathLen / 1000)} km`); } }); // the rivals follow the roads, in the air
     graceT = performance.now() + 6000;
     const best = +localStorage.getItem('oge.race.' + race.key) || 0;
     OGE.toast(`🏁 ${a.name} → ${b.name}: ${Math.round(raceKm())} km.` + (best ? ` ${T('Mejor tiempo')}: ${fmtT(best)}.` : ''));
@@ -931,12 +952,17 @@
   const CPU_NAMES = ['Cóndor', 'Halcón', 'Albatros', 'Gaviota', 'Colibrí', 'Pelícano', 'Águila', 'Petrel', 'Garza', 'Flamenco', 'Tucán', 'Búho'];
   const CPU_COLORS = ['#ff453a', '#ff9f0a', '#ffd60a', '#34c759', '#64d2ff', '#bf5af2', '#ff375f', '#ac8e68', '#30d158', '#5e5ce6', '#ffffff', '#8e8e93'];
   const raceKmFrom = (a, b) => C.Cartesian3.distance(C.Cartesian3.fromDegrees(a.lon, a.lat, 0), C.Cartesian3.fromDegrees(b.lon, b.lat, 0)) / 1000;
-  const cpuPos = (c) => { // along the straight route, a little to one side, 1.5 km over the ground
-    const a = race.from, b = race.to, f = Math.min(1, c.f), lon = a.lon + (b.lon - a.lon) * f, lat = a.lat + (b.lat - a.lat) * f, L = Math.hypot(b.lat - a.lat, (b.lon - a.lon) * Math.cos(rad(lat))) || 1;
-    const x = lon + (c.side * (b.lat - a.lat)) / L / Math.cos(rad(lat)), y = lat - (c.side * (b.lon - a.lon) * Math.cos(rad(lat))) / L;
+  const cpuPos = (c) => { // along the race path (roads and ferries), a little to one side, 1.5 km over the ground
+    const [lon, lat, hd] = pathAt(c.f), x = lon + (c.side * Math.cos(hd)) / Math.cos(rad(lat)), y = lat - c.side * Math.sin(hd);
     return C.Cartesian3.fromDegrees(x, y, (scene.globe.getHeight(C.Cartographic.fromDegrees(x, y)) || 0) + 1500);
   };
-  const myProgress = () => Math.max(0, 1 - raceKm() / race.km);
+  const myProgress = () => { // the nearest point of the path, checked a few times a second
+    const now = performance.now();
+    if (race.myT && now - race.myT < 300) return race.my;
+    const lo = deg(s.lon), la = deg(s.lat), P = race.path, cl = Math.cos(s.lat) ** 2; let best = 0, bd = Infinity;
+    for (let i = 0; i < P.length; i++) { const d = (P[i][0] - lo) ** 2 * cl + (P[i][1] - la) ** 2; if (d < bd) { bd = d; best = i; } }
+    race.myT = now; race.my = race.cum[best] / race.pathLen; return race.my;
+  };
   async function raceLands(list) { // the countries named (by name or ISO code) are allowed; any other one turns the ship back, as in the adventure
     try {
       const [s2, d2] = await Promise.all([fetch(NE + '50m_cultural/ne_50m_admin_0_countries.shp').then((r) => r.arrayBuffer()), fetch(NE + '50m_cultural/ne_50m_admin_0_countries.dbf').then((r) => r.arrayBuffer())]);
@@ -961,7 +987,7 @@
     for (const c of race.cpus) {
       if (c.f >= 1) continue;
       const pace = now < c.stunT ? 0.15 : 1, rubber = me > c.f + 0.15 ? 1.25 : me < c.f - 0.15 ? 0.85 : 1; // hit by a missile it crawls; a little rubber band keeps the race close
-      c.f += (c.speed * pace * rubber * dt) / (race.km * 1000);
+      c.f += (c.speed * pace * rubber * dt) / race.pathLen;
       if (now > c.itemT) { // now and then a rival close behind fires at the player
         c.itemT = now + 10000 + Math.random() * 12000;
         if (c.f < me && me - c.f < 0.08 && now > graceT) { OGE.toast(`${c.name} ${T('te lanzó un misil')}`); hurt(10); }
@@ -982,6 +1008,7 @@
     setTimeout(() => { if (on) stop(); }, 3000);
   }
   function drawRace(g, w, text) { // the goal: a flag where it is on the screen, and an arrow at the top pointing to it
+    const h = hud.clientHeight;
     const toWin = C.SceneTransforms.worldToWindowCoordinates || C.SceneTransforms.wgs84ToWindowCoordinates, q = toWin(scene, race.to.p);
     const ahead = C.Cartesian3.dot(C.Cartesian3.subtract(race.to.p, viewer.camera.positionWC, new C.Cartesian3()), viewer.camera.directionWC) > 0;
     if (q && ahead && new C.EllipsoidalOccluder(C.Ellipsoid.WGS84, viewer.camera.positionWC).isPointVisible(race.to.p)) { g.save(); g.font = '28px sans-serif'; g.textAlign = 'center'; g.fillText('🏁', q.x, q.y); g.fillStyle = '#fff'; g.font = '600 12px sans-serif'; g.fillText(race.to.name, q.x, q.y + 18); g.restore(); }
@@ -989,6 +1016,7 @@
     g.save(); g.translate(w / 2, 70); g.rotate(rel); g.fillStyle = g.shadowColor = '#34c759'; g.shadowBlur = 10; g.beginPath(); g.moveTo(0, -16); g.lineTo(11, 10); g.lineTo(0, 4); g.lineTo(-11, 10); g.closePath(); g.fill(); g.restore();
     const me = myProgress(), place = 1 + race.cpus.filter((c) => c.f > me).length;
     text(`🏁 ${race.to.name} · ${raceKm().toFixed(1)} km · ${fmtT(performance.now() - race.t0)}` + (race.cpus.length ? ` · ${T('Puesto')} ${place}/${race.cpus.length + 1}` : ''), 24, 156, 14, 'left');
+    g.save(); g.textAlign = 'right'; g.fillStyle = '#fff'; g.strokeStyle = '#000'; g.lineWidth = 4; g.font = '800 34px sans-serif'; const pl = `${place}/${race.cpus.length + 1}`; g.strokeText(pl, w - 24, h - 90); g.fillText(pl, w - 24, h - 90); g.font = '600 13px sans-serif'; g.lineWidth = 3; g.strokeText(T('PUESTO'), w - 24, h - 128); g.fillText(T('PUESTO'), w - 24, h - 128); g.restore(); // the place, big
     const occ = new C.EllipsoidalOccluder(C.Ellipsoid.WGS84, viewer.camera.positionWC);
     for (const c of race.cpus) { // the rivals, as ships in their colors with their names
       const p = cpuPos(c), d = C.Cartesian3.distance(p, viewer.camera.positionWC);
@@ -1502,7 +1530,7 @@
     text(T(aimMouse ? 'MOUSE: apunta, clic dispara' : mouseCtl ? 'MOUSE: clic suelta la palanca' : 'TECLADO: clic para volar con el mouse'), cx, h - 22, 12);
     text(A.name.split(' — ')[0], w - 24, h - 22, 12, 'right');
     if ($('flyBtns').classList.contains('keyboard')) text(T('K: ver los controles'), w - 24, h - 40, 12, 'right');
-    if (third && A.ship) text(T('Cámara en tercera persona · Y: volver a primera persona'), w - 24, h - 58, 12, 'right'); // with a keyboard there are no buttons: this is the reminder
+    if (third && A.ship) text(T('Cámara en tercera persona (experimental) · Y: volver a primera persona'), w - 24, h - 58, 12, 'right'); // with a keyboard there are no buttons: this is the reminder
   }
 
   scene.preRender.addEventListener(() => {
@@ -1554,7 +1582,7 @@
     else if (k === ' ') { nextWarp(1); e.preventDefault(); } // on the ship Space raises the turbo
     else if (k === 'shift' && e.code !== 'ShiftRight' && A && A.ship) nextWarp(-1); // left Shift lowers it
     else if (k === 'h') showHud = !showHud;
-    else if (k === 'y' && A && A.ship) { third = !third; localStorage.setItem('oge.third', third ? '1' : ''); OGE.toast(third ? T('Cámara en tercera persona (Y)') : T('Cámara en primera persona (Y)')); }
+    else if (k === 'y' && A && A.ship) { third = !third; localStorage.setItem('oge.third', third ? '1' : ''); OGE.toast(third ? T('Cámara en tercera persona (experimental, Y)') : T('Cámara en primera persona (Y)')); }
     else if (k === 'l') s.gear = !s.gear;
     else if (k === 'u' && race && A.ship) useItem(); // U uses the race item
     else if (k === 'f' && A && A.ship) maneuver('uturn'); // F: turn back (on the ship F has no flaps)

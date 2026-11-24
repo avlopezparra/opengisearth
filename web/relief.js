@@ -553,11 +553,11 @@
     regionBusy = true;
     OGE.toast('Cargando los nombres de regiones…');
     try {
-      const clean = (v) => String(v ?? '').replace(/\0/g, '').trim(), bills = viewer.scene.primitives.add(new C.BillboardCollection()); // only the attribute table is needed: it has the label point
+      const clean = (v) => String(v ?? '').replace(/\0/g, '').trim(), bills = viewer.scene.primitives.add(new C.LabelCollection()); // text labels share one glyph atlas (thousands of picture labels overflowed the GPU atlas: black boxes); only the attribute table is needed
       for (const p of shp.parseDbf(await buf('10m_cultural/ne_10m_admin_1_states_provinces.dbf'))) {
         const lon = +p.longitude, lat = +p.latitude, name = clean(OGE_LANG === 'en' ? p.name : p.name_es) || clean(p.name);
         if (!isFinite(lon) || !isFinite(lat) || !name) continue;
-        bills.add({ position: C.Cartesian3.fromDegrees(lon, lat), image: OGE.textImage(name, 'italic 600 12px sans-serif', C.Color.fromCssColorString('#ffe9a8')), scale: 0.5, disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        bills.add({ position: C.Cartesian3.fromDegrees(lon, lat), text: name, font: 'italic 600 13px sans-serif', fillColor: C.Color.fromCssColorString('#ffe9a8'), outlineColor: C.Color.BLACK, outlineWidth: 3, style: C.LabelStyle.FILL_AND_OUTLINE, disableDepthTestDistance: Number.POSITIVE_INFINITY,
           distanceDisplayCondition: new C.DistanceDisplayCondition(0, (+p.min_label || 5) <= 4 ? 4e6 : 2e6), id: { oge: 'region', q: clean(p.wikidataid), name } });
       }
       const occluder = new C.EllipsoidalOccluder(C.Ellipsoid.WGS84, viewer.camera.positionWC);
