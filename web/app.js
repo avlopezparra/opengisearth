@@ -273,6 +273,30 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
   cbMm.addEventListener('change', syncMm);
   syncMm();
 
+  // ---------- Zoom sounds: sounds/zoom_in.wav and sounds/zoom_out.wav if they exist, otherwise a short synthesized sweep ----------
+  const zoomClip = { in: new Audio('sounds/zoom_in.wav'), out: new Audio('sounds/zoom_out.wav') };
+  for (const a of Object.values(zoomClip)) { a.preload = 'auto'; a.volume = 0.5; a.onerror = () => { a.bad = true; }; }
+  let zoomAc = null, zoomH = null, zoomT = 0;
+  function zoomSound(dir) {
+    if (localStorage.getItem('oge.mute') || document.body.classList.contains('flying')) return; // muted, or the flight has its own sounds
+    const clip = zoomClip[dir];
+    if (!clip.bad && clip.readyState >= 2) { clip.currentTime = 0; clip.play().catch(() => {}); return; }
+    try {
+      zoomAc = zoomAc || new AudioContext();
+      const o = zoomAc.createOscillator(), v = zoomAc.createGain(), t = zoomAc.currentTime, [f0, f1] = dir === 'in' ? [320, 880] : [880, 320];
+      o.type = 'sine'; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + 0.18);
+      v.gain.setValueAtTime(0.05, t); v.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+      o.connect(v).connect(zoomAc.destination); o.start(t); o.stop(t + 0.21);
+    } catch { /* no audio device */ }
+  }
+  scene.postRender.addEventListener(() => { // sampled three times a second: a clear change of height is a zoom
+    const now = performance.now();
+    if (now - zoomT < 320) return;
+    const h = viewer.camera.positionCartographic.height;
+    if (zoomH !== null && (h < zoomH * 0.88 || h > zoomH * 1.14)) zoomSound(h < zoomH ? 'in' : 'out');
+    zoomH = h; zoomT = now;
+  });
+
   // ---------- View screenshot ----------
   $('shotBtn').onclick = () => { viewer.render(); scene.canvas.toBlob((b) => OGE.download('OpenGISEarth.png', b)); };
 
