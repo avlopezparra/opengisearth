@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- OpenGISEarth icon: a glossy globe on an aqua sky tile, with an orbit ring (Frutiger Aero style) -->
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#b9f3ff"/><stop offset="0.45" stop-color="#3fb6f0"/><stop offset="1" stop-color="#0b4fa8"/>
+    </linearGradient>
+    <linearGradient id="tileGloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.75"/><stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="ocean" cx="0.36" cy="0.3" r="0.8">
+      <stop offset="0" stop-color="#9be7ff"/><stop offset="0.45" stop-color="#1e9be0"/><stop offset="1" stop-color="#0a3d91"/>
+    </radialGradient>
+    <linearGradient id="land" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#b6f26a"/><stop offset="0.6" stop-color="#4cc04a"/><stop offset="1" stop-color="#1f7f3a"/>
+    </linearGradient>
+    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.9"/><stop offset="1" stop-color="#fff" stop-opacity="0.05"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0.7" stop-color="#e8fbff" stop-opacity="0.0"/><stop offset="0.93" stop-color="#e8fbff" stop-opacity="0.55"/><stop offset="1" stop-color="#e8fbff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.1"/><stop offset="0.5" stop-color="#fff" stop-opacity="0.95"/><stop offset="1" stop-color="#fff" stop-opacity="0.15"/>
+    </linearGradient>
+    <radialGradient id="bubble" cx="0.35" cy="0.3" r="0.7">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.9"/><stop offset="0.5" stop-color="#fff" stop-opacity="0.15"/><stop offset="1" stop-color="#fff" stop-opacity="0.35"/>
+    </radialGradient>
+    <clipPath id="globe"><circle cx="512" cy="540" r="320"/></clipPath>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#06244f" flood-opacity="0.45"/></filter>
+  </defs>
+
+  <rect x="32" y="32" width="960" height="960" rx="220" fill="url(#sky)"/>
+  <path d="M252 32 H772 A220 220 0 0 1 992 252 V360 C 760 300 300 300 32 380 V252 A220 220 0 0 1 252 32 Z" fill="url(#tileGloss)"/>
+
+  <!-- floating bubbles -->
+  <circle cx="190" cy="250" r="46" fill="url(#bubble)" stroke="#fff" stroke-opacity="0.6" stroke-width="3"/>
+  <circle cx="842" cy="200" r="30" fill="url(#bubble)" stroke="#fff" stroke-opacity="0.6" stroke-width="3"/>
+  <circle cx="870" cy="820" r="38" fill="url(#bubble)" stroke="#fff" stroke-opacity="0.5" stroke-width="3"/>
+  <circle cx="150" cy="790" r="22" fill="url(#bubble)" stroke="#fff" stroke-opacity="0.5" stroke-width="2"/>
+
+  <!-- orbit, back half (behind the globe) -->
+  <ellipse cx="512" cy="560" rx="440" ry="120" transform="rotate(-18 512 560)" fill="none" stroke="#fff" stroke-opacity="0.35" stroke-width="14"/>
+
+  <g filter="url(#shadow)">
+    <circle cx="512" cy="540" r="320" fill="url(#ocean)"/>
+    <g clip-path="url(#globe)">
+      <!-- stylized continents -->
+      <path d="M300 300 C 360 250 460 260 500 320 C 530 370 470 420 430 450 C 400 480 420 540 380 590 C 350 630 300 610 290 560 C 280 500 240 470 250 410 C 255 360 270 330 300 300 Z" fill="url(#land)"/>
+      <path d="M420 640 C 460 620 510 650 520 700 C 530 760 500 820 460 860 L 430 860 C 440 800 400 760 410 700 C 412 670 405 650 420 640 Z" fill="url(#land)"/>
+      <path d="M600 300 C 660 280 740 300 780 350 C 820 400 800 450 760 470 C 720 490 700 530 720 580 C 740 630 700 700 650 720 C 610 735 590 690 600 640 C 610 590 560 560 570 510 C 580 460 540 430 560 380 C 570 340 580 315 600 300 Z" fill="url(#land)"/>
+      <path d="M760 620 C 800 610 840 640 830 680 C 820 715 780 720 760 700 C 740 680 740 630 760 620 Z" fill="url(#land)"/>
+      <!-- graticule -->
+      <g fill="none" stroke="#fff" stroke-opacity="0.28" stroke-width="4">
+        <ellipse cx="512" cy="540" rx="320" ry="110"/><ellipse cx="512" cy="540" rx="320" ry="230"/>
+        <ellipse cx="512" cy="540" rx="120" ry="320"/><ellipse cx="512" cy="540" rx="235" ry="320"/>
+        <line x1="512" y1="220" x2="512" y2="860"/><line x1="192" y1="540" x2="832" y2="540"/>
+      </g>
+    </g>
+    <circle cx="512" cy="540" r="326" fill="url(#glow)"/>
+    <!-- glass reflection on top of the globe -->
+    <path d="M262 470 C 262 330 380 236 512 236 C 644 236 762 330 762 470 C 700 410 610 385 512 385 C 414 385 324 410 262 470 Z" fill="url(#gloss)"/>
+    <ellipse cx="640" cy="790" rx="120" ry="34" transform="rotate(-25 640 790)" fill="#fff" fill-opacity="0.18"/>
+  </g>
+
+  <!-- orbit, front half, with a little ship on it -->
+  <path d="M 85 690 A 440 120 -18 0 0 939 430" fill="none" stroke="url(#ring)" stroke-width="16" stroke-linecap="round"/>
+  <defs><radialGradient id="moon" cx="0.35" cy="0.3" r="0.75"><stop offset="0" stop-color="#fffbe0"/><stop offset="0.5" stop-color="#ffd54f"/><stop offset="1" stop-color="#f57f17"/></radialGradient></defs>
+  <circle cx="842" cy="462" r="34" fill="url(#moon)" stroke="#fff" stroke-opacity="0.8" stroke-width="4"/>
+  <ellipse cx="832" cy="448" rx="14" ry="8" fill="#fff" fill-opacity="0.8"/>
+</svg>

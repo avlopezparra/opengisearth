@@ -1,0 +1,27 @@
+{
+  "name": "OpenGISEarth",
+  "short_name": "OpenGISEarth",
+  "description": "OpenGISEarth: globo 3D y editor SIG de código abierto, alternativa libre a Google Earth Pro. Mapas, fronteras, países históricos, satélites en vivo, herramientas de geoprocesamiento y el juego OpenStarshipEarth.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#0b4fa8",
+  "theme_color": "#1e88e5",
+  "lang": "es",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

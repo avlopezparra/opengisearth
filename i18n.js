@@ -2,7 +2,8 @@
 // with the i18n_en.js dictionary: exact ones (OGE_EN.exact) and patterns for those carrying numbers or names (OGE_EN.patterns).
 // T(text) translates by hand what does not go through the DOM (what is drawn on canvases: flight HUD, print sheet).
 (() => {
-  const saved = localStorage.getItem('oge.lang'), lang = saved || ((navigator.language || 'es').toLowerCase().startsWith('es') ? 'es' : 'en');
+  const asked = new URLSearchParams(location.search).get('lang'), saved = localStorage.getItem('oge.lang'); // ?lang=en / ?lang=es (links and search engines) wins
+  const lang = ['es', 'en'].includes(asked) ? asked : saved || ((navigator.language || 'es').toLowerCase().startsWith('es') ? 'es' : 'en');
   const D = window.OGE_EN || { exact: {}, patterns: [] };
   const tr = (s) => {
     if (lang !== 'en' || typeof s !== 'string') return s;
