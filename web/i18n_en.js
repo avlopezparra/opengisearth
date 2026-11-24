@@ -271,6 +271,7 @@
     'F-16 — caza a reacción, rápido y nervioso': 'F-16 — jet fighter, fast and twitchy',
     'Mantén pulsado para doblar a la izquierda (A)': 'Hold to turn left (A)', 'Mantén pulsado para doblar a la derecha (D)': 'Hold to turn right (D)',
     '? Controles (K)': '? Controls (K)',
+    'Disparar y las maniobras son solo de la Starship.': 'Firing and the maneuvers are Starship only.',
     'Starship: modo arcade (enemigos, aros y monedas)': 'Starship: arcade mode (enemies, rings and coins)',
     'PUNTOS': 'SCORE', 'MONEDAS': 'COINS',
     'W / S o ↑ ↓: bajar / subir la nariz': 'W / S or ↑ ↓: nose down / up',
