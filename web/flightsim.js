@@ -53,13 +53,82 @@
   }
   function beep(f0, f1, dur) {
     try {
-      audio = audio || new AudioContext();
+      ac();
       const o = audio.createOscillator(), v = audio.createGain(), now = audio.currentTime;
       o.type = 'sawtooth'; o.frequency.setValueAtTime(f0, now); o.frequency.exponentialRampToValueAtTime(f1, now + dur);
       v.gain.setValueAtTime(0.06, now); v.gain.exponentialRampToValueAtTime(0.001, now + dur);
-      o.connect(v).connect(audio.destination); o.start(now); o.stop(now + dur + 0.01);
+      o.connect(v).connect(master); o.start(now); o.stop(now + dur + 0.01);
     } catch { /* no audio device: the game still works */ }
   }
+
+  // ---------- Sound: master volume (mute) and an original looping arcade theme, synthesized on the fly ----------
+  let master = null, muted = !!localStorage.getItem('oge.mute'), musicTimer = null, mStep = 0, mNext = 0;
+  function ac() {
+    if (!audio) { audio = new AudioContext(); master = audio.createGain(); master.gain.value = muted ? 0 : 1; master.connect(audio.destination); }
+    return audio;
+  }
+  // Eight bars in A minor, eight eighth-notes each (MIDI numbers, 0 = rest), and the bass root of each bar.
+  const LEAD = [[69, 0, 72, 76, 81, 79, 76, 72], [77, 0, 72, 77, 81, 79, 77, 72], [76, 0, 72, 76, 79, 84, 83, 79], [74, 0, 71, 74, 79, 78, 79, 83],
+    [84, 81, 77, 81, 84, 0, 86, 84], [83, 79, 74, 79, 83, 0, 86, 88], [88, 0, 86, 84, 81, 0, 84, 86], [88, 86, 83, 80, 76, 80, 83, 88]];
+  const BASS = [45, 41, 48, 43, 41, 43, 45, 40], EIGHTH = 60 / 150 / 2; // 150 beats per minute
+  function tone(midi, t, dur, type, vol) {
+    const o = audio.createOscillator(), v = audio.createGain();
+    o.type = type; o.frequency.value = 440 * 2 ** ((midi - 69) / 12);
+    v.gain.setValueAtTime(vol, t); v.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.connect(v).connect(master); o.start(t); o.stop(t + dur + 0.02);
+  }
+  function music(play) {
+    clearInterval(musicTimer); musicTimer = null;
+    if (!play) return;
+    try { ac(); } catch { return; } // no audio device
+    mStep = 0; mNext = audio.currentTime + 0.1;
+    musicTimer = setInterval(() => { // schedules a little ahead of the clock
+      while (mNext < audio.currentTime + 0.25) {
+        const bar = Math.floor(mStep / 8) % 8, i = mStep % 8, n = LEAD[bar][i];
+        if (n && !paused) tone(n, mNext, EIGHTH * 0.9, 'square', 0.035);
+        if (!paused) tone(BASS[bar] + (i % 2 ? 12 : 0), mNext, EIGHTH * 0.8, 'triangle', 0.07);
+        if (!paused && i % 2 === 0) tone(33, mNext, 0.06, 'sine', 0.12); // pulse on the beat
+        mNext += EIGHTH; mStep++;
+      }
+    }, 60);
+  }
+  const setMute = (v) => { muted = v; localStorage.setItem('oge.mute', v ? '1' : ''); if (master) master.gain.value = v ? 0 : 1; $('flyMute').textContent = (v ? '🔇 ' : '🔊 ') + T('Sonido') + ' (P)'; $('flyMute').classList.toggle('active', v); };
+
+  // ---------- Sprites: enemy craft and bosses drawn once on small canvases (original designs), then scaled on the HUD ----------
+  function sprite(size, paint) {
+    const cv = Object.assign(document.createElement('canvas'), { width: size, height: size }), c = cv.getContext('2d');
+    c.translate(size / 2, size / 2); c.scale(size / 200, size / 200); c.lineJoin = 'round'; // paint in a -100..100 box
+    paint(c);
+    return cv;
+  }
+  const poly = (c, pts, fill, stroke) => { c.beginPath(); pts.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y))); c.closePath(); c.fillStyle = fill; c.fill(); if (stroke) { c.strokeStyle = stroke; c.lineWidth = 4; c.stroke(); } };
+  const glow = (c, x, y, r, color) => { const gr = c.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, '#fff'); gr.addColorStop(0.4, color); gr.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = gr; c.beginPath(); c.arc(x, y, r, 0, 7); c.fill(); };
+  const ENEMY = [
+    sprite(128, (c) => { // dart: swept wings, seen head-on
+      poly(c, [[-95, 10], [-30, -8], [0, -38], [30, -8], [95, 10], [40, 22], [0, 40], [-40, 22]], '#8e1b1b', '#ff6b5e');
+      poly(c, [[-18, -10], [0, -30], [18, -10], [0, 8]], '#1c2a44', '#9fd3ff');
+      glow(c, -52, 14, 16, '#ff9f0a'); glow(c, 52, 14, 16, '#ff9f0a');
+    }),
+    sprite(128, (c) => { // saucer
+      c.beginPath(); c.ellipse(0, 10, 92, 30, 0, 0, 7); c.fillStyle = '#5a5f6b'; c.fill(); c.strokeStyle = '#c7ccd6'; c.lineWidth = 4; c.stroke();
+      c.beginPath(); c.ellipse(0, -8, 44, 30, 0, Math.PI, 0); c.fillStyle = '#2b6f8f'; c.fill(); c.strokeStyle = '#9fe3ff'; c.stroke();
+      for (const x of [-60, -30, 0, 30, 60]) glow(c, x, 16, 9, '#ff453a');
+    }),
+    sprite(128, (c) => { // claw: two prongs around a core
+      poly(c, [[-92, -50], [-60, -34], [-44, 30], [-70, 56], [-84, 10]], '#4a2a6b', '#c79bff');
+      poly(c, [[92, -50], [60, -34], [44, 30], [70, 56], [84, 10]], '#4a2a6b', '#c79bff');
+      poly(c, [[-46, -14], [0, -34], [46, -14], [36, 26], [0, 40], [-36, 26]], '#2a2233', '#c79bff');
+      glow(c, 0, 2, 22, '#ff2df5');
+    }),
+  ];
+  const BOSS = sprite(256, (c) => { // fortress: armored hull, side cannons and a glowing core
+    poly(c, [[-98, -6], [-70, -40], [-30, -52], [30, -52], [70, -40], [98, -6], [80, 34], [34, 58], [-34, 58], [-80, 34]], '#3a1250', '#ff5cf4');
+    poly(c, [[-98, -6], [-124, 6], [-98, 22]], '#6b1d8c', '#ff5cf4'); poly(c, [[98, -6], [124, 6], [98, 22]], '#6b1d8c', '#ff5cf4');
+    poly(c, [[-60, -34], [-22, -42], [-22, -18], [-56, -12]], '#1d0b2b'); poly(c, [[60, -34], [22, -42], [22, -18], [56, -12]], '#1d0b2b');
+    for (const x of [-70, -46, 46, 70]) { c.fillStyle = '#9aa0ad'; c.fillRect(x - 5, 30, 10, 34); glow(c, x, 66, 10, '#ff9f0a'); }
+    glow(c, 0, 8, 34, '#ff2d55');
+    c.beginPath(); c.arc(0, 8, 14, 0, 7); c.fillStyle = '#fff'; c.fill();
+  });
 
   // ---------- Starship arcade: random enemies to shoot, rings to fly through and coins to collect ----------
   // The objects live in the 3D world and are drawn on the HUD at their projected position and size.
@@ -76,7 +145,7 @@
     add(cam.directionWC, D); add(cam.rightWC, (Math.random() - 0.5) * D * 0.5); add(cam.upWC, (Math.random() - 0.5) * D * 0.25);
     const c = C.Cartographic.fromCartesian(p), floor = (scene.globe.getHeight(c) || 0) + 200;
     if (c.height < floor) C.Cartesian3.fromRadians(c.longitude, c.latitude, floor, undefined, p); // never underground
-    objs.push({ kind, p, size: D * 0.06 * SIZE[kind], next: performance.now() + 3000 + Math.random() * 4000 }); // sized for the speed it was created at; next: when an enemy fires
+    objs.push({ kind, p, size: D * 0.06 * SIZE[kind], look: Math.floor(Math.random() * ENEMY.length), next: performance.now() + 3000 + Math.random() * 4000 }); // sized for the speed it was created at; next: when an enemy fires
   }
   function hurt(n) {
     if (shields) { shields--; broke = hit = performance.now(); return beep(1400, 300, 0.2); } // the shield takes the hit and breaks
@@ -158,13 +227,11 @@
       else if (o.kind === 'wall') { g.fillStyle = 'rgba(120,130,150,.85)'; g.strokeStyle = g.shadowColor = '#e5e5ea'; g.lineWidth = 2; g.rect(q.x - pr, q.y - pr * 0.6, pr * 2, pr * 1.2); g.fill(); g.stroke(); }
       else if (o.kind === 'boss') {
         const R = Math.max(14, pr);
-        g.fillStyle = '#5e0b8a'; g.strokeStyle = g.shadowColor = '#ff2df5'; g.lineWidth = 3; g.shadowBlur = 16;
-        for (let a = 0; a < 8; a++) g.lineTo(q.x + R * (a % 2 ? 0.55 : 1.4) * Math.sin((a * Math.PI) / 4), q.y - R * (a % 2 ? 0.55 : 1) * Math.cos((a * Math.PI) / 4));
-        g.closePath(); g.fill(); g.stroke();
+        g.shadowColor = '#ff2df5'; g.shadowBlur = 16; g.drawImage(BOSS, q.x - R * 1.4, q.y - R * 1.4, R * 2.8, R * 2.8);
         g.shadowBlur = 0; g.fillStyle = '#300'; g.fillRect(q.x - 40, q.y - R - 16, 80, 6); g.fillStyle = '#ff453a'; g.fillRect(q.x - 40, q.y - R - 16, (80 * o.hp) / o.max, 6);
         g.fillStyle = '#fff'; g.textAlign = 'center'; g.font = '600 12px sans-serif'; g.fillText(T('Jefe de') + ' ' + o.cap.name, q.x, q.y - R - 22);
       }
-      else { g.fillStyle = g.shadowColor = '#ff453a'; g.moveTo(q.x, q.y - pr); g.lineTo(q.x + pr * 1.3, q.y); g.lineTo(q.x, q.y + pr * 0.5); g.lineTo(q.x - pr * 1.3, q.y); g.closePath(); g.fill(); }
+      else { const R = Math.max(10, pr * 1.6); g.shadowColor = '#ff453a'; g.drawImage(ENEMY[o.look || 0], q.x - R, q.y - R, R * 2, R * 2); } // enemy craft
       g.restore();
     }
     booms = booms.filter((b) => now - b.t < 350);
@@ -202,7 +269,8 @@
     man = null;
     loadCaps();
     if (A.ship) OGE.minimap.zoom(99); // the starship starts with the minimap zoomed all the way in
-    arcade = !!A.ship && !!useArcade; hp = 100; bombs = 2; incoming = []; flash = hit = 0; shields = 0; objs = []; booms = []; score = coins = 0;
+    arcade = !!A.ship && !!useArcade; hp = 100; bombs = 2; incoming = []; flash = hit = 0; shields = 0;
+    music(arcade); objs = []; booms = []; score = coins = 0;
     const la = OGE.lookAt(), c = la ? la.carto : viewer.camera.positionCartographic; // above the look-at point, not from orbit
     const ground = scene.globe.getHeight(c) || 0;
     s = { lon: c.longitude, lat: c.latitude, alt: ground + A.agl, heading: viewer.camera.heading, pitch: 0, roll: 0, v: A.v0, vs: 0,
@@ -295,6 +363,7 @@
   }
   function stop(msg, error) {
     on = false;
+    music(false);
     if (arcade && !msg && score) msg = `Vuelo terminado: ${score} puntos y ${coins} monedas.`;
     if (arcade && (score || coins)) saveScore(score, coins);
     scene.screenSpaceCameraController.enableInputs = true;
@@ -504,6 +573,7 @@
     else if (k === '+' || k === '=' || k === '-') OGE.minimap.zoom(k === '-' ? -1 : 1);
     else if (k === 'm') OGE.minimap.toggle();
     else if (k === 'n') nextTurn();
+    else if (k === 'p') setMute(!muted);
     else if (k === 'r' || k === 'v' || k === 'u') maneuver(k === 'r' ? 'roll' : k === 'v' ? 'loop' : 'uturn');
     else if (k === 'k') $('flyKeys').hidden = !$('flyKeys').hidden;
     else keys.add(k);
@@ -516,6 +586,8 @@
   $('flyWarpDown').onclick = () => nextWarp(-1);
   const nextTurn = () => setTurn(TURNS[(TURNS.indexOf(turn) + 1) % TURNS.length] || 1);
   $('flyTurn').onclick = nextTurn;
+  $('flyMute').onclick = () => setMute(!muted);
+  setMute(muted);
   setTurn(TURNS.includes(turn) ? turn : 3);
   $('flyScores').onclick = () => { paused = true; showScores(); };
   $('flyHelp').onclick = () => { $('flyKeys').hidden = !$('flyKeys').hidden; };
