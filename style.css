@@ -204,3 +204,9 @@ body.game-only #panel, body.game-only #splitter { display: none; }
 
 /* With a keyboard: no buttons that only repeat keys */
 #flyBtns.keyboard > #flyActs, #flyBtns.keyboard > div:not(#flyExtra):not(#flyActs), #flyBtns.keyboard > #flyUp, #flyBtns.keyboard > #flyDown, #flyBtns.keyboard > #flyWarp, #flyBtns.keyboard > #flyWarpDown { display: none; }
+
+/* Phones: the stick on the left half steers, so the right column only has big touch buttons: actions, speed and turbo */
+#flyBtns.touch > div:not(#flyActs):not(#flyExtra) { display: none; }
+#flyBtns.touch > #flyActs { flex-direction: column; gap: 8px; }
+#flyBtns.touch > #flyActs button { width: 56px; height: 56px; border-radius: 50%; font-size: 24px; padding: 0; flex: none; }
+@media (max-width: 700px) { #flyBtns.touch { width: auto; flex-direction: column; align-items: flex-end; } #flyBtns.touch > button { flex: none; } }
