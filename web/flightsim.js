@@ -669,7 +669,7 @@
     loadRegs();
     if (A.ship) OGE.minimap.zoom(99); // the starship starts with the minimap zoomed all the way in
     arcade = !!A.ship && !!useArcade;
-    autoOn = !arcade ? [] : [...(matchMedia('(pointer: coarse)').matches ? [] : ['layerSats']), 'layerRegionNames', ...(window.__TAURI__ ? ['layerPlanes'] : [])].filter((id) => $(id) && !$(id).checked); // for this flight only: nearby satellites, region names to find the way, live aircraft (desktop)
+    autoOn = !arcade ? [] : ['layerSats', 'layerRegionNames', ...(window.__TAURI__ ? ['layerPlanes'] : [])].filter((id) => $(id) && !$(id).checked); // for this flight only: nearby satellites, region names to find the way, live aircraft (desktop)
     if (autoOn.includes('layerSats') && $('layerSatsNear')) { $('layerSatsNear').checked = true; $('layerSatsNear').dispatchEvent(new Event('change')); } // only the nearby ones: light
     for (const id of autoOn) { $(id).checked = true; $(id).dispatchEvent(new Event('change')); } // live satellites and aircraft join the arcade
     if (!document.body.classList.contains('noside')) { sideWas = true; OGE.hideSide(true); } // more room for the flight; it comes back afterwards
