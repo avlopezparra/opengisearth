@@ -529,7 +529,7 @@
     loadRegs();
     if (A.ship) OGE.minimap.zoom(99); // the starship starts with the minimap zoomed all the way in
     arcade = !!A.ship && !!useArcade;
-    if (arcade) for (const id of ['layerSats', 'layerPlanes']) { const cb = $(id); if (cb && !cb.checked) { cb.checked = true; cb.dispatchEvent(new Event('change')); } } // live satellites and aircraft join the arcade
+    if (arcade) for (const id of window.__TAURI__ ? ['layerSats', 'layerPlanes'] : ['layerSats']) { const cb = $(id); if (cb && !cb.checked) { cb.checked = true; cb.dispatchEvent(new Event('change')); } } // live satellites and aircraft join the arcade
     maxHp = 100; usedTowns.clear(); hp = 100; bombs = 2; incoming = []; flash = hit = 0; shields = 0;
     run = { flags: 0, caps: 0, bosses: 0 };
     p2 = mpMode === 'local' && arcade ? { x: 0.35, y: 0.6, z: 200, hp: 100, score: 0, tilt: 0 } : null; // the second local player starts beside the first
