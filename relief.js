@@ -148,6 +148,77 @@
   cbW.addEventListener('change', syncWeather);
   syncWeather();
 
+  // ---------- Country flags: Natural Earth's Wikidata id -> flag file (property P41) -> Commons thumbnail ----------
+  let flagsP = null; // Promise<Map<ADM0_A3, { url, lon, lat, rank, name, cont }>>
+  const flagData = () => flagsP || (flagsP = (async () => {
+    const clean = (v) => String(v ?? '').replace(/\0/g, '').trim();
+    const rows = shp.parseDbf(await buf('50m_cultural/ne_50m_admin_0_countries.dbf')).map((p) => ({ a3: clean(p.ADM0_A3), q: clean(p.WIKIDATAID), lon: +p.LABEL_X, lat: +p.LABEL_Y, rank: +p.LABELRANK || 5, name: clean(p.NAME_ES) || clean(p.NAME), cont: clean(p.CONTINENT) }))
+      .filter((r) => /^Q\d+$/.test(r.q) && isFinite(r.lon) && isFinite(r.lat));
+    const sparql = `SELECT ?c ?f WHERE { VALUES ?c { ${rows.map((r) => 'wd:' + r.q).join(' ')} } ?c wdt:P41 ?f }`;
+    const wd = await (await fetch('https://query.wikidata.org/sparql?format=json&query=' + encodeURIComponent(sparql))).json();
+    const file = new Map(); // Wikidata id -> Commons file name
+    for (const b of wd.results.bindings) { const q = b.c.value.split('/').pop(); if (!file.has(q)) file.set(q, decodeURIComponent(b.f.value.split('FilePath/')[1]).replace(/_/g, ' ')); }
+    const names = [...new Set(file.values())], thumb = new Map(); // file name -> thumbnail URL
+    for (let i = 0; i < names.length; i += 50) { // the Commons API takes 50 titles per request
+      const js = await (await fetch('https://commons.wikimedia.org/w/api.php?action=query&prop=imageinfo&iiprop=url&iiurlwidth=48&format=json&origin=*&titles=' + encodeURIComponent(names.slice(i, i + 50).map((n) => 'File:' + n).join('|')))).json();
+      for (const p of Object.values(js.query.pages)) if (p.imageinfo) thumb.set(p.title.replace(/^File:/, ''), p.imageinfo[0].thumburl);
+    }
+    const out = new Map();
+    for (const r of rows) { const url = thumb.get(file.get(r.q)); if (url) out.set(r.a3, { ...r, url }); }
+    return out;
+  })().catch((e) => { flagsP = null; throw e; }));
+  OGE.flags = flagData; // the flight game reuses them
+  let flagLayer = null, flagBusy = false;
+  const cbF = $('layerFlags');
+  const syncFlags = async () => {
+    if (flagLayer) flagLayer.show = cbF.checked;
+    if (!cbF.checked || flagLayer || flagBusy) return;
+    flagBusy = true;
+    try {
+      const data = await flagData(), bills = viewer.scene.primitives.add(new C.BillboardCollection());
+      for (const f of data.values()) bills.add({ position: C.Cartesian3.fromDegrees(f.lon, f.lat), image: f.url, scale: 0.4, pixelOffset: new C.Cartesian2(0, -16), disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        distanceDisplayCondition: new C.DistanceDisplayCondition(0, 2.2e7 / Math.max(1, f.rank - 1)) }); // small countries and islands appear when zooming in, like their names
+      const occluder = new C.EllipsoidalOccluder(C.Ellipsoid.WGS84, viewer.camera.positionWC);
+      viewer.scene.preRender.addEventListener(() => { if (!bills.show) return; occluder.cameraPosition = viewer.camera.positionWC; for (let i = 0; i < bills.length; i++) { const b = bills.get(i); b.show = occluder.isPointVisible(b.position); } });
+      flagLayer = bills; flagLayer.show = cbF.checked;
+    } catch (e) { OGE.toast('No se pudieron cargar las banderas: ' + e.message, true); }
+    flagBusy = false;
+  };
+  cbF.addEventListener('change', syncFlags);
+  syncFlags();
+
+  // ---------- Capitals: a red star and the name, like the old versions of Earth ----------
+  const starImage = (() => { // drawn at 2x and shown at scale 0.5
+    const cv = Object.assign(document.createElement('canvas'), { width: 36, height: 36 }), g = cv.getContext('2d');
+    g.translate(18, 18); g.beginPath();
+    for (let i = 0; i < 10; i++) { const r = i % 2 ? 6.5 : 15, a = (i * Math.PI) / 5 - Math.PI / 2; g.lineTo(r * Math.cos(a), r * Math.sin(a)); }
+    g.closePath(); g.fillStyle = '#e8112d'; g.fill(); g.lineJoin = 'round'; g.lineWidth = 2.5; g.strokeStyle = '#fff'; g.stroke();
+    return cv;
+  })();
+  let capLayer = null, capBusy = false;
+  const cbC = $('layerCapitals');
+  const syncCapitals = async () => {
+    if (capLayer) capLayer.show = cbC.checked;
+    if (!cbC.checked || capLayer || capBusy) return;
+    capBusy = true;
+    try {
+      const [s, d] = await Promise.all([buf('110m_cultural/ne_110m_populated_places_simple.shp'), buf('110m_cultural/ne_110m_populated_places_simple.dbf')]);
+      const clean = (v) => String(v ?? '').replace(/\0/g, '').trim(), bills = viewer.scene.primitives.add(new C.BillboardCollection());
+      for (const f of shp.combine([shp.parseShp(s), shp.parseDbf(d)]).features) {
+        if (!f.geometry || +f.properties.adm0cap !== 1) continue;
+        const position = C.Cartesian3.fromDegrees(f.geometry.coordinates[0], f.geometry.coordinates[1]), common = { position, scale: 0.5, disableDepthTestDistance: Number.POSITIVE_INFINITY };
+        bills.add({ ...common, image: starImage, distanceDisplayCondition: new C.DistanceDisplayCondition(0, 2.5e7) });
+        bills.add({ ...common, image: OGE.textImage(clean(f.properties.name), '600 12px sans-serif', C.Color.WHITE), pixelOffset: new C.Cartesian2(0, 15), distanceDisplayCondition: new C.DistanceDisplayCondition(0, 5e6) }); // names when zooming in
+      }
+      const occluder = new C.EllipsoidalOccluder(C.Ellipsoid.WGS84, viewer.camera.positionWC);
+      viewer.scene.preRender.addEventListener(() => { if (!bills.show) return; occluder.cameraPosition = viewer.camera.positionWC; for (let i = 0; i < bills.length; i++) { const b = bills.get(i); b.show = occluder.isPointVisible(b.position); } });
+      capLayer = bills; capLayer.show = cbC.checked;
+    } catch (e) { OGE.toast('No se pudieron cargar las capitales: ' + e.message, true); }
+    capBusy = false;
+  };
+  cbC.addEventListener('change', syncCapitals);
+  syncCapitals();
+
   // ---------- Watershed: click a point, get the basin that drains to it, plus its rivers ----------
   let picking = null;
   const stop = () => { if (picking) { picking.destroy(); picking = null; } $('watershedBtn').classList.remove('active'); };
