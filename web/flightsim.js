@@ -1225,7 +1225,7 @@
       if (!q || q.x < 0 || q.y < 0 || q.x > w || q.y > h) continue;
       const sd = C.Cartesian3.distance(sat.p, viewer.camera.positionWC), iss = /ISS|ZARYA/.test(sat.name);
       if (C.Cartesian3.dot(C.Cartesian3.subtract(sat.p, viewer.camera.positionWC, new C.Cartesian3()), viewer.camera.directionWC) < 0) continue; // behind the view
-      const fy = h / 2 / Math.tan((viewer.camera.frustum.fovy || rad(60)) / 2), sr = clamp(((iss ? 3000 : 1800) * (arcade ? 5 : 1) * fy) / sd, arcade ? 5 : 3, 220); // drawn as if a couple of km wide: it grows as you fly up to it
+      const fy = h / 2 / Math.tan((viewer.camera.frustum.fovy || rad(60)) / 2), sr = clamp(((iss ? 3000 : 1800) * (arcade ? 5 : 1) * fy) / sd, arcade ? 14 : 3, 220); // in the arcade they are never smaller than a full sprite // drawn as if a couple of km wide: it grows as you fly up to it
       g.save(); g.translate(q.x, q.y);
       if (sr < 7) { g.fillStyle = g.shadowColor = iss ? '#ffd60a' : '#bfe6ff'; g.shadowBlur = 10; g.beginPath(); g.arc(0, 0, sr, 0, 7); g.fill(); }
       else { // body, two solar wings with cells, an antenna dish

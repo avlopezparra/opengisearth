@@ -227,3 +227,6 @@ body.flying #flyBtns.touch { display: grid; grid-template-columns: auto 48px 48p
 
 /* "heavy" tag beside layers that can slow the app down */
 .layers .heavy { margin-left: 6px; padding: 0 6px; border-radius: 8px; font-size: 11px; color: #7a4a00; background: #ffe9b3; border: 1px solid #f0c060; white-space: nowrap; }
+
+/* table headers stay light with dark text (the dark header left its dark-blue text unreadable) */
+#tableBody th { background: linear-gradient(#e3f3fd, #bfe3fb); color: #0b3d6b; border-color: #9cc9ec; }
