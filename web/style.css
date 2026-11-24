@@ -231,3 +231,13 @@ body.flying #flyBtns.touch { display: grid; grid-template-columns: auto 48px 48p
 
 /* table headers stay light with dark text (the dark header left its dark-blue text unreadable) */
 #tableBody th { background: linear-gradient(#e3f3fd, #bfe3fb); color: #0b3d6b; border-color: #9cc9ec; }
+
+/* Controls help: a small keyboard with each key's job, and the gamepad map */
+#flyKeys li.kbmap { list-style: none; margin: 0 0 8px -14px; }
+#flyKeys .kbmap div { display: flex; gap: 3px; margin-bottom: 3px; }
+#flyKeys .kbmap div:nth-child(2) { margin-left: 14px; } #flyKeys .kbmap div:nth-child(3) { margin-left: 4px; }
+#flyKeys .kc { width: 46px; height: 38px; border-radius: 6px; border: 1px solid #9cc9ec; background: linear-gradient(#fff, #dbeefc); display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.1; color: #8aa; }
+#flyKeys .kc.used { color: #0b3d6b; background: linear-gradient(#fffbe6, #ffe9a8); border-color: #e0b84a; }
+#flyKeys .kc b { font-size: 13px; } #flyKeys .kc i { font-style: normal; font-size: 9px; }
+#flyKeys .kc.wide { width: 70px; } #flyKeys .kc.space { width: 200px; }
+#flyKeys li.padmap { list-style: none; margin: 0 0 8px -14px; padding: 6px 8px; border-radius: 6px; background: #e8f6e8; border: 1px solid #8fcf8f; }

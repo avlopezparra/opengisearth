@@ -17,7 +17,7 @@
   let on = false, paused = false, mouseCtl = false, showHud = true, A = null, s = null, last = 0;
   const WARPS = [1, 2, 5, 10, 25, 50, 100];
   let warp = 1; // turbo: multiplies the distance covered, to cross long stretches quickly
-  const setWarp = (v) => { if (on && v !== warp) sfx(v > warp ? 'warpUp' : 'warpDown'); warp = v; $('flyWarp').textContent = 'Turbo ×' + v + ' ▲ (T)'; $('flyWarp').classList.toggle('active', v > 1); };
+  const setWarp = (v) => { if (on && v !== warp) sfx(v > warp ? 'warpUp' : 'warpDown'); warp = v; $('flyWarp').textContent = 'Turbo ×' + v + ' ▲ (Espacio)'; $('flyWarp').classList.toggle('active', v > 1); };
   const TURNS = [1, 2, 3, 5];
   let turn = +localStorage.getItem('oge.flyTurn2') || 3; // quick turns by default // multiplies how fast A/D turn
   const setTurn = (v) => { turn = v; localStorage.setItem('oge.flyTurn2', v); $('flyTurn').textContent = T('Giro') + ' ×' + v + ' (N)'; $('flyTurn').classList.toggle('active', v > 1); };
@@ -301,7 +301,7 @@
     { text: 'Dobla a la izquierda y a la derecha con A y D.', test: (r) => turned(s.heading, r.heading) > rad(25) },
     { text: 'Sube y baja la nariz con S y W.', test: (r) => Math.abs(s.pitch - r.pitch) > rad(8) },
     { text: 'Acelera con E y frena con Q.', test: (r) => Math.abs(s.v - r.v) > r.v * 0.3 + 30 },
-    { text: 'Ese es un enemigo: apúntale con el centro de la mira y dispara con X o clic derecho.', need: 'enemy', make: () => put('enemy'), test: (r) => score >= r.score + 100 },
+    { text: 'Ese es un enemigo: apúntale con el centro de la mira y dispara con V o clic derecho.', need: 'enemy', make: () => put('enemy'), test: (r) => score >= r.score + 100 },
     { text: 'Atraviesa el aro: da puntos y repara la nave.', need: 'ring', make: () => put('ring', 0.05), test: (r) => score >= r.score + 50 },
     { text: 'Recoge la moneda, el corazón (vida) y el escudo (absorbe un golpe).', need: 'coin', make: () => { put('coin', -0.08); put('heart'); put('shield', 0.08); }, test: (r) => coins > r.coins },
     { text: 'Los rectángulos grises son obstáculos: esquívalo.', need: 'wall', make: () => put('wall'), test: (r, age) => age > 1500 && !has('wall') },
@@ -412,16 +412,17 @@
           const cp = cam.positionWC, ahead = C.Cartesian3.add(cp, C.Cartesian3.multiplyByScalar(cam.directionWC, 2500, new C.Cartesian3()), new C.Cartesian3());
           C.Cartesian3.add(ahead, C.Cartesian3.multiplyByScalar(cam.rightWC, (o.mirror || 0) * 1300 + Math.sin(now / 900) * 900, t), ahead); // sways from side to side; a pair keeps to each side
           const chase = Math.max(900, s.v * warp * 1.3) * dt, toward = (p, sp) => { const v = C.Cartesian3.subtract(p, o.p, new C.Cartesian3()), m = C.Cartesian3.magnitude(v); if (m > 1) C.Cartesian3.add(o.p, C.Cartesian3.multiplyByScalar(v, Math.min(1, sp / m), v), o.p); };
-          const far = C.Cartesian3.distance(cp, o.base) > 8e4; // the pilot fled its capital: it goes home
+          const far = C.Cartesian3.distance(cp, o.base) > 3e4; // only near its capital (30 km): otherwise it waits at home
+          const seen = C.Cartesian3.dot(C.Cartesian3.subtract(o.p, cp, new C.Cartesian3()), cam.directionWC) > 0; // it only lunges from in front, where it can be seen
           o.phase = o.phase || 'hover'; o.pt = o.pt || now;
           if (o.held) { C.Cartesian3.clone(cp, o.p); C.Cartesian3.add(o.p, C.Cartesian3.multiplyByScalar(cam.directionWC, 250, t), o.p); }
-          else if (far) { toward(o.base, chase); o.phase = 'hover'; }
-          else if (o.phase === 'hover') { toward(ahead, chase); if (now - o.pt > 3000 + Math.random() * 1500 && now > graceT) { o.phase = 'windup'; o.pt = now; sfx('warpDown'); } }
-          else if (o.phase === 'windup') { toward(ahead, chase); if (now - o.pt > 800) { o.phase = 'lunge'; o.pt = now; } }
-          else if (o.phase === 'lunge') { toward(cp, Math.max(2500, s.v * warp * 3) * dt); if (now - o.pt > 1200) { o.phase = 'back'; o.pt = now; } }
+          else if (far) { toward(o.base, chase); o.phase = 'hover'; o.pt = now; o.met = 0; }
+          else if (o.phase === 'hover') { o.met = o.met || now; toward(ahead, chase); if (seen && now - o.met > 6000 && now - o.pt > 4000 + Math.random() * 2000 && now > graceT) { o.phase = 'windup'; o.pt = now; sfx('warpDown'); OGE.toast(T('¡La mano va a atacar! Prepara un tonel (R).')); } } // first it shows itself for a while
+          else if (o.phase === 'windup') { toward(ahead, chase); if (now - o.pt > 1500) { o.phase = 'lunge'; o.pt = now; } } // 1.5 s of warning
+          else if (o.phase === 'lunge') { toward(cp, Math.max(1200, s.v * warp * 1.6) * dt); if (now - o.pt > 1500) { o.phase = 'back'; o.pt = now; } }
           else { toward(ahead, chase * 0.6); if (now - o.pt > 1200) { o.phase = 'hover'; o.pt = now; } }
           const dd = C.Cartesian3.distance(cp, o.p);
-          if (!o.held && o.phase === 'lunge' && dd < 900 + slack && now > (o.grabCd || 0)) { o.held = now; o.phase = 'back'; OGE.toast(T('¡La mano te atrapó! Haz un tonel (R) para soltarte.')); sfx('shieldBreak'); }
+          if (!o.held && o.phase === 'lunge' && dd < 600 + slack && now > (o.grabCd || 0)) { o.held = now; o.phase = 'back'; OGE.toast(T('¡La mano te atrapó! Haz un tonel (R) para soltarte.')); sfx('shieldBreak'); }
           if (o.held) {
             s.v *= Math.max(0, 1 - 4 * dt); // it holds the ship still
             if (rolling || now - o.held > 4000) { o.held = 0; o.grabCd = now + 4000; o.pt = now; sfx('roll'); } // a barrel roll breaks free (it lets go by itself after 4 s)
@@ -587,7 +588,7 @@
     if (on) return stop();
     const last = (() => { try { return JSON.parse(localStorage.getItem('oge.flyOpts')) || {}; } catch { return {}; } })(); // the dialog remembers the last choices
     const v = await OGE.ask({ title: 'Simulador de vuelo', ok: 'Iniciar vuelo',
-      help: 'Arranca en el aire sobre el punto que estás mirando. Mouse: clic toma o suelta la palanca. Teclado: flechas, RePág/AvPág para el gas, L tren, F flaps, Intro pausa, Espacio sube, Esc salir. OpenStarshipEarth: X o clic derecho dispara.',
+      help: 'Arranca en el aire sobre el punto que estás mirando. Mouse: clic toma o suelta la palanca. Teclado: flechas, RePág/AvPág para el gas, L tren, F flaps, Intro pausa, Espacio sube, Esc salir. OpenStarshipEarth: V o clic derecho dispara.',
       fields: [{ id: 'plane', label: 'Avión', type: 'select', value: PLANES[last.plane] ? last.plane : 'ship', options: Object.entries(PLANES).map(([k, p]) => [k, p.name]) },
         { id: 'mouse', label: 'Controlar con el mouse (como en Earth)', type: 'checkbox', value: last.mouse ?? true },
         { id: 'arcade', label: 'OpenStarshipEarth: modo arcade con enemigos y puntaje (desmárcalo para volar libre)', type: 'checkbox', value: last.arcade ?? true },
@@ -1088,12 +1089,36 @@
   }
 
   // ---------- Controls ----------
+  // Gamepad, Xbox 360 layout by default (browsers report XInput pads in the 'standard' mapping):
+  // left stick steers, right stick aims; A fire · B bomb · X barrel roll · Y loop · LB / RB turbo − / + · LT stop · RT turbo burst
+  // Back controls · Start pause · L3 turn back · R3 camera · D-pad ↑ climb · ↓ land · ← race item · → take off
+  const PAD = ['v', 'b', 'r', 'x', 'shift', ' ', 'q', 'e', 'k', 'enter', 'f', 'y', 't', 'z', 'u', 'c'];
+  const padPrev = [], pad = { x: 0, y: 0, on: false };
+  let padFireT = 0;
+  function readPad() {
+    const gp = [...(navigator.getGamepads ? navigator.getGamepads() : [])].find((p) => p && p.connected);
+    pad.on = !!gp; if (!gp) return;
+    const dz = (v) => (Math.abs(v) < 0.15 ? 0 : v);
+    pad.x = dz(gp.axes[0] || 0); pad.y = dz(gp.axes[1] || 0);
+    const rx = dz(gp.axes[2] || 0), ry = dz(gp.axes[3] || 0);
+    if (aimMouse && (rx || ry)) { mouse.x = clamp(mouse.x + rx * 14, 0, hud.clientWidth); mouse.y = clamp(mouse.y + ry * 14, 0, hud.clientHeight); }
+    PAD.forEach((key, i) => {
+      const b = gp.buttons[i], down = !!b && (b.pressed || b.value > 0.5);
+      if (down && !padPrev[i]) document.dispatchEvent(new KeyboardEvent('keydown', { key, code: key === 'shift' ? 'ShiftLeft' : '' }));
+      if (!down && padPrev[i]) document.dispatchEvent(new KeyboardEvent('keyup', { key }));
+      if (down && key === 'v' && performance.now() > padFireT) { padFireT = performance.now() + 160; if (padPrev[i]) fire(); } // A held: keeps firing
+      padPrev[i] = down;
+    });
+  }
+  window.addEventListener('gamepadconnected', (e) => { OGE.toast(`${T('Mando conectado')}: ${e.gamepad.id.slice(0, 40)}`); $('padMap').hidden = false; });
+  window.addEventListener('gamepaddisconnected', () => { $('padMap').hidden = true; });
   function controls(dt) {
+    readPad();
     const k = (x) => keys.has(x), ease = Math.min(1, 12 * dt), shift = k('shift'); // quick response to the keys
     const lr = (k('arrowright') ? 1 : 0) - (k('arrowleft') ? 1 : 0), ud = (k('arrowdown') || k('s') ? 1 : 0) - (k('arrowup') || k('w') ? 1 : 0);
     const turnArrows = A.ship || touch.id !== null; // the ship (and the touch stick) turns left and right instead of banking
-    if (mouseCtl) { s.ail = touch.id !== null ? 0 : stick.x; s.elev = stick.y; } else { s.ail += ((shift || turnArrows ? 0 : lr) - s.ail) * ease; s.elev += (ud - s.elev) * ease; }
-    const rud = (k('d') ? 1 : 0) - (k('a') || k('insert') ? 1 : 0) + (shift || turnArrows ? lr : 0) + (touch.id !== null ? stick.x : 0);
+    if (mouseCtl) { s.ail = touch.id !== null ? 0 : stick.x; s.elev = stick.y; } else { s.ail += ((shift || turnArrows ? 0 : lr) - s.ail) * ease; s.elev += (clamp(ud + (pad.on ? pad.y : 0), -1, 1) - s.elev) * ease; }
+    const rud = (pad.on ? pad.x : 0) + (k('d') ? 1 : 0) - (k('a') || k('insert') ? 1 : 0) + (shift || turnArrows ? lr : 0) + (touch.id !== null ? stick.x : 0);
     s.rud += (clamp(rud, -1, 1) - s.rud) * ease;
     const gas = k('pageup') || (k('e') && !A.ship); // on the ship E is the boost, not the throttle
     if (gas && s.throttle < 1 && !(thrT > performance.now())) { thrT = performance.now() + 450; sfx('thrust'); } // a whoosh while speeding up
@@ -1161,7 +1186,7 @@
       else if (A.ship && boost && performance.now() - boost.t0 > 2500) { if (warp === boost.to) setWarp(boost.from); boost = null; } // after 2.5 s, back to the turbo it had (unless changed by hand) // the burst rises and falls back to the speed it had
       s.vs = s.v * Math.sin(pe);
       s.alt += s.vs * dt * warp;
-      if (A.ship && keys.has(' ')) { s.alt += 250 * dt; s.vs += 250; } // Space: a gentle climb, ~250 m/s
+      if (A.ship && keys.has('t')) { s.alt += 250 * dt; s.vs += 250; } // T held: a gentle climb, ~250 m/s
       if (A.ship && s.alt <= ground + 30) { // the starship bounces off the ground; in the arcade a hard touch costs life
         s.alt = ground + 30; s.pitch = Math.max(s.pitch, rad(arcade ? 8 : 2));
         if (arcade && !landing && !shields && !man && performance.now() - hit > 800) hurt(15); // an intended landing (Z) does no harm, nor touching the ground with a shield up or during a roll, loop or turn
@@ -1387,7 +1412,8 @@
     if (k === 'escape') stop();
     else if (k === 'enter' && !p2) { paused = !paused; last = performance.now(); OGE.toast(paused ? T('Pausa (Intro para seguir)') : T('Sigue el vuelo')); } // Enter (or Space) pauses
     else if (k === ' ' && !(A && A.ship)) { paused = !paused; last = performance.now(); } // the aircraft still pause with Space
-    else if (k === ' ') { keys.add(' '); e.preventDefault(); } // on the ship Space climbs (held)
+    else if (k === ' ') { nextWarp(1); e.preventDefault(); } // on the ship Space raises the turbo
+    else if (k === 'shift' && e.code !== 'ShiftRight' && A && A.ship) nextWarp(-1); // left Shift lowers it
     else if (k === 'h') showHud = !showHud;
     else if (k === 'y' && A && A.ship) { third = !third; localStorage.setItem('oge.third', third ? '1' : ''); OGE.toast(third ? T('Cámara en tercera persona (Y)') : T('Cámara en primera persona (Y)')); }
     else if (k === 'l') s.gear = !s.gear;
@@ -1397,9 +1423,8 @@
     else if (k === 'c' && A.ship && landing) $('flyLift').click(); // C takes off again after landing
     else if (k === 'c') { stick.x = stick.y = 0; s.trim = 0; }
     else if (k === 'q' && A && A.ship && !e.repeat) { stopped = !stopped; if (!stopped) { s.v = Math.max(s.v, A.v0 || 300); s.throttle = Math.max(s.throttle, 0.5); } } // Q: stop and hover; Q again: fly on
-    else if (k === 'x') fire();
+    else if (k === 'v') fire(); // V fires
     else if (k === 'b' && A.ship) bomb();
-    else if (k === 't') nextWarp(e.shiftKey ? -1 : 1);
     else if (k === 'g') nextWarp(-1);
     else if (k === '+' || k === '=' || k === '-') OGE.minimap.zoom(k === '-' ? -1 : 1);
     else if (k === 'm') OGE.minimap.toggle();
@@ -1407,7 +1432,7 @@
     else if (k === 'j') $('flyQuest').click();
     else if (k === 'z') $('flyLand').click();
     else if (k === 'p') setMute(!muted);
-    else if (k === 'r' || k === 'v') maneuver(k === 'r' ? 'roll' : 'loop');
+    else if (k === 'r' || k === 'x') maneuver(k === 'r' ? 'roll' : 'loop'); // R barrel roll, X loop
     else if (k === 'k') { $('flyKeys').hidden = !$('flyKeys').hidden; $('flyRules').hidden = true; }
     else if (k === 'i') showRules();
     else if (k === 'o') tutorial(true);
