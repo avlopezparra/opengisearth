@@ -176,6 +176,7 @@
   const pts = (n) => Math.round(n * DIFF[diff].pts); // points earned scale with the difficulty
   let third = localStorage.getItem('oge.third') === '1'; // third-person camera: behind and above the ship (Y switches)
   let stopped = false, airports = null, airBusy = false, refuelMsg = false; // stopped: Q toggles a hover; airports: [[lon, lat]] (Natural Earth) where landing heals
+  let relaunch = null; // starts the last game again (same mode, stage or race)
   let thrT = 0, boost = null, boostCd = 0, eHeld = false, landing = null; // boost: the ship's single burst on E { t0, base } // landing: 'down' while dropping, 'parked' on the ground, 'up' while lifting off
   let calm = false; // free flight chosen from the mode menu: nothing to collect
   const quest = () => !calm && localStorage.getItem('oge.quest') !== '0';
@@ -414,6 +415,8 @@
       mpSend({ t: 'dead' });
       [520, 390, 290, 200, 110].forEach((f, i) => setTimeout(() => beep(f, f * 0.55, 0.35), i * 190)); // falling notes: the ship is lost
       stop(`Nave destruida: ${score} puntos y ${coins} monedas.`, true);
+      const again = relaunch, offer = () => { if (document.querySelector('dialog[open]')) return setTimeout(offer, 300); OGE.ask({ title: T('Nave destruida'), ok: T('Reintentar'), help: T('¿Lo intentas otra vez?') }).then((v) => { if (v && again && !on) again(); }); };
+      if (again) setTimeout(offer, 600);
     }
   }
   const shieldOpen = (o, now = performance.now()) => !BOSSES[o.type].shield || (now - (o.born || 0)) % 5000 > 3000; // open 2 s out of every 5
@@ -666,7 +669,8 @@
     loadRegs();
     if (A.ship) OGE.minimap.zoom(99); // the starship starts with the minimap zoomed all the way in
     arcade = !!A.ship && !!useArcade;
-    autoOn = arcade && window.__TAURI__ && !$('layerPlanes').checked ? ['layerPlanes'] : []; // live aircraft join the arcade in the desktop app, only for this flight
+    autoOn = !arcade ? [] : ['layerSats', 'layerRegionNames', ...(window.__TAURI__ ? ['layerPlanes'] : [])].filter((id) => $(id) && !$(id).checked); // for this flight only: nearby satellites, region names to find the way, live aircraft (desktop)
+    if (autoOn.includes('layerSats') && $('layerSatsNear')) { $('layerSatsNear').checked = true; $('layerSatsNear').dispatchEvent(new Event('change')); } // only the nearby ones: light
     for (const id of autoOn) { $(id).checked = true; $(id).dispatchEvent(new Event('change')); } // live satellites and aircraft join the arcade
     if (!document.body.classList.contains('noside')) { sideWas = true; OGE.hideSide(true); } // more room for the flight; it comes back afterwards
     stopped = false;
@@ -904,6 +908,10 @@
     localStorage.setItem('oge.raceLast', JSON.stringify(v));
     let a, b;
     try { [a, b] = await Promise.all([geocode(v.from), geocode(v.to)]); } catch (e) { return OGE.toast(e.message, true); }
+    raceGo(v, a, b);
+  }
+  function raceGo(v, a, b) {
+    relaunch = () => raceGo(v, a, b);
     b.p = C.Cartesian3.fromDegrees(b.lon, b.lat, 1500);
     const hd = bearing(a, b);
     viewer.camera.setView({ destination: C.Cartesian3.fromDegrees(a.lon, a.lat, 3000), orientation: { heading: hd, pitch: rad(-10), roll: 0 } });
@@ -1012,6 +1020,7 @@
   } // adv: { i, a3 } while a stage runs; advShape: the country's polygons
   const advDone = () => +localStorage.getItem('oge.adventure') || 0; // stages beaten
   async function adventure(stage = advDone()) {
+    relaunch = () => adventure(stage);
     const a3 = ROUTE[Math.min(stage, ROUTE.length - 1)];
     const [s2, d2] = await Promise.all([fetch(NE + '50m_cultural/ne_50m_admin_0_countries.shp').then((r) => r.arrayBuffer()), fetch(NE + '50m_cultural/ne_50m_admin_0_countries.dbf').then((r) => r.arrayBuffer())]);
     const all = shp.combine([shp.parseShp(s2), shp.parseDbf(d2)]).features, A3 = (x) => String(x.properties.ADM0_A3).replace(/\0/g, '').trim();
@@ -1622,6 +1631,7 @@
   if (new URLSearchParams(location.search).has('play')) setTimeout(() => { document.body.classList.add('game-only'); $('shipBtn').click(); }, 1500); // the OpenStarshipEarth page opens the game directly
   const lastOpts = () => { try { return JSON.parse(localStorage.getItem('oge.flyOpts')) || {}; } catch { return {}; } };
   function quickShip(mode = 'arcade') { // the OpenStarshipEarth arcade with the options used last time; 'free': no enemies, no goals
+    relaunch = () => quickShip(mode);
     const last = lastOpts();
     start('ship', last.mouse ?? true, mode !== 'free', true, mode !== 'free' && !localStorage.getItem('oge.tutorial'), mode === 'free');
   }
