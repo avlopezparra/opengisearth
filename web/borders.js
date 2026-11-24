@@ -68,7 +68,7 @@
       // smaller countries appear when zooming in (LABELRANK 2 = large … 10 = very small); very close up they get in the way
       const flk = OGE.malvinasAR && clean(p.ADM0_A3) === 'FLK'; // point of view of Argentina and Spain
       if (p.LABEL_X != null) labels.put(p.LABEL_X, p.LABEL_Y, flk ? 'Islas Malvinas (Argentina)' : clean(OGE_LANG === 'en' ? p.NAME_EN : p.NAME_ES) || clean(p.NAME), 1.5e5, 2.2e7 / Math.max(1, (p.LABELRANK || 5) - 1),
-        { oge: 'country', q: clean(p.WIKIDATAID), name: clean(OGE_LANG === 'en' ? p.NAME_EN : p.NAME_ES) || clean(p.NAME) }); // a click shows the country's data
+        { oge: 'country', q: clean(p.WIKIDATAID), a3: clean(p.ADM0_A3), name: clean(OGE_LANG === 'en' ? p.NAME_EN : p.NAME_ES) || clean(p.NAME) }); // a click shows the country's data
     }
     return labels;
   }, 'los nombres de países');

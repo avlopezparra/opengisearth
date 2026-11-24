@@ -63,7 +63,10 @@
   lazyFill($('fillCountries'), async () => { // MAPCOLOR7 gives neighbors different colors
     const [s, d] = await Promise.all([buf('50m_cultural/ne_50m_admin_0_countries.shp'), buf('50m_cultural/ne_50m_admin_0_countries.dbf')]);
     const fs = shp.combine([shp.parseShp(s), shp.parseDbf(d)]).features, a3 = (f) => String(f.properties.ADM0_A3 ?? '').replace(/\0/g, '').trim(), arg = fs.find((f) => a3(f) === 'ARG');
-    return fs.map((f) => [f.geometry, (OGE.malvinasAR && arg && a3(f) === 'FLK' ? arg : f).properties.MAPCOLOR7 || 0]); // Malvinas in Argentina's color from that point of view
+    const out = fs.map((f) => [f.geometry, (OGE.malvinasAR && arg && a3(f) === 'FLK' ? arg : f).properties.MAPCOLOR7 || 0]); // Malvinas in Argentina's color from that point of view
+    const chl = fs.find((f) => a3(f) === 'CHL');
+    if (OGE.antarticaCL && chl) out.push([{ type: 'Polygon', coordinates: [[[-90, -60], [-53, -60], [-53, -89.99], [-90, -89.99], [-90, -60]]] }, chl.properties.MAPCOLOR7 || 0]); // the Antarctic sector in Chile's color
+    return out;
   }, 'las áreas de los países');
   lazyFill($('fillAdmin1'), async () => {
     OGE.toast('Cargando las áreas de provincias y regiones (21 MB)…');
@@ -178,7 +181,7 @@
     flagBusy = true;
     try {
       const data = await flagData(), bills = viewer.scene.primitives.add(new C.BillboardCollection());
-      for (const f of data.values()) bills.add({ id: { oge: 'country', q: f.q, name: f.name }, position: C.Cartesian3.fromDegrees(f.lon, f.lat), image: f.url, scale: 0.4, pixelOffset: new C.Cartesian2(0, -16), disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      for (const f of data.values()) bills.add({ id: { oge: 'country', q: f.q, a3: f.a3, name: f.name }, position: C.Cartesian3.fromDegrees(f.lon, f.lat), image: f.url, scale: 0.4, pixelOffset: new C.Cartesian2(0, -16), disableDepthTestDistance: Number.POSITIVE_INFINITY,
         distanceDisplayCondition: new C.DistanceDisplayCondition(0, 2.2e7 / Math.max(1, f.rank - 1)) }); // small countries and islands appear when zooming in, like their names
       const occluder = new C.EllipsoidalOccluder(C.Ellipsoid.WGS84, viewer.camera.positionWC);
       viewer.scene.preRender.addEventListener(() => { if (!bills.show) return; occluder.cameraPosition = viewer.camera.positionWC; for (let i = 0; i < bills.length; i++) { const b = bills.get(i); b.show = occluder.isPointVisible(b.position); } });
@@ -233,6 +236,7 @@
   const FACTS = {
     country: [['capital', 'Capital', 'P36'], ['pop', 'Población', 'P1082'], ['area', 'Superficie', 'P2046'], ['currency', 'Moneda', 'P38'], ['lang', 'Idioma oficial', 'P37'], ['hos', 'Jefe de Estado', 'P35'], ['hog', 'Jefe de Gobierno', 'P6'],
       ['gov', 'Forma de gobierno', 'P122'], ['gdp', 'PIB nominal', 'P2131'], ['hdi', 'Índice de desarrollo humano', 'P1081'], ['inception', 'Fundación', 'P571'], ['code', 'Prefijo telefónico', 'P474'], ['tld', 'Dominio de internet', 'P78'], ['cont', 'Continente', 'P30'], ['anthem', 'Himno nacional', 'P85']],
+    region: [['country', 'País', 'P17'], ['capital', 'Capital', 'P36'], ['pop', 'Población', 'P1082'], ['area', 'Superficie', 'P2046'], ['hog', 'Gobernador o jefe de gobierno', 'P6'], ['inception', 'Fundación', 'P571'], ['tz', 'Zona horaria', 'P421'], ['web', 'Sitio web', 'P856']],
     place: [['country', 'País', 'P17'], ['admin', 'Región', 'P131'], ['pop', 'Población', 'P1082'], ['area', 'Superficie', 'P2046'], ['elev', 'Altitud', 'P2044'], ['inception', 'Fundación', 'P571'], ['hog', 'Alcalde o jefe de gobierno', 'P6'], ['tz', 'Zona horaria', 'P421'], ['web', 'Sitio web', 'P856']],
   };
   async function wikiInfo(id) {
@@ -241,7 +245,7 @@
     try {
       const facts = FACTS[id.oge];
       // one branch per fact (a UNION), so that multi-valued facts do not multiply each other; the anthem's recording comes through its own item
-      const sparql = `SELECT ?k ?v ?vLabel WHERE { ${facts.map(([k, , p]) => `{ BIND("${k}" AS ?k) wd:${id.q} wdt:${p} ?v }`).join(' UNION ')} UNION { BIND("audio" AS ?k) wd:${id.q} wdt:P85 ?a . ?a wdt:P51 ?v } SERVICE wikibase:label { bd:serviceParam wikibase:language "${OGE_LANG},en". } }`;
+      const sparql = `SELECT ?k ?v ?vLabel WHERE { ${facts.map(([k, , p]) => `{ BIND("${k}" AS ?k) wd:${id.q} ${k === 'cont' ? `p:${p}/ps:${p}` : `wdt:${p}`} ?v }`).join(' UNION ')} UNION { BIND("audio" AS ?k) wd:${id.q} wdt:P85 ?a . ?a wdt:P51 ?v } UNION { BIND("flag" AS ?k) wd:${id.q} wdt:P41 ?v } UNION { BIND("arms" AS ?k) wd:${id.q} wdt:P94 ?v } UNION { BIND("banner" AS ?k) wd:${id.q} wdt:P948 ?v } SERVICE wikibase:label { bd:serviceParam wikibase:language "${OGE_LANG},en". } }`;
       const res = await fetch('https://query.wikidata.org/sparql?format=json&query=' + encodeURIComponent(sparql));
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const rows = (await res.json()).results.bindings, num = (v) => Number(v).toLocaleString(OGE_LANG);
@@ -252,17 +256,90 @@
         if (vals.length) table.push([T(label), vals.join(', ')]);
       }
       if (!table.length) throw new Error('sin datos');
-      const audio = rows.find((r) => r.k.value === 'audio'); // the anthem can be played from Commons
-      const player = audio && Object.assign(document.createElement('audio'), { controls: true, preload: 'none', src: audio.v.value.replace(/^http:/, 'https:'), style: 'width:100%;margin-bottom:6px', title: T('Himno nacional') });
-      OGE.showTable(id.name, [T('Dato'), T('Valor')], table, { note: T('Fuente: Wikidata (CC0).') + (player ? ' ' + T('Himno: Wikimedia Commons.') : ''), content: player || undefined });
+      const rawOf = (k) => { const r = rows.find((x) => x.k.value === k); return r ? +r.v.value : NaN; }, dens = rawOf('pop') / rawOf('area');
+      if (isFinite(dens) && dens > 0) table.splice(table.findIndex((r) => r[0] === T('Superficie')) + 1, 0, [T('Densidad'), num(Math.round(dens * 10) / 10) + ' ' + T('hab./km²')]);
+      if (id.oge === 'country') { // rankings in the world and in its continent, and World Bank open data
+        const CN = { Africa: 'África', Asia: 'Asia', Europe: 'Europa', 'North America': 'Norteamérica', 'South America': 'Sudamérica', Oceania: 'Oceanía' };
+        const flags = await OGE.flags().catch(() => new Map()), contOf = (a3) => (flags.get(a3) || {}).cont, byQ = new Map([...flags].map(([a3, f]) => [f.q, a3]));
+        const rank = (m, key) => { // m: Map<ISO3, value>
+          const me = m.get(key);
+          if (me == null) return '';
+          const all = [...m.values()], same = [...m].filter(([k]) => contOf(k) === contOf(key)).map(([, v]) => v);
+          return ` — ${T('n.º')} ${all.filter((v) => v > me).length + 1} ${T('de')} ${all.length} ${T('en el mundo')}; ${T('n.º')} ${same.filter((v) => v > me).length + 1} ${T('de')} ${same.length} ${T('en')} ${T(CN[contOf(key)] || contOf(key) || '')}`;
+        };
+        const add = (label, txt) => { const row = table.find((r) => r[0] === T(label)); if (row && txt) row[1] += txt; };
+        const wb = async (code) => { // latest value of a World Bank indicator for every country
+          const j = await (await fetch(`https://api.worldbank.org/v2/country/all/indicator/${code}?format=json&mrnev=1&per_page=400`)).json(), m = new Map(), year = new Map();
+          for (const d of j[1] || []) if (flags.has(d.countryiso3code) && d.value != null) { m.set(d.countryiso3code, d.value); year.set(d.countryiso3code, d.date); }
+          return { m, year };
+        };
+        const usd = (v) => 'US$ ' + num(Math.round(v));
+        try { // its two most populous cities
+          const q3 = `SELECT ?cLabel (MAX(?p) AS ?pop) WHERE { VALUES ?t { wd:Q515 wd:Q1549591 wd:Q1637706 wd:Q174844 wd:Q5119 } ?c wdt:P31 ?t ; wdt:P17 wd:${id.q} ; wdt:P1082 ?p . SERVICE wikibase:label { bd:serviceParam wikibase:language "${OGE_LANG},en". } } GROUP BY ?cLabel ORDER BY DESC(?pop) LIMIT 2`;
+          const top = (await (await fetch('https://query.wikidata.org/sparql?format=json&query=' + encodeURIComponent(q3))).json()).results.bindings;
+          top.forEach((b3, i) => table.splice(table.findIndex((r) => r[0] === T('Capital')) + 1 + i, 0, [T(i ? 'Segunda ciudad más poblada' : 'Ciudad más poblada'), `${b3.cLabel.value} (${num(b3.pop.value)})`]));
+        } catch { /* optional */ }
+        try {
+          const hdi = new Map();
+          const q2 = 'SELECT ?c (MAX(?h) AS ?hdi) WHERE { VALUES ?t { wd:Q6256 wd:Q3624078 } ?c wdt:P31 ?t ; wdt:P1081 ?h } GROUP BY ?c';
+          for (const b2 of (await (await fetch('https://query.wikidata.org/sparql?format=json&query=' + encodeURIComponent(q2))).json()).results.bindings) { const a3 = byQ.get(b2.c.value.split('/').pop()); if (a3) hdi.set(a3, +b2.hdi.value); }
+          add('Índice de desarrollo humano', rank(hdi, id.a3));
+        } catch { /* the ranking is optional */ }
+        try {
+          const [pop, gdp, pc, mil, life] = await Promise.all(['SP.POP.TOTL', 'NY.GDP.MKTP.CD', 'NY.GDP.PCAP.CD', 'MS.MIL.XPND.CD', 'SP.DYN.LE00.IN'].map(wb));
+          add('Población', rank(pop.m, id.a3)); add('PIB nominal', rank(gdp.m, id.a3));
+          for (const [d, label, f] of [[pc, 'PIB per cápita', usd], [mil, 'Gasto militar', usd], [life, 'Esperanza de vida', (v) => num(Math.round(v * 10) / 10) + ' ' + T('años')]]) {
+            if (d.m.has(id.a3)) table.push([`${T(label)} (${T('Banco Mundial')}, ${d.year.get(id.a3)})`, f(d.m.get(id.a3)) + rank(d.m, id.a3)]);
+          }
+        } catch { /* optional too */ }
+      }
+      // header of the card: Wikivoyage banner, flag and coat of arms (Commons images), and the anthem if there is a recording
+      const pic = (k, width) => { const r = rows.find((x) => x.k.value === k); return r ? r.v.value.replace(/^http:/, 'https:') + '?width=' + width : null; };
+      const head = document.createElement('div'), img = (src, style, title) => { if (src) head.append(Object.assign(document.createElement('img'), { src, title, alt: title, style })); };
+      img(pic('banner', 760), 'width:100%;border-radius:8px;display:block;margin-bottom:6px', T('Banner de Wikiviajes'));
+      img(pic('flag', 160), 'height:56px;margin:0 10px 6px 0;border:1px solid #9bb;vertical-align:middle', T('Bandera'));
+      img(pic('arms', 120), 'height:72px;margin:0 0 6px 0;vertical-align:middle', T('Escudo'));
+      let audio = rows.find((r) => r.k.value === 'audio');
+      const anthem = rows.find((r) => r.k.value === 'anthem');
+      if (!audio && anthem) { // no recording linked in Wikidata: the first audio file that Commons finds for the anthem's name
+        try {
+          const js = await (await fetch('https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrnamespace=6&gsrlimit=1&prop=imageinfo&iiprop=url&format=json&origin=*&gsrsearch=' + encodeURIComponent('filetype:audio ' + anthem.vLabel.value))).json();
+          const page = js.query && Object.values(js.query.pages)[0];
+          if (page && page.imageinfo) audio = { v: { value: page.imageinfo[0].url } };
+        } catch { /* stays without a recording */ }
+      }
+      if (audio) head.append(Object.assign(document.createElement('audio'), { controls: true, preload: 'none', src: audio.v.value.replace(/^http:/, 'https:'), style: 'width:100%;margin-bottom:6px;display:block', title: T('Himno nacional') }));
+      OGE.showTable(id.name, [T('Dato'), T('Valor')], table, { note: T('Fuente: Wikidata (CC0).') + (head.childNodes.length ? ' ' + T('Imágenes y sonido: Wikimedia Commons.') : ''), content: head.childNodes.length ? head : undefined });
     } catch (e) { OGE.toast('No se pudieron obtener los datos: ' + e.message, true); }
   }
   new C.ScreenSpaceEventHandler(viewer.scene.canvas).setInputAction((ev) => {
     if ((OGE.drawing && OGE.drawing()) || document.body.classList.contains('flying')) return; // not while drawing or flying
     const hit = viewer.scene.pick(ev.position), id = hit && hit.id;
-    if (id && FACTS[id.oge] && /^Q\d+$/.test(id.q || '')) wikiInfo(id);
+    if (id && FACTS[id.oge] && /^Q\d+$/.test(id.q || '')) return wikiInfo(id);
+    // nothing picked: with the regional layers on, the state or province under the click (OpenStreetMap's reverse geocoder gives its Wikidata id)
+    if (hit || !($('layerAdmin1').checked || $('fillAdmin1').checked)) return;
+    const p = viewer.camera.pickEllipsoid(ev.position);
+    if (!p) return;
+    const [lon, lat] = geo.toLL(p);
+    fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=5&extratags=1&accept-language=${OGE_LANG}&lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}`).then((r) => r.json()).then((j) => {
+      const q = j && j.extratags && j.extratags.wikidata;
+      if (q) wikiInfo({ oge: 'region', q, name: j.name || (j.address && (j.address.state || j.address.region)) || q });
+    }).catch(() => {});
   }, C.ScreenSpaceEventType.LEFT_CLICK);
 
+
+  // ---------- Chilean Antarctic Territory, from Chile's point of view: its limits and its name, shown with the borders ----------
+  if (OGE.antarticaCL) {
+    const arc = (lon0, lat0, lon1, lat1, n = 40) => C.Cartesian3.fromDegreesArray(Array.from({ length: n + 1 }, (_, i) => [lon0 + ((lon1 - lon0) * i) / n, lat0 + ((lat1 - lat0) * i) / n]).flat());
+    const inst = [arc(-90, -60, -90, -89.9), arc(-53, -60, -53, -89.9), arc(-90, -60, -53, -60)].map((positions) => new C.GeometryInstance({
+      geometry: new C.GroundPolylineGeometry({ positions, width: 2.5, arcType: C.ArcType.RHUMB }), attributes: { color: C.ColorGeometryInstanceAttribute.fromColor(C.Color.YELLOW) } }));
+    const lines = viewer.scene.groundPrimitives.add(new C.GroundPolylinePrimitive({ geometryInstances: inst, appearance: new C.PolylineColorAppearance() }));
+    const label = viewer.scene.primitives.add(new C.BillboardCollection());
+    label.add({ position: C.Cartesian3.fromDegrees(-71.5, -76), image: OGE.textImage('Territorio Chileno Antártico', '600 14px sans-serif', C.Color.WHITE), scale: 0.5, disableDepthTestDistance: Number.POSITIVE_INFINITY, distanceDisplayCondition: new C.DistanceDisplayCondition(0, 1.2e7) });
+    const sync = () => { lines.show = label.show = $('borders').checked; };
+    $('borders').addEventListener('change', sync);
+    sync();
+  }
 
   // ---------- Watershed: click a point, get the basin that drains to it, plus its rivers ----------
   let picking = null;

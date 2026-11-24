@@ -51,8 +51,9 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
   const OGE = window.OGE = { viewer, $, el };
   // Point of view of the visitor's country (from the browser language or time zone), as Natural Earth does with its POV fields.
   // In Argentina and Spain the Malvinas / Falkland Islands are shown as part of Argentina.
-  OGE.pov = (() => { const l = navigator.language || '', tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; return /-AR$/i.test(l) || /Argentina|Buenos_Aires/.test(tz) ? 'AR' : /-ES$/i.test(l) || tz === 'Europe/Madrid' ? 'ES' : ''; })();
-  OGE.malvinasAR = !!OGE.pov;
+  OGE.pov = (() => { const l = navigator.language || '', tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; return /-CL$/i.test(l) || /America\/(Santiago|Punta_Arenas)|Pacific\/Easter/.test(tz) ? 'CL' : /-AR$/i.test(l) || /Argentina|Buenos_Aires/.test(tz) ? 'AR' : /-ES$/i.test(l) || tz === 'Europe/Madrid' ? 'ES' : ''; })();
+  OGE.malvinasAR = OGE.pov === 'AR' || OGE.pov === 'ES';
+  OGE.antarticaCL = OGE.pov === 'CL'; // in Chile the Chilean Antarctic Territory (53° W – 90° W, south of 60° S) is shown as part of the country
 
   // Sunlight: lights the globe according to the current time (day side and night side), like "Sun" in Earth.
   const sun = $('layerSun'), syncSun = () => { scene.globe.enableLighting = sun.checked; };
@@ -162,9 +163,10 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
     $('tableBody').replaceChildren(...(content ? [content] : []), ...(cols.length ? [t] : []));
     $('tableCsv').hidden = !cols.length;
     $('tableCsv').onclick = () => OGE.download(title.replace(/[\\/:*?"<>|]+/g, '_') + '.csv', OGE.csv(cols, rows), 'text/csv');
-    if (!$('table').open) $('table').showModal();
+    if (!$('table').open) { $('table').showModal(); OGE.chime('open'); }
   };
   $('tableClose').onclick = () => $('table').close();
+  $('table').addEventListener('close', () => OGE.chime('close'));
 
   // ---------- Aiming: ground under a pixel, look-at point and visible rectangle ----------
   OGE.pickGround = (p) => { const ray = viewer.camera.getPickRay(p); return ray ? scene.globe.pick(ray, scene) : undefined; };
@@ -283,7 +285,9 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
     if (localStorage.getItem('oge.mute')) return;
     try {
       chimeAc = chimeAc || new AudioContext();
-      (big ? [[523, 0], [659, 0.1], [784, 0.2], [1047, 0.32], [1319, 0.44]] : [[880, 0], [1320, 0.09]]).forEach(([f, d]) => { // two soft bell notes, or a rising fanfare
+      const notes = big === 'open' ? [[660, 0], [990, 0.07]] : big === 'close' ? [[990, 0], [660, 0.07]] : big ? [[523, 0], [659, 0.1], [784, 0.2], [1047, 0.32], [1319, 0.44]] : [[880, 0], [1320, 0.09]];
+      big = big === true; // 'open' and 'close' are the short sounds of a table
+      notes.forEach(([f, d]) => { // two soft bell notes, or a rising fanfare
         const o = chimeAc.createOscillator(), v = chimeAc.createGain(), t = chimeAc.currentTime + d;
         o.type = big ? 'triangle' : 'sine'; o.frequency.value = f; v.gain.setValueAtTime(big ? 0.1 : 0.07, t); v.gain.exponentialRampToValueAtTime(0.001, t + (big ? 0.5 : 0.35));
         o.connect(v).connect(chimeAc.destination); o.start(t); o.stop(t + 0.52);
