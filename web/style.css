@@ -224,3 +224,6 @@ body.flying #flyBtns.touch { display: grid; grid-template-columns: auto 48px 48p
 /* With a keyboard the right column is not shown at all: K opens the controls (reminded on the HUD) */
 #flyBtns.keyboard { display: none !important; }
 #flyKeys li.keyBtns { list-style: none; display: flex; gap: 6px; margin-top: 6px; pointer-events: auto; }
+
+/* "heavy" tag beside layers that can slow the app down */
+.layers .heavy { margin-left: 6px; padding: 0 6px; border-radius: 8px; font-size: 11px; color: #7a4a00; background: #ffe9b3; border: 1px solid #f0c060; white-space: nowrap; }
