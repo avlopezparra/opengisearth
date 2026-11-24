@@ -1197,9 +1197,26 @@
       if (!sat.p || OGE.satHidden.has(sat.name) || C.Cartesian3.distance(sat.p, viewer.camera.positionWC) > 2.5e6) continue; // only the satellites near the ship, and not the ones shot down
       const q = (C.SceneTransforms.worldToWindowCoordinates || C.SceneTransforms.wgs84ToWindowCoordinates)(scene, sat.p);
       if (!q || q.x < 0 || q.y < 0 || q.x > w || q.y > h) continue;
-      g.save(); g.fillStyle = g.shadowColor = /ISS|ZARYA/.test(sat.name) ? '#ffd60a' : '#bfe6ff'; g.shadowBlur = 10; const sr = clamp(3 + 4e5 / C.Cartesian3.distance(sat.p, viewer.camera.positionWC), 3, 26); g.beginPath(); g.arc(q.x, q.y, sr, 0, 7); g.fill(); // bigger as it gets closer
-      if (sr > 7) { g.fillStyle = '#2b6fd6'; g.fillRect(q.x - sr * 2.6, q.y - sr * 0.45, sr * 1.5, sr * 0.9); g.fillRect(q.x + sr * 1.1, q.y - sr * 0.45, sr * 1.5, sr * 0.9); } // solar panels when close
-      if (/ISS|ZARYA/.test(sat.name)) { g.font = '600 11px sans-serif'; g.fillText('ISS', q.x + 6, q.y + 4); } g.restore();
+      const sd = C.Cartesian3.distance(sat.p, viewer.camera.positionWC), iss = /ISS|ZARYA/.test(sat.name);
+      if (C.Cartesian3.dot(C.Cartesian3.subtract(sat.p, viewer.camera.positionWC, new C.Cartesian3()), viewer.camera.directionWC) < 0) continue; // behind the view
+      const fy = h / 2 / Math.tan((viewer.camera.frustum.fovy || rad(60)) / 2), sr = clamp(((iss ? 3000 : 1800) * (arcade ? 5 : 1) * fy) / sd, arcade ? 5 : 3, 220); // drawn as if a couple of km wide: it grows as you fly up to it
+      g.save(); g.translate(q.x, q.y);
+      if (sr < 7) { g.fillStyle = g.shadowColor = iss ? '#ffd60a' : '#bfe6ff'; g.shadowBlur = 10; g.beginPath(); g.arc(0, 0, sr, 0, 7); g.fill(); }
+      else { // body, two solar wings with cells, an antenna dish
+        g.rotate(Math.sin(performance.now() / 3000 + sat.p.x) * 0.3); g.shadowColor = '#bfe6ff'; g.shadowBlur = 12;
+        for (const e of [-1, 1]) {
+          const x0 = e > 0 ? sr * 0.7 : -sr * 2.9, pw = sr * 2.2, ph = sr * 0.9;
+          g.fillStyle = '#1f4fa8'; g.fillRect(x0, -ph / 2, pw, ph); g.strokeStyle = '#9cc9ff'; g.lineWidth = Math.max(1, sr * 0.04); g.strokeRect(x0, -ph / 2, pw, ph);
+          g.beginPath(); for (let i = 1; i < 4; i++) { g.moveTo(x0 + (pw * i) / 4, -ph / 2); g.lineTo(x0 + (pw * i) / 4, ph / 2); } g.moveTo(x0, 0); g.lineTo(x0 + pw, 0); g.stroke();
+          g.strokeStyle = '#c8ccd4'; g.lineWidth = Math.max(1, sr * 0.08); g.beginPath(); g.moveTo(e * sr * 0.45, 0); g.lineTo(e > 0 ? x0 : x0 + pw, 0); g.stroke(); // boom
+        }
+        const gr = g.createLinearGradient(0, -sr * 0.6, 0, sr * 0.6); gr.addColorStop(0, iss ? '#fff3c4' : '#f5f7fa'); gr.addColorStop(1, iss ? '#d4a017' : '#9aa3b2');
+        g.fillStyle = gr; g.fillRect(-sr * 0.45, -sr * 0.6, sr * 0.9, sr * 1.2); g.strokeStyle = '#555'; g.lineWidth = Math.max(1, sr * 0.04); g.strokeRect(-sr * 0.45, -sr * 0.6, sr * 0.9, sr * 1.2);
+        g.fillStyle = '#e6e6e6'; g.beginPath(); g.ellipse(0, -sr * 0.85, sr * 0.3, sr * 0.12, 0, 0, 7); g.fill(); g.stroke(); // dish
+        g.shadowBlur = 0; g.fillStyle = '#fff'; g.font = `600 ${Math.round(clamp(sr * 0.35, 10, 16))}px sans-serif`; g.textAlign = 'center'; g.fillText(sat.name.slice(0, 24), 0, sr * 0.6 + 16);
+      }
+      if (iss && sr < 7) { g.fillStyle = '#ffd60a'; g.font = '600 11px sans-serif'; g.fillText('ISS', 6, 4); }
+      g.restore();
     }
     if (arcade && airports) { // airfields within ~150 km: land on one (Z) to heal
       const lo = C.Math.toDegrees(s.lon), la = C.Math.toDegrees(s.lat);
