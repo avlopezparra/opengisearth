@@ -425,7 +425,7 @@
     });
   }
   function arcadeStep(dt) {
-    if (tune) { const BT = window.OGE_BOSS_THEME, near = BT && objs.some((o) => o.kind === 'boss' && C.Cartesian3.distance(o.p, viewer.camera.positionWC) < 3e4), base = (adv && window.OGE_ADV_THEME) || (race && window.OGE_RACE_THEME) || TH, want = near ? BT : base; if (want !== tune) music(true, want); } // Boss Fight OpenStarshipEarth while a boss is close
+    if (tune) { const BT = window.OGE_BOSS_THEME, near = BT && objs.some((o) => o.kind === 'boss' && C.Cartesian3.distance(o.p, viewer.camera.positionWC) < 7e4), base = (adv && window.OGE_ADV_THEME) || (race && window.OGE_RACE_THEME) || TH, want = near ? BT : base; if (want !== tune) music(true, want); } // Boss Fight OpenStarshipEarth while a boss is close
     const cam = viewer.camera, t = new C.Cartesian3(), far = reach() * 2.5, eff = s.v * warp, slack = eff * 0.03, now = performance.now(); // slack: distance covered in one frame
     const rolling = man && man.type === 'roll'; // a barrel roll deflects enemies and shots
     objs = objs.filter((o) => {
@@ -606,7 +606,12 @@
     fade(flash, 450, '#fff'); fade(hit, 250, broke === hit ? '#0a84ff' : '#f00'); // bomb / shield broken / damage
     if (shields) { g.save(); g.strokeStyle = 'rgba(10,132,255,.55)'; g.lineWidth = 3 * shields; g.beginPath(); g.ellipse(w / 2, h / 2, w * 0.46, h * 0.46, 0, 0, 7); g.stroke(); g.restore(); } // shield around the view, thicker with more layers
     if (race) drawRace(g, w, text);
-    if (adv) text(`${T('ETAPA')} ${adv.i + 1}: ${adv.name} · ${adv.boss ? T('¡derrota al jefe!') : (adv.left ?? '?') + ' ' + T('banderas restantes')}`, 24, 136, 14, 'left');
+    if (adv) text(`${T('ETAPA')} ${adv.i + 1}: ${adv.name} · ${adv.boss ? T('¡derrota al jefe!') : (adv.left ?? '?') + ' ' + T('banderas restantes') + (adv.goalsLeft ? ` · ${T('visita')}: ${adv.goals.filter((gl) => !gl.done).map((gl) => gl.n).join(', ')}` : '')}`, 24, 136, 14, 'left');
+    if (adv) for (const gl of adv.goals) { // the places to visit: a marker on screen and an arrow at the edge when outside
+      if (gl.done) continue;
+      const q = (C.SceneTransforms.worldToWindowCoordinates || C.SceneTransforms.wgs84ToWindowCoordinates)(scene, gl.p), ahead = C.Cartesian3.dot(C.Cartesian3.subtract(gl.p, viewer.camera.positionWC, new C.Cartesian3()), viewer.camera.directionWC) > 0;
+      if (q && ahead && q.x > 0 && q.x < w && q.y > 0 && q.y < h) { g.save(); g.strokeStyle = g.shadowColor = '#40e0ff'; g.shadowBlur = 10; g.lineWidth = 3; g.beginPath(); g.arc(q.x, q.y, 14, 0, 7); g.stroke(); g.fillStyle = '#e8fbff'; g.textAlign = 'center'; g.font = '600 12px sans-serif'; g.fillText(gl.n, q.x, q.y + 30); g.restore(); }
+    }
     text(`${T('PUNTOS')} ${score}  ·  ${T('MONEDAS')} ${coins}  ·  ${T('BOMBAS')} ${bombs}`, 24, 96, 16, 'left'); // below the heading tape
     g.save(); g.strokeRect(24, 110, 180, 12); g.fillStyle = hp > maxHp / 2 ? '#39ff14' : hp > maxHp / 4 ? '#ffd60a' : '#ff453a'; g.fillRect(24, 110, (180 * Math.max(0, hp)) / maxHp, 12); g.restore();
     text(`${T('VIDA')} ${Math.max(0, Math.round(hp))}/${maxHp}  ·  ${T('ESCUDOS')} ${shields}/3`, 212, 117, 12, 'left');
@@ -739,7 +744,8 @@
       g.font = '600 12px sans-serif'; g.fillText(c.name, q.x, q.y + 20); g.restore();
     }
   }
-  OGE.minimap.extra = (mg) => { // collected capitals in green, the rest in yellow; the race goal, kept at the edge when it is outside
+  OGE.minimap.extra = (mg) => {
+    if (adv) for (const gl of adv.goals) if (!gl.done) { const [x, y] = OGE.minimap.xy(gl.lon, gl.lat); mg.strokeStyle = '#40e0ff'; mg.lineWidth = 2; mg.beginPath(); mg.arc(x, y, 4, 0, 7); mg.stroke(); } // collected capitals in green, the rest in yellow; the race goal, kept at the edge when it is outside
     if (remote && remote.to) { const c = C.Cartographic.fromCartesian(remote.to), [x, y] = OGE.minimap.xy(deg(c.longitude), deg(c.latitude)); mg.fillStyle = remote.skin; mg.beginPath(); mg.arc(x, y, 4, 0, 7); mg.fill(); } // the other online player
     if (race) {
       const c = viewer.camera.positionCartographic, [sx, sy] = OGE.minimap.xy(deg(c.longitude), deg(c.latitude));
@@ -905,6 +911,8 @@
   // ---------- Adventure: a campaign of country stages. Inside a stage the ship cannot leave the country; once all its region flags
   // are collected, the boss of its capital appears; beating it unlocks the next country. Progress is kept on this computer. ----------
   const ROUTE = ['CHL', 'ARG', 'URY', 'PRY', 'BOL', 'PER', 'ECU', 'COL', 'VEN', 'BRA', 'MEX', 'CUB', 'USA', 'CAN', 'ISL', 'GBR', 'IRL', 'PRT', 'ESP', 'FRA', 'ITA', 'GRC', 'EGY', 'MAR', 'NGA', 'KEN', 'ZAF', 'MDG', 'IND', 'CHN', 'JPN', 'AUS', 'NZL'];
+  // Places some stages ask you to reach before the boss (within ~30 km): Chile's islands and its Antarctic territory
+  const STAGE_GOALS = { CHL: [['Isla de Pascua', -109.35, -27.12], ['Antártica Chilena (Villa Las Estrellas)', -58.97, -62.2]] };
   let advOthers = null; // [{ f, box }] the countries the adventure stage forbids
   let adv = null, advShape = null, graceT = 0, liveT = 0;
   async function liveEnemies() {
@@ -931,7 +939,7 @@
     const c = cp ? [cp.lon, cp.lat] : [+f.properties.LABEL_X, +f.properties.LABEL_Y]; // the stage starts over its capital
     viewer.camera.setView({ destination: C.Cartesian3.fromDegrees(c[0], c[1], 40000), orientation: { heading: 0, pitch: -Math.PI / 2, roll: 0 } });
     localStorage.setItem('oge.quest', '1');
-    adv = { i: stage, a3, name, boss: false };
+    adv = { i: stage, a3, name, boss: false, goals: (STAGE_GOALS[a3] || []).map(([n, lon, lat]) => ({ n, lon, lat, p: C.Cartesian3.fromDegrees(lon, lat, 3000), done: false })) }; // places the stage asks to visit
     start('ship', true, true, true, false); // aim with the mouse, fly with the keyboard
     graceT = performance.now() + 6000; // a few seconds without damage to get one's bearings
     OGE.toast(`${T('Etapa')} ${stage + 1}/${ROUTE.length}: ${name}. ${T('Recoge todas sus banderas y luego derrota al jefe de la capital.')}`);
@@ -954,7 +962,9 @@
     if (!regs) return; // the flags of the stage are still loading
     const mine = regs.filter((r) => r.a3 === adv.a3), left = mine.filter((r) => !gotReg.has(r.id)).length;
     adv.left = left;
-    if (left === 0 && !adv.boss) { // every flag: the capital's boss shows up
+    for (const gl of adv.goals) if (!gl.done && Math.abs(gl.lat - here[1]) < 0.3 && Math.abs((gl.lon - here[0]) * Math.cos(s.lat)) < 0.3) { gl.done = true; OGE.toast(`${T('¡Llegaste a')} ${gl.n}!`); sfx('achieve'); }
+    const goalsLeft = adv.goals.filter((gl) => !gl.done).length; adv.goalsLeft = goalsLeft;
+    if (left === 0 && goalsLeft === 0 && !adv.boss) { // every flag and every place: the capital's boss shows up
       const cap = caps && caps.find((x) => x.a3 === adv.a3);
       if (cap) { got.delete(capId(cap)); adv.boss = true; adv.cap = cap; OGE.toast(`${T('¡Todas las banderas! El jefe de')} ${cap.name} ${T('te espera.')}`); sfx('achieve'); }
     }
