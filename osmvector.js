@@ -54,16 +54,18 @@
       const tag = varint();
       if (tag >> 3 !== 3) { skip(tag & 7); continue; }
       const size = varint(), end = pos + size, keys = [], values = [], feats = [];
-      let name = '';
+      let name = '', extent = 4096;
       while (pos < end) {
         const t = varint(), f = t >> 3;
         if (f === 1) name = str();
         else if (f === 2) { const len = varint(), e = pos + len; feats.push(feature(e)); pos = e; }
         else if (f === 3) keys.push(str());
         else if (f === 4) { const len = varint(), e = pos + len; values.push(value(e)); pos = e; }
+        else if (f === 5) extent = varint();
         else skip(t & 7);
       }
       for (const ft of feats) { for (let i = 0; i < ft.tags.length; i += 2) ft.props[keys[ft.tags[i]]] = values[ft.tags[i + 1]]; delete ft.tags; }
+      if (extent !== 4096) { const q = 4096 / extent; for (const ft of feats) for (const line of ft.geom) for (const p of line) { p[0] *= q; p[1] *= q; } } // each layer has its own extent (streets come in 2048): everything is brought to 4096
       layers[name] = feats;
     }
     return layers;
