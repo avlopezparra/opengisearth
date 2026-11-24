@@ -109,3 +109,10 @@ body.flying #flyBtns { display: flex; }
 #flyBtns > div button { flex: 1; }
 #flyKeys { position: absolute; z-index: 4; right: 190px; bottom: 60px; margin: 0; padding: 10px 14px 10px 28px; background: var(--bg); border-radius: 6px; font-size: 13px; line-height: 1.7; }
 #flyKeys[hidden] { display: none; }
+
+/* Map compass, under Cesium's home/help buttons */
+#compass { position: absolute; top: 46px; right: 8px; z-index: 3; width: 44px; height: 44px; padding: 0; border-radius: 50%; background: var(--bg); border: 1px solid #777; }
+#compass span { display: block; width: 100%; height: 100%; position: relative; font: 700 11px sans-serif; color: #ff453a; line-height: 13px; }
+#compass span::before { content: ''; position: absolute; left: 50%; top: 13px; margin-left: -5px; border: 5px solid transparent; border-bottom: 12px solid #ff453a; border-top: 0; }
+#compass span::after { content: ''; position: absolute; left: 50%; top: 25px; margin-left: -5px; border: 5px solid transparent; border-top: 12px solid #ddd; border-bottom: 0; }
+body.flying #compass { display: none; }

@@ -15,7 +15,7 @@
   };
   const hud = $('hud'), g = hud.getContext('2d');
   let on = false, paused = false, mouseCtl = false, showHud = true, A = null, s = null, last = 0;
-  const WARPS = [1, 2, 5, 10, 25];
+  const WARPS = [1, 2, 5, 10, 25, 50, 100];
   let warp = 1; // turbo: multiplies the distance covered, to cross long stretches quickly
   const setWarp = (v) => { warp = v; $('flyWarp').textContent = 'Turbo ×' + v + ' (T)'; $('flyWarp').classList.toggle('active', v > 1); };
   const keys = new Set(), stick = { x: 0, y: 0 };
@@ -58,29 +58,68 @@
   // ---------- Starship arcade: random enemies to shoot, rings to fly through and coins to collect ----------
   // The objects live in the 3D world and are drawn on the HUD at their projected position and size.
   let arcade = false, objs = [], booms = [], score = 0, coins = 0;
-  const SIZE = { ring: 1, coin: 0.35, enemy: 0.5 };
+  let hp = 100, bombs = 3, incoming = [], flash = 0, hit = 0; // incoming: enemy shots { p, vel, t }; flash/hit: time of the last bomb / damage
+  const SIZE = { ring: 1, coin: 0.35, enemy: 0.5, wall: 0.6 };
   const reach = () => Math.max(4000, s.v * warp * 7); // they appear about 7 s ahead, whatever the speed
   function spawn() {
-    const cam = viewer.camera, D = reach() * (0.6 + 0.6 * Math.random()), kind = ['ring', 'coin', 'coin', 'enemy', 'enemy'][Math.floor(Math.random() * 5)];
+    const cam = viewer.camera, D = reach() * (0.6 + 0.6 * Math.random()), kind = ['ring', 'coin', 'coin', 'enemy', 'enemy', 'wall'][Math.floor(Math.random() * 6)];
     const p = C.Cartesian3.clone(cam.positionWC), add = (v, k) => C.Cartesian3.add(p, C.Cartesian3.multiplyByScalar(v, k, new C.Cartesian3()), p);
     add(cam.directionWC, D); add(cam.rightWC, (Math.random() - 0.5) * D * 0.5); add(cam.upWC, (Math.random() - 0.5) * D * 0.25);
     const c = C.Cartographic.fromCartesian(p), floor = (scene.globe.getHeight(c) || 0) + 200;
     if (c.height < floor) C.Cartesian3.fromRadians(c.longitude, c.latitude, floor, undefined, p); // never underground
-    objs.push({ kind, p, size: D * 0.06 * SIZE[kind] }); // sized for the speed it was created at
+    objs.push({ kind, p, size: D * 0.06 * SIZE[kind], next: performance.now() + 3000 + Math.random() * 4000 }); // sized for the speed it was created at; next: when an enemy fires
   }
-  function arcadeStep() {
-    const cam = viewer.camera, t = new C.Cartesian3(), far = reach() * 2.5, slack = s.v * warp * 0.03; // slack: distance covered in one frame
+  function hurt(n) {
+    hp -= n; hit = performance.now(); beep(200, 80, 0.25);
+    if (hp <= 0) stop(`Nave destruida: ${score} puntos y ${coins} monedas.`, true);
+  }
+  function bomb() { // clears every enemy and shot in range
+    if (!on || paused || !arcade) return;
+    if (!bombs) return OGE.toast('Sin bombas: cada 10 monedas ganas una.');
+    const cam = viewer.camera, R = reach() * 1.3;
+    bombs--; incoming = []; flash = performance.now(); beep(160, 40, 0.6);
+    objs = objs.filter((o) => {
+      if (o.kind !== 'enemy' || C.Cartesian3.distance(o.p, cam.positionWC) > R) return true;
+      score += 100; booms.push({ p: o.p, t: flash });
+      return false;
+    });
+  }
+  function arcadeStep(dt) {
+    const cam = viewer.camera, t = new C.Cartesian3(), far = reach() * 2.5, eff = s.v * warp, slack = eff * 0.03, now = performance.now(); // slack: distance covered in one frame
+    const rolling = man && man.type === 'roll'; // a barrel roll deflects enemies and shots
     objs = objs.filter((o) => {
       C.Cartesian3.subtract(o.p, cam.positionWC, t);
       const d = C.Cartesian3.magnitude(t);
-      if (d < o.size * (o.kind === 'ring' ? 1 : 1.6) + slack) { // touched: rings and coins score, ramming an enemy costs points
-        if (o.kind === 'enemy') { if (!(man && man.type === 'roll')) { score = Math.max(0, score - 50); beep(200, 80, 0.25); } } // a barrel roll deflects it
-        else { score += o.kind === 'ring' ? 50 : 10; if (o.kind === 'coin') coins++; beep(o.kind === 'coin' ? 1500 : 800, o.kind === 'coin' ? 2200 : 1300, 0.12); }
+      if (d < o.size * (o.kind === 'ring' ? 1 : 1.6) + slack) { // touched
+        if (o.kind === 'enemy') { if (!rolling) hurt(25); }
+        else if (o.kind === 'wall') hurt(20); // obstacles always hurt
+        else {
+          score += o.kind === 'ring' ? 50 : 10;
+          if (o.kind === 'ring') hp = Math.min(100, hp + 10); // rings repair the ship
+          else if (++coins % 10 === 0) bombs++;
+          beep(o.kind === 'coin' ? 1500 : 800, o.kind === 'coin' ? 2200 : 1300, 0.12);
+        }
         return false;
       }
-      return C.Cartesian3.dot(t, cam.directionWC) > -o.size && d < far; // left behind or too far: replaced by a new one
+      const gone = C.Cartesian3.dot(t, cam.directionWC) < -o.size; // left behind
+      if (gone && o.kind === 'ring' && on) hurt(5); // a ring that was not flown through costs life
+      return !gone && d < far;
     });
-    while (objs.length < 7) spawn();
+    if (!on) return; // destroyed
+    for (const o of objs) { // enemies fire at where the ship will be if it keeps flying straight
+      if (o.kind !== 'enemy' || now < o.next) continue;
+      o.next = now + 4000 + Math.random() * 4000;
+      const d = C.Cartesian3.distance(o.p, cam.positionWC), speed = eff * 0.5 + 600, tt = d / (speed + eff);
+      if (d > reach() * 1.3 || C.Cartesian3.dot(C.Cartesian3.subtract(o.p, cam.positionWC, t), cam.directionWC) < 0) continue;
+      const target = C.Cartesian3.add(cam.positionWC, C.Cartesian3.multiplyByScalar(cam.directionWC, eff * tt, new C.Cartesian3()), new C.Cartesian3());
+      incoming.push({ p: C.Cartesian3.clone(o.p), vel: C.Cartesian3.multiplyByScalar(C.Cartesian3.subtract(target, o.p, t), 1 / tt, new C.Cartesian3()), t: now });
+    }
+    incoming = incoming.filter((b) => {
+      C.Cartesian3.add(b.p, C.Cartesian3.multiplyByScalar(b.vel, dt, t), b.p);
+      if (C.Cartesian3.distance(b.p, cam.positionWC) < 40 + slack * 1.5) { if (!rolling) hurt(8); return false; }
+      return now - b.t < 8000;
+    });
+    while (on && objs.length < 7) spawn();
   }
   function drawArcade(w, h, text) {
     const f = h / 2 / Math.tan((viewer.camera.frustum.fovy || rad(60)) / 2), toWin = C.SceneTransforms.worldToWindowCoordinates || C.SceneTransforms.wgs84ToWindowCoordinates, now = performance.now();
@@ -91,6 +130,7 @@
       g.save(); g.shadowBlur = 8; g.beginPath();
       if (o.kind === 'ring') { g.strokeStyle = g.shadowColor = '#ffd60a'; g.lineWidth = Math.max(2, pr * 0.12); g.arc(q.x, q.y, pr, 0, 7); g.stroke(); }
       else if (o.kind === 'coin') { g.fillStyle = g.shadowColor = '#ffcc00'; g.ellipse(q.x, q.y, pr * Math.abs(Math.cos(now / 300)) + 1, pr, 0, 0, 7); g.fill(); } // spinning
+      else if (o.kind === 'wall') { g.fillStyle = 'rgba(120,130,150,.85)'; g.strokeStyle = g.shadowColor = '#e5e5ea'; g.lineWidth = 2; g.rect(q.x - pr, q.y - pr * 0.6, pr * 2, pr * 1.2); g.fill(); g.stroke(); }
       else { g.fillStyle = g.shadowColor = '#ff453a'; g.moveTo(q.x, q.y - pr); g.lineTo(q.x + pr * 1.3, q.y); g.lineTo(q.x, q.y + pr * 0.5); g.lineTo(q.x - pr * 1.3, q.y); g.closePath(); g.fill(); }
       g.restore();
     }
@@ -100,7 +140,16 @@
       if (!q) continue;
       g.save(); g.strokeStyle = g.shadowColor = '#ff9f0a'; g.shadowBlur = 14; g.lineWidth = 6 * (1 - k) + 1; g.beginPath(); g.arc(q.x, q.y, 10 + 50 * k, 0, 7); g.stroke(); g.restore();
     }
-    text(`${T('PUNTOS')} ${score}  ·  ${T('MONEDAS')} ${coins}`, 24, 26, 16, 'left');
+    for (const b of incoming) { // enemy shots
+      const q = toWin(scene, b.p);
+      if (!q) continue;
+      g.save(); g.fillStyle = g.shadowColor = '#ff2df5'; g.shadowBlur = 10; g.beginPath(); g.arc(q.x, q.y, Math.max(3, (60 / C.Cartesian3.distance(b.p, viewer.camera.positionWC)) * f), 0, 7); g.fill(); g.restore();
+    }
+    const fade = (t0, ms, color) => { const k = (now - t0) / ms; if (k < 1) { g.save(); g.globalAlpha = 0.5 * (1 - k); g.fillStyle = color; g.fillRect(0, 0, w, h); g.restore(); } };
+    fade(flash, 450, '#fff'); fade(hit, 250, '#f00'); // bomb / damage
+    text(`${T('PUNTOS')} ${score}  ·  ${T('MONEDAS')} ${coins}  ·  ${T('BOMBAS')} ${bombs}`, 24, 96, 16, 'left'); // below the heading tape
+    g.save(); g.strokeRect(24, 110, 180, 12); g.fillStyle = hp > 50 ? '#39ff14' : hp > 25 ? '#ffd60a' : '#ff453a'; g.fillRect(24, 110, 1.8 * Math.max(0, hp), 12); g.restore();
+    text(`${T('VIDA')} ${Math.max(0, Math.round(hp))}`, 212, 117, 12, 'left');
   }
 
   async function open() {
@@ -115,7 +164,7 @@
   function start(plane, useMouse, useArcade = true) {
     A = PLANES[plane];
     man = null;
-    arcade = !!A.ship && !!useArcade; objs = []; booms = []; score = coins = 0;
+    arcade = !!A.ship && !!useArcade; hp = 100; bombs = 3; incoming = []; flash = hit = 0; objs = []; booms = []; score = coins = 0;
     const la = OGE.lookAt(), c = la ? la.carto : viewer.camera.positionCartographic; // above the look-at point, not from orbit
     const ground = scene.globe.getHeight(c) || 0;
     s = { lon: c.longitude, lat: c.latitude, alt: ground + A.agl, heading: viewer.camera.heading, pitch: 0, roll: 0, v: A.v0, vs: 0,
@@ -129,9 +178,23 @@
     hud.hidden = false;
     $('flyBtn').classList.add('active');
   }
+  // Scoreboard: the ten best arcade flights, kept on this computer.
+  const SCORES = 'oge.scores', readScores = () => { try { return JSON.parse(localStorage.getItem(SCORES)) || []; } catch { return []; } };
+  const showScores = () => OGE.showTable('🏆 Mejores puntajes', ['#', 'Piloto', 'Puntos', 'Monedas', 'Fecha'],
+    readScores().map((r, i) => [i + 1, r.name, r.score, r.coins, r.date]), { note: 'Se guardan solo en este equipo.' });
+  async function saveScore(pts, cns) {
+    const v = await OGE.ask({ title: `Puntaje: ${pts} puntos y ${cns} monedas`, ok: 'Guardar', fields: [{ id: 'name', label: 'Tu nombre', value: localStorage.getItem('oge.pilot') || '' }] });
+    const name = v && v.name.trim().slice(0, 24);
+    if (name) {
+      localStorage.setItem('oge.pilot', name);
+      localStorage.setItem(SCORES, JSON.stringify([...readScores(), { name, score: pts, coins: cns, date: new Date().toISOString().slice(0, 10) }].sort((a, b) => b.score - a.score || b.coins - a.coins).slice(0, 10)));
+    }
+    showScores();
+  }
   function stop(msg, error) {
     on = false;
     if (arcade && !msg && score) msg = `Vuelo terminado: ${score} puntos y ${coins} monedas.`;
+    if (arcade && (score || coins)) saveScore(score, coins);
     scene.screenSpaceCameraController.enableInputs = true;
     document.body.classList.remove('flying');
     hud.hidden = true;
@@ -198,7 +261,10 @@
       s.v = clamp(s.v + (s.throttle * A.thrust - drag - grav * Math.sin(s.pitch)) * dt, 0, A.vMax * 1.3);
       s.vs = s.v * Math.sin(pe);
       s.alt += s.vs * dt * warp;
-      if (A.ship && s.alt <= ground + 30) { s.alt = ground + 30; s.pitch = Math.max(s.pitch, rad(2)); } // the starship skims the ground
+      if (A.ship && s.alt <= ground + 30) { // the starship bounces off the ground; in the arcade a hard touch costs life
+        s.alt = ground + 30; s.pitch = Math.max(s.pitch, rad(arcade ? 8 : 2));
+        if (arcade && performance.now() - hit > 800) hurt(15);
+      }
       else if (s.alt <= ground + GEAR_H) { // soft touchdown with the gear down, or crash
         if (!(s.gear && s.vs > -4 && Math.abs(s.roll) < rad(12) && s.pitch > rad(-6))) {
           return stop(`Accidente a ${Math.round(s.v * KT)} nudos.` + (s.gear ? '' : ' El tren estaba arriba (G lo baja).'), true);
@@ -212,7 +278,7 @@
     s.heading = C.Math.zeroToTwoPi(s.heading);
     s.agl = s.alt - ground;
     viewer.camera.setView({ destination: C.Cartesian3.fromRadians(s.lon, s.lat, s.alt), orientation: { heading: s.heading, pitch: pe, roll: s.roll + rollOff } });
-    if (arcade) arcadeStep();
+    if (arcade && on) arcadeStep(dt);
   }
 
   // ---------- HUD ----------
@@ -322,6 +388,7 @@
     else if (k === 'f' || k === ']' || k === '[') s.flaps = clamp(s.flaps + (e.shiftKey || k === '[' ? -1 : 1), 0, 2);
     else if (k === 'c') { stick.x = stick.y = 0; s.trim = 0; }
     else if (k === 'x') fire();
+    else if (k === 'b' && A.ship) bomb();
     else if (k === 't') nextWarp();
     else if (k === 'r' || k === 'v' || k === 'u') maneuver(k === 'r' ? 'roll' : k === 'v' ? 'loop' : 'uturn');
     else if (k === 'k') $('flyKeys').hidden = !$('flyKeys').hidden;
@@ -332,6 +399,7 @@
   window.addEventListener('blur', () => keys.clear());
   const nextWarp = () => setWarp(WARPS[(WARPS.indexOf(warp) + 1) % WARPS.length]);
   $('flyWarp').onclick = nextWarp;
+  $('flyScores').onclick = () => { paused = true; showScores(); };
   $('flyHelp').onclick = () => { $('flyKeys').hidden = !$('flyKeys').hidden; };
   for (const [id, key] of [['flyUp', 'pageup'], ['flyDown', 'pagedown'], ['flyLeft', 'a'], ['flyRight', 'd']]) { // held down like the keys
     const b = $(id);
@@ -342,5 +410,5 @@
     for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => keys.delete(key));
   }
   $('flyBtn').onclick = open;
-  OGE.flight = { start, stop, maneuver, state: () => s, flying: () => on, game: () => ({ score, coins, objs }) };
+  OGE.flight = { start, stop, maneuver, state: () => s, flying: () => on, game: () => ({ score, coins, objs, hp, bombs, incoming }) };
 })();
