@@ -271,6 +271,8 @@
     'F-16 — caza a reacción, rápido y nervioso': 'F-16 — jet fighter, fast and twitchy',
     'Mantén pulsado para doblar a la izquierda (A)': 'Hold to turn left (A)', 'Mantén pulsado para doblar a la derecha (D)': 'Hold to turn right (D)',
     '? Controles (K)': '? Controls (K)',
+    'OBJETOS': 'ITEMS',
+    'No puedes entrar en otro país en esta etapa': 'You cannot enter another country in this stage',
     'obtenida': 'won',
     '¡La mano va a atacar! Prepara un tonel (R).': 'The hand is about to strike! Get ready to roll (R).',
     'Mando conectado': 'Gamepad connected',
