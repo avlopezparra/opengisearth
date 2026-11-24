@@ -856,6 +856,13 @@
     if (paused) text(T('PAUSA — Espacio para seguir'), cx, cy - r - 46, 16);
     else if (s.ground) text(T('EN TIERRA'), cx, cy - r - 46, 16);
     else if (s.v < A.vStall * (1 - 0.1 * s.flaps)) text(T('PÉRDIDA — baja la nariz y da gas'), cx, cy - r - 46, 16);
+    if ($('layerSats').checked) for (const sat of OGE.satellites()) { // live satellites, as bright moving dots when they are in view
+      if (!sat.p) continue;
+      const q = (C.SceneTransforms.worldToWindowCoordinates || C.SceneTransforms.wgs84ToWindowCoordinates)(scene, sat.p);
+      if (!q || q.x < 0 || q.y < 0 || q.x > w || q.y > h) continue;
+      g.save(); g.fillStyle = g.shadowColor = /ISS|ZARYA/.test(sat.name) ? '#ffd60a' : '#bfe6ff'; g.shadowBlur = 10; g.beginPath(); g.arc(q.x, q.y, 3, 0, 7); g.fill();
+      if (/ISS|ZARYA/.test(sat.name)) { g.font = '600 11px sans-serif'; g.fillText('ISS', q.x + 6, q.y + 4); } g.restore();
+    }
     if (regs && quest()) drawRegs();
     if (caps && quest()) drawCaps();
     if (arcade) drawArcade(w, h, text);
