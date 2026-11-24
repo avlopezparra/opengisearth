@@ -1,6 +1,6 @@
 // Flight simulator in the style of Earth's: cockpit view with HUD, mouse or keyboard control and two aircraft.
 // Mouse: a click grabs or releases the stick; the cursor relative to the center moves it (down = pull = nose up).
-// Keyboard: arrows stick · PgUp/PgDn (or W/S) throttle · Shift+←/→ (or Q/E) rudder · F / Shift+F flaps · G gear ·
+// Keyboard: arrows (or W/S) stick · PgUp/PgDn (or E/Q) throttle · A/D (or Shift+←/→) rudder · K key list · F / Shift+F flaps · G gear ·
 // A/D also turn (rudder) · T turbo · , . (or B) brakes · Home/End trim · C center · Space pause · H HUD · Esc exit. Starship: X or right click fires.
 (() => {
   const C = Cesium, { viewer, $ } = OGE;
@@ -69,6 +69,7 @@
     scene.screenSpaceCameraController.enableInputs = true;
     document.body.classList.remove('flying');
     hud.hidden = true;
+    $('flyKeys').hidden = true;
     $('flyBtn').classList.remove('active');
     viewer.camera.setView({ orientation: { heading: viewer.camera.heading, pitch: Math.min(viewer.camera.pitch, rad(-20)), roll: 0 } }); // level view looking at the ground
     if (msg) OGE.toast(msg, error);
@@ -77,12 +78,12 @@
   // ---------- Controls ----------
   function controls(dt) {
     const k = (x) => keys.has(x), ease = Math.min(1, 6 * dt), shift = k('shift');
-    const lr = (k('arrowright') ? 1 : 0) - (k('arrowleft') ? 1 : 0), ud = (k('arrowdown') ? 1 : 0) - (k('arrowup') ? 1 : 0);
+    const lr = (k('arrowright') ? 1 : 0) - (k('arrowleft') ? 1 : 0), ud = (k('arrowdown') || k('s') ? 1 : 0) - (k('arrowup') || k('w') ? 1 : 0);
     if (mouseCtl) { s.ail = stick.x; s.elev = stick.y; } else { s.ail += ((shift ? 0 : lr) - s.ail) * ease; s.elev += (ud - s.elev) * ease; }
-    const rud = (k('e') || k('d') || k('enter') ? 1 : 0) - (k('q') || k('a') || k('insert') ? 1 : 0) + (shift ? lr : 0);
+    const rud = (k('d') || k('enter') ? 1 : 0) - (k('a') || k('insert') ? 1 : 0) + (shift ? lr : 0);
     s.rud += (clamp(rud, -1, 1) - s.rud) * ease;
-    if (k('pageup') || k('w')) s.throttle = Math.min(1, s.throttle + 0.5 * dt);
-    if (k('pagedown') || k('s')) s.throttle = Math.max(0, s.throttle - 0.5 * dt);
+    if (k('pageup') || k('e')) s.throttle = Math.min(1, s.throttle + 0.8 * dt);
+    if (k('pagedown') || k('q')) s.throttle = Math.max(0, s.throttle - 0.8 * dt);
     if (k('home')) s.trim = Math.max(-0.4, s.trim - 0.2 * dt);
     if (k('end')) s.trim = Math.min(0.4, s.trim + 0.2 * dt);
     s.brake = k(',') || k('.') || k('b');
@@ -184,7 +185,7 @@
 
     // Speed (knots) on the left, altitude (feet) on the right
     const bx = Math.min(r + 70, cx - 60);
-    g.strokeRect(cx - bx - 38, cy - 12, 76, 24); text(Math.round(s.v * KT) + ' KT', cx - bx, cy + 1, 14);
+    g.strokeRect(cx - bx - 38, cy - 12, 76, 24); text(Math.round(s.v * warp * KT) + ' KT', cx - bx, cy + 1, 14); // the turbo counts as speed
     g.strokeRect(cx + bx - 46, cy - 12, 92, 24); text(Math.round(s.alt * FT) + ' FT', cx + bx, cy + 1, 14);
     text((s.vs >= 0 ? '+' : '') + Math.round((s.vs * FT * 60) / 10) * 10 + ' FPM', cx + bx, cy + 26, 12);
     text(T('SUELO ') + Math.round(s.agl * FT) + ' FT', cx + bx, cy + 42, 12);
@@ -235,6 +236,7 @@
     else if (k === 'c') { stick.x = stick.y = 0; s.trim = 0; }
     else if (k === 'x') fire();
     else if (k === 't') nextWarp();
+    else if (k === 'k') $('flyKeys').hidden = !$('flyKeys').hidden;
     else keys.add(k);
     e.preventDefault(); e.stopPropagation();
   }, true);
@@ -242,9 +244,13 @@
   window.addEventListener('blur', () => keys.clear());
   const nextWarp = () => setWarp(WARPS[(WARPS.indexOf(warp) + 1) % WARPS.length]);
   $('flyWarp').onclick = nextWarp;
-  for (const [id, key] of [['flyUp', 'pageup'], ['flyDown', 'pagedown'], ['flyLeft', 'q'], ['flyRight', 'e']]) { // held down like the keys
+  $('flyHelp').onclick = () => { $('flyKeys').hidden = !$('flyKeys').hidden; };
+  for (const [id, key] of [['flyUp', 'pageup'], ['flyDown', 'pagedown'], ['flyLeft', 'a'], ['flyRight', 'd']]) { // held down like the keys
     const b = $(id);
-    b.addEventListener('pointerdown', (e) => { e.preventDefault(); keys.add(key); });
+    b.addEventListener('pointerdown', (e) => {
+      e.preventDefault(); keys.add(key);
+      if (s && key.startsWith('page')) s.throttle = clamp(s.throttle + (key === 'pageup' ? 0.1 : -0.1), 0, 1); // a short tap also counts
+    });
     for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => keys.delete(key));
   }
   $('flyBtn').onclick = open;
