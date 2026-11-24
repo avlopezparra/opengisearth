@@ -17,7 +17,7 @@
   let on = false, paused = false, mouseCtl = false, showHud = true, A = null, s = null, last = 0;
   const WARPS = [1, 2, 5, 10, 25, 50, 100];
   let warp = 1; // turbo: multiplies the distance covered, to cross long stretches quickly
-  const setWarp = (v) => { warp = v; $('flyWarp').textContent = 'Turbo ×' + v + ' ▲ (T)'; $('flyWarp').classList.toggle('active', v > 1); };
+  const setWarp = (v) => { if (on && v !== warp) sfx(v > warp ? 'warpUp' : 'warpDown'); warp = v; $('flyWarp').textContent = 'Turbo ×' + v + ' ▲ (T)'; $('flyWarp').classList.toggle('active', v > 1); };
   const TURNS = [1, 2, 3, 5];
   let turn = +localStorage.getItem('oge.flyTurn2') || 3; // quick turns by default // multiplies how fast A/D turn
   const setTurn = (v) => { turn = v; localStorage.setItem('oge.flyTurn2', v); $('flyTurn').textContent = T('Giro') + ' ×' + v + ' (N)'; $('flyTurn').classList.toggle('active', v > 1); };
@@ -111,7 +111,9 @@
   // Sound effects: short bell-like phrases (MIDI notes), one per event. [wave, seconds per note, notes]
   const SFX = { coin: ['sine', 0.06, [88, 95]], ring: ['sine', 0.07, [84, 88, 91]], heart: ['sine', 0.09, [79, 84, 88]], shield: ['triangle', 0.09, [72, 79, 84]], bombGet: ['triangle', 0.08, [69, 76, 81]],
     shieldBreak: ['sine', 0.05, [98, 93, 88, 81]], down: ['triangle', 0.05, [76, 72, 67]], flag: ['sine', 0.08, [79, 83, 86]], capital: ['triangle', 0.1, [72, 79, 84, 88]],
-    boss: ['triangle', 0.11, [72, 76, 79, 84, 88, 91, 96]], achieve: ['triangle', 0.13, [72, 76, 79, 84, 79, 84, 88, 96]], step: ['sine', 0.08, [84, 91]] };
+    boss: ['triangle', 0.11, [72, 76, 79, 84, 88, 91, 96]], achieve: ['triangle', 0.13, [72, 76, 79, 84, 79, 84, 88, 96]], step: ['sine', 0.08, [84, 91]],
+    roll: ['triangle', 0.05, [67, 74, 79, 86, 91]], loop: ['triangle', 0.08, [60, 67, 72, 79, 84, 79, 72]], warpUp: ['sawtooth', 0.05, [60, 72, 84]], warpDown: ['sawtooth', 0.05, [84, 72, 60]], thrust: ['sawtooth', 0.06, [48, 55]] };
+  let thrT = 0;
   function sfx(name) {
     const d = SFX[name];
     try { ac(); d[2].forEach((n, i) => tone(n, audio.currentTime + i * d[1], d[1] * 2.4, d[0], 0.07)); } catch { /* no audio device */ }
@@ -653,6 +655,7 @@
     if (mouseCtl) { s.ail = stick.x; s.elev = stick.y; } else { s.ail += ((shift ? 0 : lr) - s.ail) * ease; s.elev += (ud - s.elev) * ease; }
     const rud = (k('d') || k('enter') ? 1 : 0) - (k('a') || k('insert') ? 1 : 0) + (shift ? lr : 0);
     s.rud += (clamp(rud, -1, 1) - s.rud) * ease;
+    if ((k('pageup') || k('e')) && s.throttle < 1 && !(thrT > performance.now())) { thrT = performance.now() + 450; sfx('thrust'); } // a whoosh while speeding up
     if (k('pageup') || k('e')) s.throttle = Math.min(1, s.throttle + 0.8 * dt);
     if (k('pagedown') || k('q')) s.throttle = Math.max(0, s.throttle - 0.8 * dt);
     if (k('home')) s.trim = Math.max(-0.4, s.trim - 0.2 * dt);
@@ -668,7 +671,7 @@
     if (!on || paused || man) return;
     const dir = keys.has('a') ? -1 : keys.has('d') ? 1 : (lastRoll = -lastRoll);
     man = { type, t0: performance.now(), dur: type === 'roll' ? 600 : type === 'loop' ? 2400 : 1500, dir };
-    beep(500, 1200, 0.25);
+    sfx(type === 'roll' ? 'roll' : 'loop');
   }
   function step(dt) {
     controls(dt);
@@ -866,6 +869,12 @@
   setMute(muted);
   setTurn(TURNS.includes(turn) ? turn : 3);
   $('flyScores').onclick = () => { paused = true; showScores(); };
+  $('flyReset').onclick = async () => { // start the collection again: flags and capitals collected so far are forgotten
+    paused = true;
+    const v = await OGE.ask({ title: 'Reiniciar la colección', ok: 'Reiniciar', help: 'Se olvidan las banderas de regiones y las capitales conseguidas. Los puntajes no se borran.', fields: [] });
+    if (v) { gotReg.clear(); got.clear(); localStorage.removeItem(REGS); localStorage.removeItem(CAPS); OGE.toast('Colección reiniciada.'); }
+    paused = false; last = performance.now();
+  };
   $('flyHelp').onclick = () => { $('flyKeys').hidden = !$('flyKeys').hidden; $('flyRules').hidden = true; };
   const showRules = () => { // the tutorial; the game waits while it is open
     $('flyRules').hidden = !$('flyRules').hidden; $('flyKeys').hidden = true;
