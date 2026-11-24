@@ -1620,11 +1620,16 @@
   }
   $('flyBtn').onclick = open;
   $('mpBtn').onclick = $('flyMp').onclick = multiplayer;
+  for (const b of document.querySelectorAll('#flyTL button')) { // phones: landing, take-off and the rest of the keys, top left
+    const key = b.dataset.key, up = () => document.dispatchEvent(new KeyboardEvent('keyup', { key }));
+    b.addEventListener('pointerdown', (e) => { e.preventDefault(); document.dispatchEvent(new KeyboardEvent('keydown', { key })); if (!b.dataset.hold) setTimeout(up, 80); });
+    if (b.dataset.hold) for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, up); // held keys (T: climb)
+  }
   for (const b of document.querySelectorAll('#flyActs button')) b.addEventListener('pointerdown', (e) => { e.preventDefault(); document.dispatchEvent(new KeyboardEvent('keydown', { key: b.dataset.key })); setTimeout(() => document.dispatchEvent(new KeyboardEvent('keyup', { key: b.dataset.key })), 80); }); // the same as their keys
   if (!matchMedia('(pointer: coarse)').matches) { // with a keyboard the key buttons are not needed: only Controls and Scores stay at hand
     $('flyBtns').classList.add('keyboard');
     $('flyKeys').append(Object.assign(document.createElement('li'), { className: 'keyBtns' })); $('flyKeys').lastChild.append($('flyScores'), $('flyMp'), $('flyReset')); $('flyKeys').style.right = $('flyRules').style.right = '12px'; // no column of buttons beside them // the few actions without a key live in the K panel
-  } else $('flyBtns').classList.add('touch'); // on a phone the stick steers (left half of the screen): the right column keeps the touch actions and the speed
+  } else { $('flyBtns').classList.add('touch'); document.body.classList.add('touchdev'); } // on a phone the stick steers (left half of the screen): the right column keeps the touch actions and the speed
   $('flyThird').onclick = () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'y' }));
   $('flyMore').onclick = () => { const more = $('flyBtns').classList.toggle('more'); localStorage.setItem('oge.flyMore', more ? '1' : ''); }; // remembered
   $('flyBtns').classList.toggle('more', !!localStorage.getItem('oge.flyMore'));

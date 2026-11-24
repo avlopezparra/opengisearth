@@ -259,3 +259,8 @@ body.history-mode .cesium-viewer-bottom { display: none; }
   body.flying #rotateNote { display: flex; position: fixed; inset: 0; z-index: 50; align-items: center; justify-content: center; text-align: center; padding: 24px;
     background: rgba(8, 30, 60, .92); color: #fff; font-size: 20px; font-weight: 600; }
 }
+
+/* Phones: the keys without a stick or action button, in a row at the top left */
+#flyTL { display: none; }
+body.flying.touchdev #flyTL { display: flex; position: absolute; top: 8px; left: 8px; z-index: 4; gap: 5px; flex-wrap: wrap; max-width: 46vw; }
+#flyTL button { padding: 6px 9px; font-size: 12px; opacity: .88; touch-action: none; user-select: none; }
