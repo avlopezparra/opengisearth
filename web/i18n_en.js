@@ -273,6 +273,7 @@
     '? Controles (K)': '? Controls (K)',
     'Banderas de territorios dependientes': 'Flags of dependent territories',
     'Ciudad más poblada': 'Most populous city', 'Segunda ciudad más poblada': 'Second most populous city',
+    'mundo': 'world', 'posición política': 'political position',
     'de': 'of', 'en': 'in', 'n.º': 'no.', 'en el mundo': 'in the world', 'Densidad': 'Density', 'hab./km²': 'people/km²',
     'Gasto militar': 'Military expenditure', 'PIB per cápita': 'GDP per capita', 'Esperanza de vida': 'Life expectancy', 'años': 'years', 'Banco Mundial': 'World Bank',
     'Banner de Wikiviajes': 'Wikivoyage banner', 'Bandera': 'Flag', 'Escudo': 'Coat of arms', 'Imágenes y sonido: Wikimedia Commons.': 'Images and sound: Wikimedia Commons.', 'Gobernador o jefe de gobierno': 'Governor or head of government',
