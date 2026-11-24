@@ -75,6 +75,14 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
     if (/-IN$/i.test(l) || /^Asia\/(Kolkata|Calcutta)$/.test(tz)) return 'IN';
     return /-CL$/i.test(l) || /America\/(Santiago|Punta_Arenas)|Pacific\/Easter/.test(tz) ? 'CL' : /-AR$/i.test(l) || /Argentina|Buenos_Aires/.test(tz) ? 'AR' : /-ES$/i.test(l) || tz === 'Europe/Madrid' ? 'ES' : ''; })();
   if (window.__TAURI__) $('dlBtn').hidden = true; // already the desktop program
+  // Full screen on phones and tablets (where the browser bars take room); the same button leaves it
+  const fsOk = document.fullscreenEnabled || document.webkitFullscreenEnabled, touchDev = matchMedia('(pointer: coarse)').matches;
+  const fsToggle = () => { const on = document.fullscreenElement || document.webkitFullscreenElement;
+    if (on) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+    else (document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen).call(document.documentElement, { navigationUI: 'hide' })?.catch?.(() => {}); };
+  for (const id of ['fsBtn', 'flyFs']) { $(id).hidden = !(fsOk && touchDev); $(id).onclick = fsToggle; }
+  const fsLabel = () => { const on = !!(document.fullscreenElement || document.webkitFullscreenElement); for (const id of ['fsBtn', 'flyFs']) $(id).textContent = on ? T('⛶ Salir de pantalla completa') : T('⛶ Pantalla completa'); };
+  document.addEventListener('fullscreenchange', fsLabel); document.addEventListener('webkitfullscreenchange', fsLabel);
   OGE.malvinasAR = OGE.pov === 'AR' || OGE.pov === 'ES';
   // Areas painted in the claimant's color from its own point of view (names as in Natural Earth's disputed areas)
   OGE.povClaims = { RU: ['RUS', ['Crimea', "Donetsk People's Republic", "Luhansk People's Republic"]],
