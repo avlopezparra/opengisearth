@@ -1,23 +1,23 @@
 // Flight simulator in the style of Earth's: cockpit view with HUD, mouse or keyboard control and two aircraft.
 // Mouse: a click grabs or releases the stick; the cursor relative to the center moves it (down = pull = nose up).
 // Keyboard: arrows stick · PgUp/PgDn (or W/S) throttle · Shift+←/→ (or Q/E) rudder · F / Shift+F flaps · G gear ·
-// , . (or B) brakes · Home/End trim · C center · Space pause · H HUD · Esc exit. Starship: X or right click fires.
+// A/D also turn (rudder) · T turbo · , . (or B) brakes · Home/End trim · C center · Space pause · H HUD · Esc exit. Starship: X or right click fires.
 (() => {
   const C = Cesium, { viewer, $ } = OGE;
   const scene = viewer.scene, rad = C.Math.toRadians, deg = C.Math.toDegrees, clamp = C.Math.clamp;
   const G = 9.81, R = 6371000, KT = 1.94384, FT = 3.28084, GEAR_H = 1.8;
   // vStall/vMax in m/s; thrust: acceleration at full throttle (m/s²); roll/pitch/yaw: maximum angular rates; agl and v0: start
   const PLANES = {
-    sr22: { name: 'SR22 — avioneta de hélice, lenta y dócil', vStall: 31, vMax: 95, thrust: 3.2, roll: rad(45), pitch: rad(22), yaw: rad(12), agl: 600, v0: 70 },
-    f16: { name: 'F-16 — caza a reacción, rápido y nervioso', vStall: 72, vMax: 420, thrust: 22, roll: rad(130), pitch: rad(38), yaw: rad(10), agl: 1500, v0: 220 },
+    sr22: { name: 'SR22 — avioneta de hélice, lenta y dócil', vStall: 31, vMax: 95, thrust: 3.2, roll: rad(45), pitch: rad(22), yaw: rad(20), agl: 600, v0: 70 },
+    f16: { name: 'F-16 — caza a reacción, rápido y nervioso', vStall: 72, vMax: 420, thrust: 22, roll: rad(130), pitch: rad(38), yaw: rad(18), agl: 1500, v0: 220 },
     // ship: no stall and no gravity (it hovers and climbs to space), bounces off the ground instead of crashing, and fires
-    ship: { name: 'Starship — nave muy rápida con láseres; flota y sube al espacio', ship: true, vStall: 0, vMax: 8000, thrust: 400, roll: rad(160), pitch: rad(50), yaw: rad(25), agl: 3000, v0: 600 },
+    ship: { name: 'Starship — nave muy rápida con láseres; flota y sube al espacio', ship: true, vStall: 0, vMax: 8000, thrust: 400, roll: rad(160), pitch: rad(50), yaw: rad(35), agl: 3000, v0: 600 },
   };
   const hud = $('hud'), g = hud.getContext('2d');
   let on = false, paused = false, mouseCtl = false, showHud = true, A = null, s = null, last = 0;
   const WARPS = [1, 2, 5, 10, 25];
   let warp = 1; // turbo: multiplies the distance covered, to cross long stretches quickly
-  const setWarp = (v) => { warp = v; $('flyWarp').textContent = 'Turbo ×' + v; $('flyWarp').classList.toggle('active', v > 1); };
+  const setWarp = (v) => { warp = v; $('flyWarp').textContent = 'Turbo ×' + v + ' (T)'; $('flyWarp').classList.toggle('active', v > 1); };
   const keys = new Set(), stick = { x: 0, y: 0 };
 
   // ---------- Starship lasers: bolts on the HUD, a flash where the aim hits the ground, and a short sound ----------
@@ -79,7 +79,7 @@
     const k = (x) => keys.has(x), ease = Math.min(1, 6 * dt), shift = k('shift');
     const lr = (k('arrowright') ? 1 : 0) - (k('arrowleft') ? 1 : 0), ud = (k('arrowdown') ? 1 : 0) - (k('arrowup') ? 1 : 0);
     if (mouseCtl) { s.ail = stick.x; s.elev = stick.y; } else { s.ail += ((shift ? 0 : lr) - s.ail) * ease; s.elev += (ud - s.elev) * ease; }
-    const rud = (k('e') || k('enter') ? 1 : 0) - (k('q') || k('insert') ? 1 : 0) + (shift ? lr : 0);
+    const rud = (k('e') || k('d') || k('enter') ? 1 : 0) - (k('q') || k('a') || k('insert') ? 1 : 0) + (shift ? lr : 0);
     s.rud += (clamp(rud, -1, 1) - s.rud) * ease;
     if (k('pageup') || k('w')) s.throttle = Math.min(1, s.throttle + 0.5 * dt);
     if (k('pagedown') || k('s')) s.throttle = Math.max(0, s.throttle - 0.5 * dt);
@@ -242,7 +242,7 @@
   window.addEventListener('blur', () => keys.clear());
   const nextWarp = () => setWarp(WARPS[(WARPS.indexOf(warp) + 1) % WARPS.length]);
   $('flyWarp').onclick = nextWarp;
-  for (const [id, key] of [['flyUp', 'pageup'], ['flyDown', 'pagedown']]) { // held down like the keys
+  for (const [id, key] of [['flyUp', 'pageup'], ['flyDown', 'pagedown'], ['flyLeft', 'q'], ['flyRight', 'e']]) { // held down like the keys
     const b = $(id);
     b.addEventListener('pointerdown', (e) => { e.preventDefault(); keys.add(key); });
     for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => keys.delete(key));
