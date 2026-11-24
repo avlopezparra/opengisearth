@@ -425,7 +425,7 @@
     });
   }
   function arcadeStep(dt) {
-    if (tune) { const BT = window.OGE_BOSS_THEME, near = BT && objs.some((o) => o.kind === 'boss' && C.Cartesian3.distance(o.p, viewer.camera.positionWC) < 6e4), base = (adv && window.OGE_ADV_THEME) || (race && window.OGE_RACE_THEME) || TH, want = near ? BT : base; if (want !== tune) music(true, want); } // Boss Fight OpenStarshipEarth while a boss is close
+    if (tune) { const BT = window.OGE_BOSS_THEME, near = BT && objs.some((o) => o.kind === 'boss' && C.Cartesian3.distance(o.p, viewer.camera.positionWC) < 1.2e4), base = (adv && window.OGE_ADV_THEME) || (race && window.OGE_RACE_THEME) || TH, want = near ? BT : base; if (want !== tune) music(true, want); } // Boss Fight OpenStarshipEarth while a boss is close
     const cam = viewer.camera, t = new C.Cartesian3(), far = reach() * 2.5, eff = s.v * warp, slack = eff * 0.03, now = performance.now(); // slack: distance covered in one frame
     const rolling = man && man.type === 'roll'; // a barrel roll deflects enemies and shots
     objs = objs.filter((o) => {
