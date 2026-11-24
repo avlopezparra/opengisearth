@@ -271,6 +271,7 @@
     'F-16 — caza a reacción, rápido y nervioso': 'F-16 — jet fighter, fast and twitchy',
     'Mantén pulsado para doblar a la izquierda (A)': 'Hold to turn left (A)', 'Mantén pulsado para doblar a la derecha (D)': 'Hold to turn right (D)',
     '? Controles (K)': '? Controls (K)',
+    'Aventura: continuar en la etapa': 'Adventure: continue at stage', 'Aventura: empezar de nuevo desde la etapa 1': 'Adventure: start again from stage 1',
     'visita': 'visit',
     'Isla de Pascua': 'Easter Island',
     'Antártica Chilena (Villa Las Estrellas)': 'Chilean Antarctica (Villa Las Estrellas)',

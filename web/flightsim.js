@@ -531,7 +531,9 @@
   }
   function drawArcade(w, h, text) {
     const f = h / 2 / Math.tan((viewer.camera.frustum.fovy || rad(60)) / 2), toWin = C.SceneTransforms.worldToWindowCoordinates || C.SceneTransforms.wgs84ToWindowCoordinates, now = performance.now();
+    const occ = new C.EllipsoidalOccluder(C.Ellipsoid.WGS84, viewer.camera.positionWC), camP = viewer.camera.positionWC;
     for (const o of objs) {
+      if (!occ.isPointVisible(o.p) || ((o.kind === 'itembox' || o.kind === 'mine') && C.Cartesian3.distance(o.p, camP) > 6e4)) continue; // beyond the horizon, or race items too far to matter
       const q = toWin(scene, o.p);
       if (!q) continue; // behind the camera
       const pr = Math.max(4, (o.size / C.Cartesian3.distance(o.p, viewer.camera.positionWC)) * f);
@@ -610,11 +612,6 @@
     if (shields) { g.save(); g.strokeStyle = 'rgba(10,132,255,.55)'; g.lineWidth = 3 * shields; g.beginPath(); g.ellipse(w / 2, h / 2, w * 0.46, h * 0.46, 0, 0, 7); g.stroke(); g.restore(); } // shield around the view, thicker with more layers
     if (race) drawRace(g, w, text);
     if (adv) text(`${T('ETAPA')} ${adv.i + 1}: ${adv.name} · ${adv.boss ? T('¡derrota al jefe!') : (adv.left ?? '?') + ' ' + T('banderas restantes') + (adv.goalsLeft ? ` · ${T('visita')}: ${adv.goals.filter((gl) => !gl.done).map((gl) => gl.n).join(', ')}` : '')}`, 24, 136, 14, 'left');
-    if (adv) for (const gl of adv.goals) { // the places to visit: a marker on screen and an arrow at the edge when outside
-      if (gl.done) continue;
-      const q = (C.SceneTransforms.worldToWindowCoordinates || C.SceneTransforms.wgs84ToWindowCoordinates)(scene, gl.p), ahead = C.Cartesian3.dot(C.Cartesian3.subtract(gl.p, viewer.camera.positionWC, new C.Cartesian3()), viewer.camera.directionWC) > 0;
-      if (q && ahead && q.x > 0 && q.x < w && q.y > 0 && q.y < h) { g.save(); g.strokeStyle = g.shadowColor = '#40e0ff'; g.shadowBlur = 10; g.lineWidth = 3; g.beginPath(); g.arc(q.x, q.y, 14, 0, 7); g.stroke(); g.fillStyle = '#e8fbff'; g.textAlign = 'center'; g.font = '600 12px sans-serif'; g.fillText(gl.n, q.x, q.y + 30); g.restore(); }
-    }
     text(`${T('PUNTOS')} ${score}  ·  ${T('MONEDAS')} ${coins}  ·  ${T('BOMBAS')} ${bombs}`, 24, 96, 16, 'left'); // below the heading tape
     g.save(); g.strokeRect(24, 110, 180, 12); g.fillStyle = hp > maxHp / 2 ? '#39ff14' : hp > maxHp / 4 ? '#ffd60a' : '#ff453a'; g.fillRect(24, 110, (180 * Math.max(0, hp)) / maxHp, 12); g.restore();
     text(`${T('VIDA')} ${Math.max(0, Math.round(hp))}/${maxHp}  ·  ${T('ESCUDOS')} ${shields}/3`, 212, 117, 12, 'left');
@@ -782,10 +779,12 @@
       const clean = (v) => String(v ?? '').replace(/\0/g, '').trim(), seen = new Set(), imgs = new Map(), out = [];
       for (const f of shp.combine([shp.parseShp(ps), shp.parseDbf(pd)]).features) {
         const p = f.properties, id = clean(p.adm1_code), fl = flags.get(clean(p.sr_adm0_a3));
-        if (!f.geometry || !id || seen.has(id) || !fl) continue; // the file repeats each region at several scales
-        seen.add(id);
+        if (!f.geometry || !id || !fl) continue;
+        // the file has a point for every part of a region (each island too): keep the part nearest the country's own centre, usually the mainland
+        const [lon, lat] = f.geometry.coordinates, far = Math.hypot(lon - fl.lon, lat - fl.lat), prev = seen.get(id);
+        if (prev) { if (far < prev.far) Object.assign(prev.r, { lon, lat, p: C.Cartesian3.fromDegrees(lon, lat, 4500) }), prev.far = far; continue; }
         if (!imgs.has(fl.url)) imgs.set(fl.url, Object.assign(new Image(), { src: fl.url }));
-        const [lon, lat] = f.geometry.coordinates;
+        seen.set(id, { far, r: null });
         out.push({ id, lon, lat, name: clean(p.name), a3: fl.a3, country: fl.name, cont: CONT[fl.cont] || 'Islas oceánicas', p: C.Cartesian3.fromDegrees(lon, lat, 4500), img: imgs.get(fl.url) }); // high enough to be collected without scraping the ground
       }
       regs = out;
@@ -904,7 +903,7 @@
   function drawRace(g, w, text) { // the goal: a flag where it is on the screen, and an arrow at the top pointing to it
     const toWin = C.SceneTransforms.worldToWindowCoordinates || C.SceneTransforms.wgs84ToWindowCoordinates, q = toWin(scene, race.to.p);
     const ahead = C.Cartesian3.dot(C.Cartesian3.subtract(race.to.p, viewer.camera.positionWC, new C.Cartesian3()), viewer.camera.directionWC) > 0;
-    if (q && ahead) { g.save(); g.font = '28px sans-serif'; g.textAlign = 'center'; g.fillText('🏁', q.x, q.y); g.fillStyle = '#fff'; g.font = '600 12px sans-serif'; g.fillText(race.to.name, q.x, q.y + 18); g.restore(); }
+    if (q && ahead && new C.EllipsoidalOccluder(C.Ellipsoid.WGS84, viewer.camera.positionWC).isPointVisible(race.to.p)) { g.save(); g.font = '28px sans-serif'; g.textAlign = 'center'; g.fillText('🏁', q.x, q.y); g.fillStyle = '#fff'; g.font = '600 12px sans-serif'; g.fillText(race.to.name, q.x, q.y + 18); g.restore(); }
     const c = viewer.camera.positionCartographic, rel = bearing({ lon: deg(c.longitude), lat: deg(c.latitude) }, race.to) - viewer.camera.heading;
     g.save(); g.translate(w / 2, 70); g.rotate(rel); g.fillStyle = g.shadowColor = '#34c759'; g.shadowBlur = 10; g.beginPath(); g.moveTo(0, -16); g.lineTo(11, 10); g.lineTo(0, 4); g.lineTo(-11, 10); g.closePath(); g.fill(); g.restore();
     text(`🏁 ${race.to.name} · ${raceKm().toFixed(1)} km · ${fmtT(performance.now() - race.t0)}`, 24, 156, 14, 'left');
@@ -1561,7 +1560,8 @@
     mpLaunch = false;
     const v = await OGE.ask({ title: '🚀 OpenStarshipEarth', ok: 'Jugar', help: 'Hecho por Alejandro Víctor López Parra @avlopezparra (github)',
       fields: [{ id: 'mode', label: 'Modo de juego', type: 'select', value: localStorage.getItem('oge.shipMode') || 'arcade', options: [
-        ['adventure', '🗺 Aventura: países por etapas, banderas y jefe final'],
+        ['adventure', advDone() ? `🗺 ${T('Aventura: continuar en la etapa')} ${advDone() + 1} (${ROUTE[Math.min(advDone(), ROUTE.length - 1)]})` : '🗺 Aventura: países por etapas, banderas y jefe final'],
+        ...(advDone() ? [['adventure0', `🗺 ${T('Aventura: empezar de nuevo desde la etapa 1')}`]] : []),
         ['arcade', '🎯 Partida libre con ranking: enemigos, aros, monedas y jefes'],
         ['race', '🏁 De ciudad a ciudad: llega a la meta en el menor tiempo'],
         ['free', '🕊 Vuelo libre: sin enemigos ni objetivos, solo las vistas']] },
@@ -1569,7 +1569,7 @@
     if (!v) return;
     localStorage.setItem('oge.shipMode', v.mode);
     if (DIFF[v.diff]) { diff = v.diff; localStorage.setItem('oge.diff', diff); }
-    if (v.mode === 'adventure') adventure(); else if (v.mode === 'race') raceMode(); else quickShip(v.mode);
+    if (v.mode === 'adventure0') { localStorage.setItem('oge.adventure', '0'); adventure(0); } else if (v.mode === 'adventure') adventure(); else if (v.mode === 'race') raceMode(); else quickShip(v.mode);
   };
   OGE.flight = { start, stop, maneuver, state: () => s, flying: () => on, game: () => ({ score, coins, objs, hp, bombs, incoming, shields, regs, tut: tut && tut.i, p2, remote }) };
 })();
