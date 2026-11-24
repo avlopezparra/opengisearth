@@ -10,7 +10,7 @@
   function fillLayer(items) {
     const scheme = new C.GeographicTilingScheme(), TS = 256, deg = C.Math.toDegrees, polys = []; // one entry per polygon: { box, rings, color }
     for (const [g, n] of items) for (const rings of !g ? [] : g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : []) {
-      if (rings[0].length > 3) polys.push({ box: turf.bbox({ type: 'Polygon', coordinates: rings }), rings, color: typeof n === 'string' ? n : TINTS[Math.abs(n) % TINTS.length] }); // a color number or a CSS color
+      if (rings[0].length > 3) polys.push({ box: turf.bbox({ type: 'Polygon', coordinates: rings }), rings, color: typeof n === 'number' ? TINTS[Math.abs(n) % TINTS.length] : n }); // a color number, a CSS color or a canvas to repeat (stripes)
     }
     const layer = viewer.imageryLayers.addImageryProvider({
       tilingScheme: scheme, rectangle: scheme.rectangle, tileWidth: TS, tileHeight: TS, minimumLevel: 0, maximumLevel: 12,
@@ -24,7 +24,7 @@
           if (p.box[0] > e || p.box[2] < w || p.box[1] > n || p.box[3] < s) continue;
           ctx.beginPath();
           for (const ring of p.rings) { ring.forEach((c, i) => (i ? ctx.lineTo((c[0] - w) * kx, (n - c[1]) * ky) : ctx.moveTo((c[0] - w) * kx, (n - c[1]) * ky))); ctx.closePath(); }
-          ctx.fillStyle = p.color;
+          ctx.fillStyle = typeof p.color === 'string' ? p.color : ctx.createPattern(p.color, 'repeat');
           ctx.fill('evenodd'); // holes stay empty
         }
         return Promise.resolve(cv);
@@ -435,6 +435,11 @@
   const claimOn = (() => { try { return JSON.parse(localStorage.getItem('oge.claims')) || Object.keys(CLAIMS); } catch { return Object.keys(CLAIMS); } })();
   let claimPrims = [];
   OGE.redrawClaims = () => drawClaims();
+  function stripes(colors) { // a square that repeats into 45° stripes; the first color (Chile) twice as wide
+    const bands = colors.flatMap((c, i) => (i ? [c] : [c, c])), B = 6, S = bands.length * B * 2, cv = Object.assign(document.createElement('canvas'), { width: S, height: S }), g = cv.getContext('2d');
+    for (let x = -S, k = 0; x < 2 * S; x += B * 2, k++) { g.fillStyle = bands[k % bands.length]; g.beginPath(); g.moveTo(x, 0); g.lineTo(x + B * 2, 0); g.lineTo(x + B * 2 - S, S); g.lineTo(x - S, S); g.closePath(); g.fill(); }
+    return cv;
+  }
   $('fillCountries').addEventListener('change', () => drawClaims());
   function drawClaims() {
     for (const p of claimPrims) (p instanceof C.ImageryLayer ? viewer.imageryLayers : p instanceof C.BillboardCollection ? viewer.scene.primitives : viewer.scene.groundPrimitives).remove(p);
@@ -444,13 +449,20 @@
     const line = (a, b, n = 48) => rhumb(Array.from({ length: n + 1 }, (_, i) => [a[0] + ((b[0] - a[0]) * i) / n, a[1] + ((b[1] - a[1]) * i) / n]));
     const span = ([w, e]) => (e > 180 ? [[w, 180], [-180, e - 360]] : [[w, e]]), box = ([w, e]) => ({ type: 'Polygon', coordinates: [[[w, -60], [e, -60], [e, -89.99], [w, -89.99], [w, -60]]] });
     const filled = $('fillCountries').checked, cl = claimOn.includes('CHL') && filled && !OGE.antarticaCL && OGE.tintOf && OGE.tintOf('CHL'); // with the countries painted, the Chilean Antarctic Territory looks like the rest of Chile
-    const paint = fillLayer(claimOn.filter((a3) => !(a3 === 'CHL' && (cl || (filled && OGE.antarticaCL)))).flatMap((a3) => (CLAIMS[a3] ? CLAIMS[a3][2].flatMap(span).map((sc) => [box(sc), CLAIMS[a3][1]]) : []))); // each sector in its claimant's color
-    paint.alpha = 0.35;
-    if (cl) claimPrims.push(fillLayer(CLAIMS.CHL[2].flatMap(span).map((sc) => [box(sc), cl]))); // same color and opacity as Chile's own fill
+    // Overlapping claims (Chile, Argentina, United Kingdom) are cut into pieces: one claimant = its color; two or three = diagonal stripes of their colors, Chile first and wider
+    const on = claimOn.filter((a3) => CLAIMS[a3]), spans = on.flatMap((a3) => CLAIMS[a3][2].flatMap(span).map(([w, e]) => ({ a3, w, e })));
+    const cuts = [...new Set(spans.flatMap((x) => [x.w, x.e]))].sort((a, b) => a - b), color = (a3) => (a3 === 'CHL' && cl) || CLAIMS[a3][1], items = [];
+    for (let i = 0; i + 1 < cuts.length; i++) {
+      const w = cuts[i], e = cuts[i + 1], who = [...new Set(spans.filter((x) => x.w <= w && x.e >= e).map((x) => x.a3))].sort((a, b) => (b === 'CHL') - (a === 'CHL'));
+      if (!who.length || (who.length === 1 && who[0] === 'CHL' && filled && OGE.antarticaCL)) continue; // from Chile its own sector is already painted with the country
+      items.push([box([w, e]), who.length === 1 ? color(who[0]) : stripes(who.map(color))]);
+    }
+    const paint = fillLayer(items);
+    paint.alpha = cl ? 0.45 : 0.35;
     claimPrims.push(paint);
     const labels = viewer.scene.primitives.add(new C.BillboardCollection());
     claimPrims.push(labels);
-    for (const a3 of claimOn) {
+    for (const a3 of [...claimOn].sort((a, b) => (a === 'CHL') - (b === 'CHL'))) { // Chile last: its edges and name on top
       const [name, color, sectors] = CLAIMS[a3] || [];
       if (!name) continue;
       const inst = sectors.flatMap(([w, e]) => [line([w, -60], [w, -89.8]), line([e, -60], [e, -89.8]), line([w, -60], [e, -60])]).map((positions) => new C.GeometryInstance({
