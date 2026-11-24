@@ -1,7 +1,7 @@
 // Flight simulator in the style of Earth's: cockpit view with HUD, mouse or keyboard control and two aircraft.
 // Mouse: a click grabs or releases the stick; the cursor relative to the center moves it (down = pull = nose up).
 // Keyboard: arrows (or W/S) stick · PgUp/PgDn (or E/Q) throttle · A/D (or Shift+←/→) rudder · K key list · F / Shift+F flaps · G gear ·
-// A/D also turn (rudder) · T turbo · , . (or B) brakes · Home/End trim · C center · Space pause · H HUD · Esc exit. Starship: X or right click fires.
+// A/D also turn (rudder) · T / G turbo up / down · L gear · , . (or B) brakes · Home/End trim · C center · Space pause · H HUD · Esc exit. Starship: X or right click fires.
 (() => {
   const C = Cesium, { viewer, $ } = OGE;
   const scene = viewer.scene, rad = C.Math.toRadians, deg = C.Math.toDegrees, clamp = C.Math.clamp;
@@ -11,7 +11,7 @@
     sr22: { name: 'SR22 — avioneta de hélice, lenta y dócil', vStall: 31, vMax: 95, thrust: 3.2, roll: rad(45), pitch: rad(22), yaw: rad(20), agl: 600, v0: 70 },
     f16: { name: 'F-16 — caza a reacción, rápido y nervioso', vStall: 72, vMax: 420, thrust: 22, roll: rad(130), pitch: rad(38), yaw: rad(18), agl: 1500, v0: 220 },
     // ship: no stall and no gravity (it hovers and climbs to space), bounces off the ground instead of crashing, and fires
-    ship: { name: 'Starship — nave muy rápida con láseres; flota y sube al espacio', ship: true, vStall: 0, vMax: 8000, thrust: 400, roll: rad(160), pitch: rad(50), yaw: rad(35), agl: 3000, v0: 600 },
+    ship: { name: 'Starship — nave muy rápida con láseres; flota y sube al espacio', ship: true, vStall: 0, vMax: 8000, thrust: 400, roll: rad(220), pitch: rad(75), yaw: rad(35), agl: 3000, v0: 600 },
   };
   const hud = $('hud'), g = hud.getContext('2d');
   let on = false, paused = false, mouseCtl = false, showHud = true, A = null, s = null, last = 0;
@@ -19,20 +19,22 @@
   let warp = 1; // turbo: multiplies the distance covered, to cross long stretches quickly
   const setWarp = (v) => { warp = v; $('flyWarp').textContent = 'Turbo ×' + v + ' ▲ (T)'; $('flyWarp').classList.toggle('active', v > 1); };
   const TURNS = [1, 2, 3, 5];
-  let turn = +localStorage.getItem('oge.flyTurn') || 1; // multiplies how fast A/D turn
-  const setTurn = (v) => { turn = v; localStorage.setItem('oge.flyTurn', v); $('flyTurn').textContent = T('Giro') + ' ×' + v + ' (N)'; $('flyTurn').classList.toggle('active', v > 1); };
+  let turn = +localStorage.getItem('oge.flyTurn2') || 3; // quick turns by default // multiplies how fast A/D turn
+  const setTurn = (v) => { turn = v; localStorage.setItem('oge.flyTurn2', v); $('flyTurn').textContent = T('Giro') + ' ×' + v + ' (N)'; $('flyTurn').classList.toggle('active', v > 1); };
   const keys = new Set(), stick = { x: 0, y: 0 };
 
   // ---------- Starship lasers: bolts on the HUD, a flash where the aim hits the ground, and a short sound ----------
-  let shots = [], audio = null;
+  let shots = [], audio = null, aimMouse = false; // shots: { t, x, y } on the HUD; aimMouse: lasers follow the cursor
+  const mouse = { x: 0, y: 0 };
   function fire() {
     const t = performance.now();
     if (on && !A.ship) return OGE.toast('Disparar y las maniobras son solo de la Starship.');
-    if (!on || paused || (shots.length && t - shots[shots.length - 1] < 110)) return;
-    shots.push(t);
-    const hit = scene.globe.pick(viewer.camera.getPickRay(new C.Cartesian2(hud.clientWidth / 2, hud.clientHeight / 2)), scene);
-    if (hit && C.Cartesian3.distance(hit, viewer.camera.positionWC) < 4e5) {
-      const e = viewer.entities.add({ position: hit, point: { pixelSize: 16, color: C.Color.ORANGE, outlineColor: C.Color.YELLOW, outlineWidth: 4, disableDepthTestDistance: Number.POSITIVE_INFINITY } });
+    if (!on || paused || (shots.length && t - shots[shots.length - 1].t < 110)) return;
+    const ax = aimMouse ? mouse.x : hud.clientWidth / 2, ay = aimMouse ? mouse.y : hud.clientHeight / 2; // where the lasers go
+    const ray = viewer.camera.getPickRay(new C.Cartesian2(ax, ay)), ground = scene.globe.pick(ray, scene);
+    shots.push({ t, x: ax, y: ay });
+    if (ground && C.Cartesian3.distance(ground, viewer.camera.positionWC) < 4e5) {
+      const e = viewer.entities.add({ position: ground, point: { pixelSize: 16, color: C.Color.ORANGE, outlineColor: C.Color.YELLOW, outlineWidth: 4, disableDepthTestDistance: Number.POSITIVE_INFINITY } });
       e._tmp = true; // not a user feature: never saved
       setTimeout(() => viewer.entities.remove(e), 450);
     }
@@ -41,12 +43,13 @@
     const cam = viewer.camera, to = new C.Cartesian3(); // an enemy inside the aim cone is destroyed
     let best = null, bestAng = 9;
     for (const o of objs) {
-      if (o.kind !== 'enemy') continue;
+      if (o.kind !== 'enemy' && o.kind !== 'boss') continue;
       C.Cartesian3.subtract(o.p, cam.positionWC, to);
-      const d = C.Cartesian3.magnitude(to), ang = Math.acos(clamp(C.Cartesian3.dot(to, cam.directionWC) / d, -1, 1));
+      const d = C.Cartesian3.magnitude(to), ang = Math.acos(clamp(C.Cartesian3.dot(to, ray.direction) / d, -1, 1));
       if (ang < Math.atan((o.size * 1.5) / d) + rad(1.2) && ang < bestAng) { best = o; bestAng = ang; }
     }
-    if (best) { objs.splice(objs.indexOf(best), 1); score += 100; booms.push({ p: best.p, t: performance.now() }); beep(300, 60, 0.3); }
+    if (best && best.kind === 'boss') hitBoss(best, 1);
+    else if (best) { objs.splice(objs.indexOf(best), 1); score += 100; booms.push({ p: best.p, t: performance.now() }); beep(300, 60, 0.3); }
   }
   function beep(f0, f1, dur) {
     try {
@@ -66,7 +69,7 @@
   // How often each kind appears: hearts and shields are rare, bombs are scarce (about 1 in 40).
   const POOL = Object.entries({ ring: 4, coin: 12, enemy: 12, wall: 8, heart: 2, shield: 2, bomb: 1 }).flatMap(([k, n]) => Array(n).fill(k));
   let shields = 0, broke = 0; // each shield absorbs one hit and breaks; broke: when the last one broke
-  const reach = () => Math.max(4000, s.v * warp * 7); // they appear about 7 s ahead, whatever the speed
+  const reach = () => Math.max(3000, s.v * warp * 4); // they appear about 4 s ahead, whatever the speed
   function spawn() {
     const cam = viewer.camera, D = reach() * (0.6 + 0.6 * Math.random()), kind = POOL[Math.floor(Math.random() * POOL.length)];
     const p = C.Cartesian3.clone(cam.positionWC), add = (v, k) => C.Cartesian3.add(p, C.Cartesian3.multiplyByScalar(v, k, new C.Cartesian3()), p);
@@ -80,11 +83,18 @@
     hp -= n; hit = performance.now(); beep(200, 80, 0.25);
     if (hp <= 0) stop(`Nave destruida: ${score} puntos y ${coins} monedas.`, true);
   }
+  function hitBoss(o, n) { // a boss guards each capital in the arcade: beating it wins the capital
+    o.hp -= n; booms.push({ p: o.p, t: performance.now() }); beep(260, 90, 0.2);
+    if (o.hp > 0) return;
+    objs.splice(objs.indexOf(o), 1); score += 1000; flash = performance.now(); beep(120, 30, 0.8);
+    collect(o.cap);
+  }
   function bomb() { // clears every enemy and shot in range
     if (!on || paused || !arcade) return;
     if (!bombs) return OGE.toast('Sin bombas: cada 25 monedas ganas una.');
     const cam = viewer.camera, R = reach() * 1.3;
     bombs--; incoming = []; flash = performance.now(); beep(160, 40, 0.6);
+    for (const o of objs.filter((x) => x.kind === 'boss' && C.Cartesian3.distance(x.p, cam.positionWC) < Math.max(R, 6e4))) hitBoss(o, 6);
     objs = objs.filter((o) => {
       if (o.kind !== 'enemy' || C.Cartesian3.distance(o.p, cam.positionWC) > R) return true;
       score += 100; booms.push({ p: o.p, t: flash });
@@ -97,6 +107,7 @@
     objs = objs.filter((o) => {
       C.Cartesian3.subtract(o.p, cam.positionWC, t);
       const d = C.Cartesian3.magnitude(t);
+      if (o.kind === 'boss') { if (d < o.size + slack && now - hit > 800 && !rolling) hurt(30); return d < 4e5; } // stays at its capital until left far behind
       if (d < o.size * (o.kind === 'ring' ? 1 : 1.6) + slack) { // touched
         if (o.kind === 'enemy') { if (!rolling) hurt(25); }
         else if (o.kind === 'wall') hurt(20); // obstacles always hurt
@@ -117,10 +128,11 @@
     });
     if (!on) return; // destroyed
     for (const o of objs) { // enemies fire at where the ship will be if it keeps flying straight
-      if (o.kind !== 'enemy' || now < o.next) continue;
-      o.next = now + 4000 + Math.random() * 4000;
+      const boss = o.kind === 'boss';
+      if ((o.kind !== 'enemy' && !boss) || now < o.next) continue;
+      o.next = now + (boss ? 1200 + Math.random() * 800 : 4000 + Math.random() * 4000);
       const d = C.Cartesian3.distance(o.p, cam.positionWC), speed = eff * 0.5 + 600, tt = d / (speed + eff);
-      if (d > reach() * 1.3 || C.Cartesian3.dot(C.Cartesian3.subtract(o.p, cam.positionWC, t), cam.directionWC) < 0) continue;
+      if (boss ? d > Math.max(reach() * 1.3, 6e4) : d > reach() * 1.3 || C.Cartesian3.dot(C.Cartesian3.subtract(o.p, cam.positionWC, t), cam.directionWC) < 0) continue;
       const target = C.Cartesian3.add(cam.positionWC, C.Cartesian3.multiplyByScalar(cam.directionWC, eff * tt, new C.Cartesian3()), new C.Cartesian3());
       incoming.push({ p: C.Cartesian3.clone(o.p), vel: C.Cartesian3.multiplyByScalar(C.Cartesian3.subtract(target, o.p, t), 1 / tt, new C.Cartesian3()), t: now });
     }
@@ -129,7 +141,7 @@
       if (C.Cartesian3.distance(b.p, cam.positionWC) < 40 + slack * 1.5) { if (!rolling) hurt(8); return false; }
       return now - b.t < 8000;
     });
-    while (on && objs.length < 7) spawn();
+    while (on && objs.filter((o) => o.kind !== 'boss').length < 10) spawn();
   }
   function drawArcade(w, h, text) {
     const f = h / 2 / Math.tan((viewer.camera.frustum.fovy || rad(60)) / 2), toWin = C.SceneTransforms.worldToWindowCoordinates || C.SceneTransforms.wgs84ToWindowCoordinates, now = performance.now();
@@ -144,6 +156,14 @@
       else if (o.kind === 'bomb') { g.shadowColor = '#ff9f0a'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = Math.max(12, pr * 2) + 'px sans-serif'; g.fillText('💣', q.x, q.y); }
       else if (o.kind === 'heart') { g.fillStyle = g.shadowColor = '#ff2d55'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = Math.max(12, pr * 2) + 'px sans-serif'; g.fillText('♥', q.x, q.y); }
       else if (o.kind === 'wall') { g.fillStyle = 'rgba(120,130,150,.85)'; g.strokeStyle = g.shadowColor = '#e5e5ea'; g.lineWidth = 2; g.rect(q.x - pr, q.y - pr * 0.6, pr * 2, pr * 1.2); g.fill(); g.stroke(); }
+      else if (o.kind === 'boss') {
+        const R = Math.max(14, pr);
+        g.fillStyle = '#5e0b8a'; g.strokeStyle = g.shadowColor = '#ff2df5'; g.lineWidth = 3; g.shadowBlur = 16;
+        for (let a = 0; a < 8; a++) g.lineTo(q.x + R * (a % 2 ? 0.55 : 1.4) * Math.sin((a * Math.PI) / 4), q.y - R * (a % 2 ? 0.55 : 1) * Math.cos((a * Math.PI) / 4));
+        g.closePath(); g.fill(); g.stroke();
+        g.shadowBlur = 0; g.fillStyle = '#300'; g.fillRect(q.x - 40, q.y - R - 16, 80, 6); g.fillStyle = '#ff453a'; g.fillRect(q.x - 40, q.y - R - 16, (80 * o.hp) / o.max, 6);
+        g.fillStyle = '#fff'; g.textAlign = 'center'; g.font = '600 12px sans-serif'; g.fillText(T('Jefe de') + ' ' + o.cap.name, q.x, q.y - R - 22);
+      }
       else { g.fillStyle = g.shadowColor = '#ff453a'; g.moveTo(q.x, q.y - pr); g.lineTo(q.x + pr * 1.3, q.y); g.lineTo(q.x, q.y + pr * 0.5); g.lineTo(q.x - pr * 1.3, q.y); g.closePath(); g.fill(); }
       g.restore();
     }
@@ -169,14 +189,16 @@
   async function open() {
     if (on) return stop();
     const v = await OGE.ask({ title: 'Simulador de vuelo', ok: 'Iniciar vuelo',
-      help: 'Arranca en el aire sobre el punto que estás mirando. Mouse: clic toma o suelta la palanca. Teclado: flechas, RePág/AvPág para el gas, G tren, F flaps, Espacio pausa, Esc salir. Starship: X o clic derecho dispara.',
+      help: 'Arranca en el aire sobre el punto que estás mirando. Mouse: clic toma o suelta la palanca. Teclado: flechas, RePág/AvPág para el gas, L tren, F flaps, Espacio pausa, Esc salir. Starship: X o clic derecho dispara.',
       fields: [{ id: 'plane', label: 'Avión', type: 'select', options: Object.entries(PLANES).map(([k, p]) => [k, p.name]) },
         { id: 'mouse', label: 'Controlar con el mouse (como en Earth)', type: 'checkbox', value: true },
-        { id: 'arcade', label: 'Starship: modo arcade con enemigos y puntaje (desmárcalo para volar libre)', type: 'checkbox', value: true }] });
-    if (v) start(v.plane, v.mouse, v.arcade);
+        { id: 'arcade', label: 'Starship: modo arcade con enemigos y puntaje (desmárcalo para volar libre)', type: 'checkbox', value: true },
+        { id: 'aim', label: 'Starship: apuntar los disparos con el mouse (clic dispara; se vuela con el teclado)', type: 'checkbox', value: false }] });
+    if (v) start(v.plane, v.mouse, v.arcade, v.aim);
   }
-  function start(plane, useMouse, useArcade = true) {
+  function start(plane, useMouse, useArcade = true, useAim = false) {
     A = PLANES[plane];
+    aimMouse = !!A.ship && !!useAim; mouse.x = hud.clientWidth / 2; mouse.y = hud.clientHeight / 2;
     man = null;
     loadCaps();
     if (A.ship) OGE.minimap.zoom(99); // the starship starts with the minimap zoomed all the way in
@@ -186,7 +208,7 @@
     s = { lon: c.longitude, lat: c.latitude, alt: ground + A.agl, heading: viewer.camera.heading, pitch: 0, roll: 0, v: A.v0, vs: 0,
       throttle: 0.7, flaps: 0, gear: false, brake: false, ail: 0, elev: 0, rud: 0, trim: 0, ground: false, agl: A.agl };
     setWarp(1);
-    on = true; paused = false; mouseCtl = !!useMouse; stick.x = stick.y = 0; keys.clear(); last = performance.now();
+    on = true; paused = false; mouseCtl = !!useMouse && !aimMouse; stick.x = stick.y = 0; keys.clear(); last = performance.now();
     if (OGE.activate) OGE.activate(null);
     if (OGE.setEdit) OGE.setEdit(false);
     scene.screenSpaceCameraController.enableInputs = false;
@@ -219,16 +241,25 @@
     for (const c of caps || []) { const r = (out[c.cont] = out[c.cont] || [0, 0]); r[1]++; if (got.has(capId(c))) r[0]++; }
     return out;
   };
-  function capStep() { // flying close to a capital collects it
+  function collect(c) {
+    got.add(capId(c)); localStorage.setItem(CAPS, JSON.stringify([...got]));
+    const [n, all] = capProgress()[c.cont];
+    if (arcade) score += 500;
+    beep(900, 1800, 0.3);
+    OGE.toast(n === all ? `🏆 Logro: todas las capitales de ${c.cont} (${n}).` : `⭐ Capital conseguida: ${c.name} — ${c.cont} ${n}/${all}.`);
+  }
+  // Free flight: flying close to a capital collects it. Arcade: a boss appears over it and must be beaten first.
+  function capStep() {
     if (!caps) return;
     const cam = viewer.camera.positionWC, R = Math.max(8000, s.v * warp * 3);
     for (const c of caps) {
-      if (got.has(capId(c)) || C.Cartesian3.distance(c.p, cam) > R) continue;
-      got.add(capId(c)); localStorage.setItem(CAPS, JSON.stringify([...got]));
-      const [n, all] = capProgress()[c.cont];
-      if (arcade) score += 500;
-      beep(900, 1800, 0.3);
-      OGE.toast(n === all ? `🏆 Logro: todas las capitales de ${c.cont} (${n}).` : `⭐ Capital conseguida: ${c.name} — ${c.cont} ${n}/${all}.`);
+      if (got.has(capId(c))) continue;
+      const d = C.Cartesian3.distance(c.p, cam);
+      if (!arcade) { if (d < R) collect(c); continue; }
+      if (d > 2e5 || objs.some((o) => o.cap === c)) continue;
+      objs.push({ kind: 'boss', cap: c, p: C.Cartesian3.fromDegrees(c.lon, c.lat, 3000), size: 700, hp: 15, max: 15, next: performance.now() + 2500 });
+      OGE.toast(`⚠ Jefe de ${c.name}: derrótalo para conseguir la capital.`);
+      beep(200, 500, 0.6);
     }
   }
   function drawCaps() { // a star over each capital still to collect, when it is near and on this side of the globe
@@ -277,7 +308,7 @@
 
   // ---------- Controls ----------
   function controls(dt) {
-    const k = (x) => keys.has(x), ease = Math.min(1, 6 * dt), shift = k('shift');
+    const k = (x) => keys.has(x), ease = Math.min(1, 12 * dt), shift = k('shift'); // quick response to the keys
     const lr = (k('arrowright') ? 1 : 0) - (k('arrowleft') ? 1 : 0), ud = (k('arrowdown') || k('s') ? 1 : 0) - (k('arrowup') || k('w') ? 1 : 0);
     if (mouseCtl) { s.ail = stick.x; s.elev = stick.y; } else { s.ail += ((shift ? 0 : lr) - s.ail) * ease; s.elev += (ud - s.elev) * ease; }
     const rud = (k('d') || k('enter') ? 1 : 0) - (k('a') || k('insert') ? 1 : 0) + (shift ? lr : 0);
@@ -339,7 +370,7 @@
       }
       else if (s.alt <= ground + GEAR_H) { // soft touchdown with the gear down, or crash
         if (!(s.gear && s.vs > -4 && Math.abs(s.roll) < rad(12) && s.pitch > rad(-6))) {
-          return stop(`Accidente a ${Math.round(s.v * KT)} nudos.` + (s.gear ? '' : ' El tren estaba arriba (G lo baja).'), true);
+          return stop(`Accidente a ${Math.round(s.v * KT)} nudos.` + (s.gear ? '' : ' El tren estaba arriba (L lo baja).'), true);
         }
         s.ground = true; s.alt = ground + GEAR_H; s.pitch = Math.max(0, s.pitch);
       }
@@ -370,12 +401,16 @@
     else if (s.v < A.vStall * (1 - 0.1 * s.flaps)) text(T('PÉRDIDA — baja la nariz y da gas'), cx, cy - r - 46, 16);
     if (caps) drawCaps();
     if (arcade) drawArcade(w, h, text);
-    shots = shots.filter((t0) => performance.now() - t0 < 220);
-    for (const t0 of shots) { // two bolts converging on the aim point
-      const a = (performance.now() - t0) / 220, b = Math.min(1, a + 0.3);
+    shots = shots.filter((sh) => performance.now() - sh.t < 220);
+    for (const sh of shots) { // two bolts converging on the aim point
+      const a = (performance.now() - sh.t) / 220, b = Math.min(1, a + 0.3);
       g.save(); g.strokeStyle = '#ff3b30'; g.shadowColor = '#ff3b30'; g.shadowBlur = 12; g.lineWidth = 5 * (1 - a) + 1; g.lineCap = 'round';
-      for (const sx of [cx - w * 0.38, cx + w * 0.38]) line(sx + (cx - sx) * a, h + (cy - h) * a, sx + (cx - sx) * b, h + (cy - h) * b);
+      for (const sx of [cx - w * 0.38, cx + w * 0.38]) line(sx + (sh.x - sx) * a, h + (sh.y - h) * a, sx + (sh.x - sx) * b, h + (sh.y - h) * b);
       g.restore();
+    }
+    if (aimMouse) { // crosshair on the cursor
+      g.save(); g.strokeStyle = '#ff3b30'; g.lineWidth = 2; g.beginPath(); g.arc(mouse.x, mouse.y, 14, 0, 7); g.stroke();
+      line(mouse.x - 22, mouse.y, mouse.x - 6, mouse.y); line(mouse.x + 6, mouse.y, mouse.x + 22, mouse.y); line(mouse.x, mouse.y - 22, mouse.x, mouse.y - 6); line(mouse.x, mouse.y + 6, mouse.x, mouse.y + 22); g.restore();
     }
     if (!showHud) return;
     const ppd = h / deg(viewer.camera.frustum.fovy || rad(60)), p0 = deg(s.pitch); // pixels per degree of the view
@@ -430,7 +465,7 @@
     g.strokeRect(jx - js, jy - js, js * 2, js * 2);
     line(jx - 5 + s.ail * js, jy + s.elev * js, jx + 5 + s.ail * js, jy + s.elev * js); line(jx + s.ail * js, jy - 5 + s.elev * js, jx + s.ail * js, jy + 5 + s.elev * js);
     line(jx - js, jy + js + 8, jx + js, jy + js + 8); g.fillRect(jx + s.rud * js - 3, jy + js + 4, 6, 8);
-    text(T(mouseCtl ? 'MOUSE: clic suelta la palanca' : 'TECLADO: clic para volar con el mouse'), cx, h - 22, 12);
+    text(T(aimMouse ? 'MOUSE: apunta, clic dispara' : mouseCtl ? 'MOUSE: clic suelta la palanca' : 'TECLADO: clic para volar con el mouse'), cx, h - 22, 12);
     text(A.name.split(' — ')[0], w - 60, h - 22, 12);
   }
 
@@ -444,12 +479,13 @@
 
   // ---------- Inputs ----------
   hud.addEventListener('mousemove', (e) => {
-    if (!mouseCtl) return;
     const b = hud.getBoundingClientRect();
+    mouse.x = e.clientX - b.left; mouse.y = e.clientY - b.top;
+    if (!mouseCtl || aimMouse) return;
     stick.x = clamp((e.clientX - b.left - b.width / 2) / (b.width * 0.3), -1, 1);
     stick.y = clamp((e.clientY - b.top - b.height / 2) / (b.height * 0.3), -1, 1);
   });
-  hud.addEventListener('click', () => { mouseCtl = !mouseCtl; stick.x = stick.y = 0; });
+  hud.addEventListener('click', () => { if (aimMouse) return fire(); mouseCtl = !mouseCtl; stick.x = stick.y = 0; });
   hud.addEventListener('contextmenu', (e) => e.preventDefault());
   hud.addEventListener('mousedown', (e) => { if (e.button === 2) fire(); }); // right button: fires even where the context menu event is suppressed
   document.addEventListener('keydown', (e) => {
@@ -458,13 +494,13 @@
     if (k === 'escape') stop();
     else if (k === ' ') { paused = !paused; last = performance.now(); }
     else if (k === 'h') showHud = !showHud;
-    else if (k === 'g') s.gear = !s.gear;
+    else if (k === 'l') s.gear = !s.gear;
     else if (k === 'f' || k === ']' || k === '[') s.flaps = clamp(s.flaps + (e.shiftKey || k === '[' ? -1 : 1), 0, 2);
     else if (k === 'c') { stick.x = stick.y = 0; s.trim = 0; }
     else if (k === 'x') fire();
     else if (k === 'b' && A.ship) bomb();
     else if (k === 't') nextWarp(e.shiftKey ? -1 : 1);
-    else if (k === 'y') nextWarp(-1);
+    else if (k === 'g') nextWarp(-1);
     else if (k === '+' || k === '=' || k === '-') OGE.minimap.zoom(k === '-' ? -1 : 1);
     else if (k === 'm') OGE.minimap.toggle();
     else if (k === 'n') nextTurn();
@@ -480,7 +516,7 @@
   $('flyWarpDown').onclick = () => nextWarp(-1);
   const nextTurn = () => setTurn(TURNS[(TURNS.indexOf(turn) + 1) % TURNS.length] || 1);
   $('flyTurn').onclick = nextTurn;
-  setTurn(TURNS.includes(turn) ? turn : 1);
+  setTurn(TURNS.includes(turn) ? turn : 3);
   $('flyScores').onclick = () => { paused = true; showScores(); };
   $('flyHelp').onclick = () => { $('flyKeys').hidden = !$('flyKeys').hidden; };
   for (const [id, key] of [['flyUp', 'pageup'], ['flyDown', 'pagedown'], ['flyLeft', 'a'], ['flyRight', 'd']]) { // held down like the keys
