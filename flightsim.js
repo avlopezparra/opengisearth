@@ -102,16 +102,17 @@
     v.gain.setValueAtTime(snare ? 0.12 : 0.05, t); v.gain.exponentialRampToValueAtTime(0.001, t + len);
     src.connect(f).connect(v).connect(master); src.start(t); src.stop(t + len);
   }
-  function music(play) {
-    clearInterval(musicTimer); musicTimer = null;
-    if (!play || !TH) return;
+  let tune = null; // the theme playing now: Main Theme or Boss Fight OpenStarshipEarth
+  function music(play, th = TH) {
+    clearInterval(musicTimer); musicTimer = null; tune = play ? th : null;
+    if (!play || !th) return;
     try { ac(); } catch { return; } // no audio device
-    const u = 60 / TH.bpm / TH.unit, loop = TH.beats * TH.unit, idx = { lead: 0, harmony: 0, bass: 0, drums: 0 }; // u: seconds per stored unit
+    const u = 60 / th.bpm / th.unit, loop = th.beats * th.unit, idx = { lead: 0, harmony: 0, bass: 0, drums: 0 }; // u: seconds per stored unit
     let t0 = audio.currentTime + 0.1; // when the current pass of the loop started
     musicTimer = setInterval(() => { // schedules a little ahead of the clock
       const until = (audio.currentTime + 0.3 - t0) / u;
       for (const k of Object.keys(idx)) {
-        const n = TH[k];
+        const n = th[k] || [];
         while (idx[k] < n.length && n[idx[k]] < until) {
           const at = t0 + n[idx[k]] * u, len = n[idx[k] + 1] * u, pitch = n[idx[k] + 2];
           if (!paused && at > audio.currentTime - 0.05) { if (k === 'drums') drum(pitch, at); else tone(pitch, at, Math.min(len, 1.5), VOICE[k][0], VOICE[k][1]); }
@@ -398,6 +399,7 @@
     });
   }
   function arcadeStep(dt) {
+    if (tune) { const BT = window.OGE_BOSS_THEME, near = BT && objs.some((o) => o.kind === 'boss' && C.Cartesian3.distance(o.p, viewer.camera.positionWC) < 6e4), want = near ? BT : TH; if (want !== tune) music(true, want); } // Boss Fight OpenStarshipEarth while a boss is close
     const cam = viewer.camera, t = new C.Cartesian3(), far = reach() * 2.5, eff = s.v * warp, slack = eff * 0.03, now = performance.now(); // slack: distance covered in one frame
     const rolling = man && man.type === 'roll'; // a barrel roll deflects enemies and shots
     objs = objs.filter((o) => {
