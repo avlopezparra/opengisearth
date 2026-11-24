@@ -271,6 +271,7 @@
     'F-16 — caza a reacción, rápido y nervioso': 'F-16 — jet fighter, fast and twitchy',
     'Mantén pulsado para doblar a la izquierda (A)': 'Hold to turn left (A)', 'Mantén pulsado para doblar a la derecha (D)': 'Hold to turn right (D)',
     '? Controles (K)': '? Controls (K)',
+    'Hecho por Alejandro Víctor López Parra @avlopezparra (github)': 'Made by Alejandro Víctor López Parra @avlopezparra (GitHub)',
     'Modo de juego': 'Game mode',
     '🗺 Aventura: países por etapas, banderas y jefe final': '🗺 Adventure: country stages, flags and a final boss',
     '🎯 Partida libre con ranking: enemigos, aros, monedas y jefes': '🎯 Free play with ranking: enemies, rings, coins and bosses',
