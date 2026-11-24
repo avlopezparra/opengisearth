@@ -51,9 +51,19 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
   const OGE = window.OGE = { viewer, $, el };
   // Point of view of the visitor's country (from the browser language or time zone), as Natural Earth does with its POV fields.
   // In Argentina and Spain the Malvinas / Falkland Islands are shown as part of Argentina.
-  OGE.pov = (() => { const l = navigator.language || '', tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; return /-CL$/i.test(l) || /America\/(Santiago|Punta_Arenas)|Pacific\/Easter/.test(tz) ? 'CL' : /-AR$/i.test(l) || /Argentina|Buenos_Aires/.test(tz) ? 'AR' : /-ES$/i.test(l) || tz === 'Europe/Madrid' ? 'ES' : ''; })();
+  OGE.pov = (() => { const l = navigator.language || '', tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '', force = new URLSearchParams(location.search).get('pov');
+    if (force) return force.toUpperCase();
+    if (/^ru(-RU)?$/i.test(l) || /^Europe\/(Moscow|Kaliningrad|Samara|Volgograd)$|^Asia\/(Yekaterinburg|Omsk|Novosibirsk|Krasnoyarsk|Irkutsk|Yakutsk|Vladivostok|Magadan|Kamchatka)$/.test(tz)) return 'RU';
+    if (/^zh-(CN|Hans)/i.test(l) || /^Asia\/(Shanghai|Urumqi|Chongqing|Harbin)$/.test(tz)) return 'CN';
+    if (/-IN$/i.test(l) || /^Asia\/(Kolkata|Calcutta)$/.test(tz)) return 'IN';
+    return /-CL$/i.test(l) || /America\/(Santiago|Punta_Arenas)|Pacific\/Easter/.test(tz) ? 'CL' : /-AR$/i.test(l) || /Argentina|Buenos_Aires/.test(tz) ? 'AR' : /-ES$/i.test(l) || tz === 'Europe/Madrid' ? 'ES' : ''; })();
   if (window.__TAURI__) $('dlBtn').hidden = true; // already the desktop program
   OGE.malvinasAR = OGE.pov === 'AR' || OGE.pov === 'ES';
+  // Areas painted in the claimant's color from its own point of view (names as in Natural Earth's disputed areas)
+  OGE.povClaims = { RU: ['RUS', ['Crimea', "Donetsk People's Republic", "Luhansk People's Republic"]],
+    CN: ['CHN', ['Taiwan', 'Arunachal Pradesh', 'Demchok', 'Samdu Valleys', 'Tirpani Valleys', 'Bara Hotii Valleys']],
+    IN: ['IND', ['Aksai Chin', 'Shaksam Valley', 'Gilgit-Baltistan', 'Azad Kashmir', 'Siachen Glacier']] }[OGE.pov] || null;
+  OGE.taiwanCN = OGE.pov === 'CN';
   OGE.antarticaCL = OGE.pov === 'CL'; // in Chile the Chilean Antarctic Territory (53° W – 90° W, south of 60° S) is shown as part of the country
 
   // Sunlight: lights the globe according to the current time (day side and night side), like "Sun" in Earth.

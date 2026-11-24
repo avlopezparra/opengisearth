@@ -210,3 +210,7 @@ body.game-only #panel, body.game-only #splitter { display: none; }
 #flyBtns.touch > #flyActs { flex-direction: column; gap: 8px; }
 #flyBtns.touch > #flyActs button { width: 56px; height: 56px; border-radius: 50%; font-size: 24px; padding: 0; flex: none; }
 @media (max-width: 700px) { #flyBtns.touch { width: auto; flex-direction: column; align-items: flex-end; } #flyBtns.touch > button { flex: none; } }
+
+/* With a keyboard the right column is not shown at all: K opens the controls (reminded on the HUD) */
+#flyBtns.keyboard { display: none !important; }
+#flyKeys li.keyBtns { list-style: none; display: flex; gap: 6px; margin-top: 6px; pointer-events: auto; }
