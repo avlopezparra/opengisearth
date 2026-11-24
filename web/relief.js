@@ -488,6 +488,7 @@
   OGE.planeIcon = planeIcon;
   let planes = null, planeTimer = null; // planes: BillboardCollection of the live aircraft
   const cbP = $('layerPlanes');
+  if (!window.__TAURI__) { cbP.checked = false; cbP.closest('li').hidden = true; } // the web page cannot read the feeds: the layer is only in the desktop app
   OGE.livePlanes = async (lon, lat, km = 250) => { // the aircraft around a point (the flight game uses them too)
     const url = `https://opendata.adsb.fi/api/v2/lat/${lat.toFixed(3)}/lon/${lon.toFixed(3)}/dist/${Math.min(250, Math.round(km))}`;
     const tauri = window.__TAURI__ && window.__TAURI__.core; // the open flight feeds refuse browsers (no CORS): the desktop program fetches them itself
