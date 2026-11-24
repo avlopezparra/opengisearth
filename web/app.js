@@ -265,7 +265,8 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
   // ---------- World minimap: where the camera (or the aircraft) is; other modules add their marks through OGE.minimap.extra ----------
   const mm = $('minimap'), mg = mm.getContext('2d'), mmTiles = new Map(); // Natural Earth II level 2 (8 × 4 tiles of 45°), loaded when first needed
   const mmTile = (i, j) => { const k = i + '/' + j; if (!mmTiles.has(k)) mmTiles.set(k, Object.assign(new Image(), { src: `cesium/Assets/Textures/NaturalEarthII/2/${i}/${3 - j}.jpg` })); return mmTiles.get(k); }; // TMS rows count from the south
-  const MMZ = [1, 2, 4, 8, 16];
+  const MMZ = [1, 2, 4, 8, 16, 32, 64, 128, 256]; // from 16× up, Esri satellite imagery is drawn on top (Natural Earth is too coarse)
+  let mmImg = null, mmBusy = false; // mmImg: { img, w, s, e, n, z }
   let mmZoom = +localStorage.getItem('oge.mmZoom') || 4, mmLon = 0, mmLat = 0, mmLast = 0; // the map is centered on the camera
   const mmSetZoom = (d) => { mmZoom = MMZ[C.Math.clamp(MMZ.indexOf(mmZoom) + d, 0, MMZ.length - 1)] || 4; localStorage.setItem('oge.mmZoom', mmZoom); mmLast = 0; };
   const mmDx = (lon) => (((lon - mmLon + 540) % 360) - 180) / 360; // fraction of the world, wrapped around the center
@@ -286,6 +287,16 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
         const im = mmTile(i, j);
         if (im.complete && im.naturalWidth) mg.drawImage(im, x, y, tw + 0.5, th + 0.5);
       }
+    }
+    if (mmZoom >= 16) { // a sharper picture for the close zooms: one Esri export covering twice the window, fetched again when the view leaves it
+      const hw = 180 / mmZoom, hh = 90 / mmZoom, fits = mmImg && mmImg.z === mmZoom && mmLon - hw > mmImg.w && mmLon + hw < mmImg.e && mmLat - hh > mmImg.s && mmLat + hh < mmImg.n;
+      if (!fits && !mmBusy) {
+        mmBusy = true;
+        const b = { w: mmLon - hw * 2, e: mmLon + hw * 2, s: Math.max(-89.9, mmLat - hh * 2), n: Math.min(89.9, mmLat + hh * 2), z: mmZoom }, img = new Image();
+        img.onload = () => { mmImg = { ...b, img }; mmBusy = false; mmLast = 0; }; img.onerror = () => { mmBusy = false; };
+        img.src = `https://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/export?bbox=${b.w},${b.s},${b.e},${b.n}&bboxSR=4326&imageSR=4326&size=${W * 4},${H * 4}&format=jpg&f=image`;
+      }
+      if (mmImg && mmImg.z === mmZoom) { const [x0, y0] = OGE.minimap.xy(mmImg.w, mmImg.n), [x1, y1] = OGE.minimap.xy(mmImg.e, mmImg.s); if (x1 > x0) mg.drawImage(mmImg.img, x0, y0, x1 - x0, y1 - y0); }
     }
     if (OGE.minimap.extra) OGE.minimap.extra(mg);
     const [x, y] = OGE.minimap.xy(deg(c.longitude), deg(c.latitude));

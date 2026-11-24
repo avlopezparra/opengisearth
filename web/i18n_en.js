@@ -271,6 +271,7 @@
     'F-16 — caza a reacción, rápido y nervioso': 'F-16 — jet fighter, fast and twitchy',
     'Mantén pulsado para doblar a la izquierda (A)': 'Hold to turn left (A)', 'Mantén pulsado para doblar a la derecha (D)': 'Hold to turn right (D)',
     '? Controles (K)': '? Controls (K)',
+    'de vida': 'life',
     '¡La mano te atrapó! Haz un tonel (R) para soltarte.': 'The hand caught you! Do a barrel roll (R) to break free.',
     'Mano gigante': 'Giant hand',
     'Misil': 'Missile',

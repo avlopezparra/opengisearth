@@ -186,6 +186,54 @@
   cbW.addEventListener('change', syncWeather);
   syncWeather();
 
+  // Weather where you are looking: with the weather layer on and the camera low, rain, snow or a thunderstorm falls over the view
+  // (Open-Meteo's current weather code for the point below the camera, asked again every 5 minutes or after moving ~30 km).
+  const fx = Object.assign(document.createElement('canvas'), { id: 'wxFx' });
+  fx.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:2';
+  viewer.container.appendChild(fx);
+  let fxKind = null, fxLevel = 0, fxAt = null, fxT = 0, flashT = 0; const drops = [];
+  async function askWeatherHere() {
+    const c = viewer.camera.positionCartographic, lon = C.Math.toDegrees(c.longitude), lat = C.Math.toDegrees(c.latitude);
+    if (!cbW.checked || c.height > 6e4) { fxKind = null; return; } // only close to the ground
+    if (fxAt && performance.now() - fxT < 3e5 && Math.hypot(lon - fxAt[0], lat - fxAt[1]) < 0.3) return;
+    fxAt = [lon, lat]; fxT = performance.now();
+    try {
+      const j = await (await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(2)}&longitude=${lon.toFixed(2)}&current=weather_code`)).json(), w = j.current && j.current.weather_code;
+      fxKind = w >= 95 ? 'storm' : (w >= 71 && w <= 77) || w === 85 || w === 86 ? 'snow' : (w >= 51 && w <= 67) || (w >= 80 && w <= 82) ? 'rain' : null;
+      fxLevel = w >= 95 ? 1 : [55, 57, 65, 67, 75, 82, 86].includes(w) ? 1 : [53, 63, 73, 81].includes(w) ? 0.6 : 0.3; // heavy, moderate or light
+    } catch { fxKind = null; }
+  }
+  setInterval(askWeatherHere, 5000);
+  cbW.addEventListener('change', () => { fxAt = null; askWeatherHere(); });
+  (function frame() {
+    requestAnimationFrame(frame);
+    const g = fx.getContext('2d'), W = fx.clientWidth, H = fx.clientHeight, low = viewer.camera.positionCartographic.height < 6e4;
+    if (fx.width !== W || fx.height !== H) { fx.width = W; fx.height = H; }
+    if (!fxKind || !low || !cbW.checked) { if (drops.length) { g.clearRect(0, 0, W, H); drops.length = 0; } return; }
+    g.clearRect(0, 0, W, H);
+    const snow = fxKind === 'snow', want = Math.round((snow ? 220 : 380) * fxLevel);
+    while (drops.length < want) drops.push({ x: Math.random() * W, y: Math.random() * H, v: snow ? 40 + Math.random() * 50 : 700 + Math.random() * 500, r: snow ? 1.5 + Math.random() * 2.5 : 0, ph: Math.random() * 6 });
+    drops.length = Math.min(drops.length, want);
+    const dt = 1 / 60;
+    g.strokeStyle = 'rgba(200,220,255,.55)'; g.lineWidth = 1.2; g.fillStyle = 'rgba(255,255,255,.9)';
+    g.beginPath();
+    for (const d of drops) {
+      d.y += d.v * dt; if (snow) d.x += Math.sin(performance.now() / 700 + d.ph) * 0.6; else d.x -= d.v * dt * 0.15;
+      if (d.y > H) { d.y = -10; d.x = Math.random() * W; }
+      if (snow) { g.moveTo(d.x + d.r, d.y); g.arc(d.x, d.y, d.r, 0, 7); } else { g.moveTo(d.x, d.y); g.lineTo(d.x + d.v * 0.012 * 0.15, d.y - d.v * 0.012); }
+    }
+    snow ? g.fill() : g.stroke();
+    if (fxKind === 'storm') { // lightning: a white flash and a jagged bolt now and then
+      const now = performance.now();
+      if (now > flashT && Math.random() < 0.004) flashT = now + 180;
+      if (flashT - now > 0) {
+        g.fillStyle = `rgba(255,255,255,${(flashT - now) / 180 * 0.5})`; g.fillRect(0, 0, W, H);
+        g.strokeStyle = 'rgba(255,255,240,.95)'; g.lineWidth = 3; g.beginPath(); let x = W * (0.2 + Math.random() * 0.6), y = 0; g.moveTo(x, y);
+        while (y < H * 0.7) { x += (Math.random() - 0.5) * 60; y += 20 + Math.random() * 40; g.lineTo(x, y); } g.stroke();
+      }
+    }
+  })();
+
   // ---------- Country flags: Natural Earth's Wikidata id -> flag file (property P41) -> Commons thumbnail ----------
   let flagsP = null; // Promise<Map<ADM0_A3, { url, lon, lat, rank, name, cont }>>
   const flagData = () => flagsP || (flagsP = (async () => {
@@ -561,6 +609,7 @@
   let sats = null, satTimer = null, satRecs = null;
   const cbS = $('layerSats');
   OGE.satellites = () => satRecs || []; // the flight game shows them too
+  OGE.satHidden = new Set(); // shot down in the game: hidden until the page is reloaded
   async function loadSats() {
     const groups = ['stations', 'visual', 'weather', 'gnss'], recs = [];
     for (const g of groups) {
@@ -575,7 +624,7 @@
     const now = new Date(), gmst = satellite.gstime(now);
     const fresh = sats.length !== satRecs.length; // first time: add them; then only move them
     const cam = viewer.camera.positionCartographic, near = $('layerSatsNear').checked, R = C.Math.clamp(cam.height / 6.371e6, 0.25, 1); // "only nearby": within an angle around the point below the camera (wider when far away)
-    const close = (s) => !near || /ISS|ZARYA/.test(s.name) || Math.acos(C.Math.clamp(Math.sin(cam.latitude) * Math.sin(C.Math.toRadians(s.lat)) + Math.cos(cam.latitude) * Math.cos(C.Math.toRadians(s.lat)) * Math.cos(cam.longitude - C.Math.toRadians(s.lon)), -1, 1)) < R;
+    const close = (s) => !OGE.satHidden.has(s.name) && (!near || /ISS|ZARYA/.test(s.name) || Math.acos(C.Math.clamp(Math.sin(cam.latitude) * Math.sin(C.Math.toRadians(s.lat)) + Math.cos(cam.latitude) * Math.cos(C.Math.toRadians(s.lat)) * Math.cos(cam.longitude - C.Math.toRadians(s.lon)), -1, 1)) < R);
     if (fresh) sats.removeAll();
     satRecs.forEach((s, i) => {
       const pv = satellite.propagate(s.rec, now);
