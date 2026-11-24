@@ -587,7 +587,7 @@
     if (on) return stop();
     const last = (() => { try { return JSON.parse(localStorage.getItem('oge.flyOpts')) || {}; } catch { return {}; } })(); // the dialog remembers the last choices
     const v = await OGE.ask({ title: 'Simulador de vuelo', ok: 'Iniciar vuelo',
-      help: 'Arranca en el aire sobre el punto que estás mirando. Mouse: clic toma o suelta la palanca. Teclado: flechas, RePág/AvPág para el gas, L tren, F flaps, Espacio pausa, Esc salir. OpenStarshipEarth: X o clic derecho dispara.',
+      help: 'Arranca en el aire sobre el punto que estás mirando. Mouse: clic toma o suelta la palanca. Teclado: flechas, RePág/AvPág para el gas, L tren, F flaps, Intro pausa, Espacio sube, Esc salir. OpenStarshipEarth: X o clic derecho dispara.',
       fields: [{ id: 'plane', label: 'Avión', type: 'select', value: PLANES[last.plane] ? last.plane : 'ship', options: Object.entries(PLANES).map(([k, p]) => [k, p.name]) },
         { id: 'mouse', label: 'Controlar con el mouse (como en Earth)', type: 'checkbox', value: last.mouse ?? true },
         { id: 'arcade', label: 'OpenStarshipEarth: modo arcade con enemigos y puntaje (desmárcalo para volar libre)', type: 'checkbox', value: last.arcade ?? true },
@@ -611,6 +611,7 @@
     arcade = !!A.ship && !!useArcade;
     autoOn = arcade && window.__TAURI__ && !$('layerPlanes').checked ? ['layerPlanes'] : []; // live aircraft join the arcade in the desktop app, only for this flight
     for (const id of autoOn) { $(id).checked = true; $(id).dispatchEvent(new Event('change')); } // live satellites and aircraft join the arcade
+    if (!document.body.classList.contains('noside')) { sideWas = true; OGE.hideSide(true); } // more room for the flight; it comes back afterwards
     stopped = false;
     if (arcade && !airports && !airBusy) { airBusy = true; fetch(NE + '10m_cultural/ne_10m_airports.shp').then((r) => r.arrayBuffer()).then((b) => { airports = shp.parseShp(b).filter((g) => g && g.type === 'Point').map((g) => g.coordinates); }).catch(() => {}).finally(() => { airBusy = false; }); } // 25 KB: only the points
     maxHp = 100; usedTowns.clear(); hp = 100; bombs = 2; incoming = []; flash = hit = 0; shields = 0;
@@ -939,7 +940,9 @@
     showScores();
   }
   let autoOn = [];
+  let sideWas = false;
   function stop(msg, error) {
+    if (sideWas) { sideWas = false; OGE.hideSide(false); }
     for (const id of autoOn) { $(id).checked = false; $(id).dispatchEvent(new Event('change')); } autoOn = [];
     on = false; race = null; if (msg && adv) { adv = null; advShape = null; } // a crash ends the stage tut = null;
     music(false);
@@ -1090,7 +1093,7 @@
     const lr = (k('arrowright') ? 1 : 0) - (k('arrowleft') ? 1 : 0), ud = (k('arrowdown') || k('s') ? 1 : 0) - (k('arrowup') || k('w') ? 1 : 0);
     const turnArrows = A.ship || touch.id !== null; // the ship (and the touch stick) turns left and right instead of banking
     if (mouseCtl) { s.ail = touch.id !== null ? 0 : stick.x; s.elev = stick.y; } else { s.ail += ((shift || turnArrows ? 0 : lr) - s.ail) * ease; s.elev += (ud - s.elev) * ease; }
-    const rud = (k('d') || k('enter') ? 1 : 0) - (k('a') || k('insert') ? 1 : 0) + (shift || turnArrows ? lr : 0) + (touch.id !== null ? stick.x : 0);
+    const rud = (k('d') ? 1 : 0) - (k('a') || k('insert') ? 1 : 0) + (shift || turnArrows ? lr : 0) + (touch.id !== null ? stick.x : 0);
     s.rud += (clamp(rud, -1, 1) - s.rud) * ease;
     const gas = k('pageup') || (k('e') && !A.ship); // on the ship E is the boost, not the throttle
     if (gas && s.throttle < 1 && !(thrT > performance.now())) { thrT = performance.now() + 450; sfx('thrust'); } // a whoosh while speeding up
@@ -1158,6 +1161,7 @@
       else if (A.ship && boost && performance.now() - boost.t0 > 5000) { if (warp === boost.to) setWarp(boost.from); boost = null; } // after 5 s, back to the turbo it had (unless changed by hand) // the burst rises and falls back to the speed it had
       s.vs = s.v * Math.sin(pe);
       s.alt += s.vs * dt * warp;
+      if (A.ship && keys.has(' ')) { s.alt += 250 * dt; s.vs += 250; } // Space: a gentle climb, ~250 m/s
       if (A.ship && s.alt <= ground + 30) { // the starship bounces off the ground; in the arcade a hard touch costs life
         s.alt = ground + 30; s.pitch = Math.max(s.pitch, rad(arcade ? 8 : 2));
         if (arcade && !landing && !shields && !man && performance.now() - hit > 800) hurt(15); // an intended landing (Z) does no harm, nor touching the ground with a shield up or during a roll, loop or turn
@@ -1381,7 +1385,9 @@
     const k = e.key.toLowerCase();
     if (p2 && P2KEYS.has(k)) { if (k === 'enter') fire(2); else keys.add(k); e.preventDefault(); e.stopPropagation(); return; } // player 2's keys
     if (k === 'escape') stop();
-    else if (k === ' ') { paused = !paused; last = performance.now(); }
+    else if (k === 'enter' && !p2) { paused = !paused; last = performance.now(); OGE.toast(paused ? T('Pausa (Intro para seguir)') : T('Sigue el vuelo')); } // Enter (or Space) pauses
+    else if (k === ' ' && !(A && A.ship)) { paused = !paused; last = performance.now(); } // the aircraft still pause with Space
+    else if (k === ' ') { keys.add(' '); e.preventDefault(); } // on the ship Space climbs (held)
     else if (k === 'h') showHud = !showHud;
     else if (k === 'y' && A && A.ship) { third = !third; localStorage.setItem('oge.third', third ? '1' : ''); OGE.toast(third ? T('Cámara en tercera persona (Y)') : T('Cámara en primera persona (Y)')); }
     else if (k === 'l') s.gear = !s.gear;
