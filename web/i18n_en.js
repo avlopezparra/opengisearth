@@ -269,7 +269,8 @@
     // ----- flightsim.js (dialog and HUD drawn on the canvas) -----
     'SR22 — avioneta de hélice, lenta y dócil': 'SR22 — propeller light aircraft, slow and docile',
     'F-16 — caza a reacción, rápido y nervioso': 'F-16 — jet fighter, fast and twitchy',
-    '▲ Acelerar': '▲ Speed up', '▼ Frenar': '▼ Slow down',
+    'Mantén pulsado para doblar a la izquierda (A o Q)': 'Hold to turn left (A or Q)', 'Mantén pulsado para doblar a la derecha (D o E)': 'Hold to turn right (D or E)',
+    '▲ Acelerar (W)': '▲ Speed up (W)', '▼ Frenar (S)': '▼ Slow down (S)',
     'Mantén pulsado para acelerar (W o RePág)': 'Hold to speed up (W or PgUp)', 'Mantén pulsado para frenar (S o AvPág)': 'Hold to slow down (S or PgDn)',
     'Multiplica la velocidad de avance (T)': 'Multiplies the forward speed (T)',
     'Starship — nave muy rápida con láseres; flota y sube al espacio': 'Starship — very fast ship with lasers; hovers and climbs to space',
