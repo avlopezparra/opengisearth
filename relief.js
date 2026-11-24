@@ -487,6 +487,12 @@
   const claimOn = (() => { try { return JSON.parse(localStorage.getItem('oge.claims')) || Object.keys(CLAIMS); } catch { return Object.keys(CLAIMS); } })();
   let claimPrims = [];
   OGE.redrawClaims = () => drawClaims();
+  let claimLabels = null; const claimOcc = new C.EllipsoidalOccluder(C.Ellipsoid.WGS84, viewer.camera.positionWC);
+  viewer.scene.preRender.addEventListener(() => { // the names only show while their part of Antarctica is on this side of the globe
+    if (!claimLabels || claimLabels.isDestroyed() || !claimLabels.show) return;
+    claimOcc.cameraPosition = viewer.camera.positionWC;
+    for (let i = 0; i < claimLabels.length; i++) { const b = claimLabels.get(i); b.show = claimOcc.isPointVisible(b.position); }
+  });
   function stripes(colors) { // a square that repeats into 45° stripes; the first color (Chile) twice as wide
     const bands = colors.flatMap((c, i) => (i ? [c] : [c, c])), B = 6, S = bands.length * B * 2, cv = Object.assign(document.createElement('canvas'), { width: S, height: S }), g = cv.getContext('2d');
     for (let x = -S, k = 0; x < 2 * S; x += B * 2, k++) { g.fillStyle = bands[k % bands.length]; g.beginPath(); g.moveTo(x, 0); g.lineTo(x + B * 2, 0); g.lineTo(x + B * 2 - S, S); g.lineTo(x - S, S); g.closePath(); g.fill(); }
@@ -513,7 +519,7 @@
     paint.alpha = cl ? 0.45 : 0.35;
     claimPrims.push(paint);
     const labels = viewer.scene.primitives.add(new C.BillboardCollection());
-    claimPrims.push(labels);
+    claimPrims.push(labels); claimLabels = labels;
     for (const a3 of [...claimOn].sort((a, b) => (a === 'CHL') - (b === 'CHL'))) { // Chile last: its edges and name on top
       const [name, color, sectors] = CLAIMS[a3] || [];
       if (!name) continue;
