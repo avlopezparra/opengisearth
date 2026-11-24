@@ -24,7 +24,8 @@
   let shots = [], audio = null;
   function fire() {
     const t = performance.now();
-    if (!on || paused || !A.ship || (shots.length && t - shots[shots.length - 1] < 110)) return;
+    if (on && !A.ship) return OGE.toast('Disparar y las maniobras son solo de la Starship.');
+    if (!on || paused || (shots.length && t - shots[shots.length - 1] < 110)) return;
     shots.push(t);
     const hit = scene.globe.pick(viewer.camera.getPickRay(new C.Cartesian2(hud.clientWidth / 2, hud.clientHeight / 2)), scene);
     if (hit && C.Cartesian3.distance(hit, viewer.camera.positionWC) < 4e5) {
@@ -158,7 +159,8 @@
   // Starship maneuvers: barrel roll (R), full loop (V) and half loop with a roll out, to turn back (U).
   let man = null, lastRoll = 1; // man: { type, t0, dur, dir }
   function maneuver(type) {
-    if (!on || paused || !A.ship || man) return;
+    if (on && !A.ship) return OGE.toast('Disparar y las maniobras son solo de la Starship.');
+    if (!on || paused || man) return;
     const dir = keys.has('a') ? -1 : keys.has('d') ? 1 : (lastRoll = -lastRoll);
     man = { type, t0: performance.now(), dur: type === 'roll' ? 600 : type === 'loop' ? 2400 : 1500, dir };
     beep(500, 1200, 0.25);
@@ -308,7 +310,8 @@
     stick.y = clamp((e.clientY - b.top - b.height / 2) / (b.height * 0.3), -1, 1);
   });
   hud.addEventListener('click', () => { mouseCtl = !mouseCtl; stick.x = stick.y = 0; });
-  hud.addEventListener('contextmenu', (e) => { e.preventDefault(); fire(); });
+  hud.addEventListener('contextmenu', (e) => e.preventDefault());
+  hud.addEventListener('mousedown', (e) => { if (e.button === 2) fire(); }); // right button: fires even where the context menu event is suppressed
   document.addEventListener('keydown', (e) => {
     if (!on || document.querySelector('dialog[open]')) return;
     const k = e.key.toLowerCase();
@@ -320,7 +323,7 @@
     else if (k === 'c') { stick.x = stick.y = 0; s.trim = 0; }
     else if (k === 'x') fire();
     else if (k === 't') nextWarp();
-    else if (A.ship && (k === 'r' || k === 'v' || k === 'u')) maneuver(k === 'r' ? 'roll' : k === 'v' ? 'loop' : 'uturn');
+    else if (k === 'r' || k === 'v' || k === 'u') maneuver(k === 'r' ? 'roll' : k === 'v' ? 'loop' : 'uturn');
     else if (k === 'k') $('flyKeys').hidden = !$('flyKeys').hidden;
     else keys.add(k);
     e.preventDefault(); e.stopPropagation();
