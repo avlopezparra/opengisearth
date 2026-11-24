@@ -149,6 +149,7 @@
   // ---------- Starship arcade: random enemies to shoot, rings to fly through and coins to collect ----------
   // The objects live in the 3D world and are drawn on the HUD at their projected position and size.
   let arcade = false, objs = [], booms = [], score = 0, coins = 0;
+  let run = { flags: 0, caps: 0, bosses: 0 }; // collected in this flight, for the scoreboard
   let hp = 100, bombs = 3, incoming = [], flash = 0, hit = 0; // incoming: enemy shots { p, vel, t }; flash/hit: time of the last bomb / damage
   const SIZE = { ring: 1, coin: 0.35, enemy: 0.5, wall: 0.6, heart: 0.4, shield: 0.4, bomb: 0.4 };
   // How often each kind appears: hearts and shields are rare, bombs are scarce (about 1 in 40).
@@ -171,7 +172,7 @@
   function hitBoss(o, n) { // a boss guards each capital in the arcade: beating it wins the capital
     o.hp -= n; booms.push({ p: o.p, t: performance.now() }); beep(260, 90, 0.2);
     if (o.hp > 0) return;
-    objs.splice(objs.indexOf(o), 1); score += 1000; flash = performance.now(); beep(120, 30, 0.8);
+    objs.splice(objs.indexOf(o), 1); score += 1000; run.bosses++; flash = performance.now(); beep(120, 30, 0.8);
     collect(o.cap);
   }
   function bomb() { // clears every enemy and shot in range
@@ -271,12 +272,14 @@
 
   async function open() {
     if (on) return stop();
+    const last = (() => { try { return JSON.parse(localStorage.getItem('oge.flyOpts')) || {}; } catch { return {}; } })(); // the dialog remembers the last choices
     const v = await OGE.ask({ title: 'Simulador de vuelo', ok: 'Iniciar vuelo',
       help: 'Arranca en el aire sobre el punto que estás mirando. Mouse: clic toma o suelta la palanca. Teclado: flechas, RePág/AvPág para el gas, L tren, F flaps, Espacio pausa, Esc salir. Starship: X o clic derecho dispara.',
-      fields: [{ id: 'plane', label: 'Avión', type: 'select', value: 'ship', options: Object.entries(PLANES).map(([k, p]) => [k, p.name]) },
-        { id: 'mouse', label: 'Controlar con el mouse (como en Earth)', type: 'checkbox', value: true },
-        { id: 'arcade', label: 'Starship: modo arcade con enemigos y puntaje (desmárcalo para volar libre)', type: 'checkbox', value: true },
-        { id: 'aim', label: 'Starship: apuntar los disparos con el mouse (clic dispara; se vuela con el teclado)', type: 'checkbox', value: false }] });
+      fields: [{ id: 'plane', label: 'Avión', type: 'select', value: PLANES[last.plane] ? last.plane : 'ship', options: Object.entries(PLANES).map(([k, p]) => [k, p.name]) },
+        { id: 'mouse', label: 'Controlar con el mouse (como en Earth)', type: 'checkbox', value: last.mouse ?? true },
+        { id: 'arcade', label: 'Starship: modo arcade con enemigos y puntaje (desmárcalo para volar libre)', type: 'checkbox', value: last.arcade ?? true },
+        { id: 'aim', label: 'Starship: apuntar los disparos con el mouse (clic dispara; se vuela con el teclado)', type: 'checkbox', value: last.aim ?? false }] });
+    if (v) localStorage.setItem('oge.flyOpts', JSON.stringify(v));
     if (v) start(v.plane, v.mouse, v.arcade, v.aim);
   }
   function start(plane, useMouse, useArcade = true, useAim = false) {
@@ -287,6 +290,7 @@
     loadRegs();
     if (A.ship) OGE.minimap.zoom(99); // the starship starts with the minimap zoomed all the way in
     arcade = !!A.ship && !!useArcade; hp = 100; bombs = 2; incoming = []; flash = hit = 0; shields = 0;
+    run = { flags: 0, caps: 0, bosses: 0 };
     music(arcade); objs = []; booms = []; score = coins = 0;
     const la = OGE.lookAt(), c = la ? la.carto : viewer.camera.positionCartographic; // above the look-at point, not from orbit
     const ground = scene.globe.getHeight(c) || 0;
@@ -327,7 +331,7 @@
     return out;
   };
   function collect(c) {
-    got.add(capId(c)); localStorage.setItem(CAPS, JSON.stringify([...got]));
+    got.add(capId(c)); localStorage.setItem(CAPS, JSON.stringify([...got])); run.caps++;
     const [n, all] = capProgress()[c.cont];
     if (arcade) score += 500;
     beep(900, 1800, 0.3);
@@ -336,7 +340,7 @@
   // Free flight: flying close to a capital collects it. Arcade: a boss appears over it and must be beaten first.
   function capStep() {
     if (!caps) return;
-    const cam = viewer.camera.positionWC, R = Math.max(8000, s.v * warp * 3);
+    const cam = viewer.camera.positionWC, R = Math.max(5000, s.v * warp * 0.06); // you have to fly close: 5 km, or what is covered in a couple of frames at high speed
     for (const c of caps) {
       if (got.has(capId(c))) continue;
       const d = C.Cartesian3.distance(c.p, cam);
@@ -361,7 +365,15 @@
     }
   }
   OGE.minimap.extra = (mg) => { // collected capitals in green, the rest in yellow
-    for (const c of caps || []) { const [x, y] = OGE.minimap.xy(c.lon, c.lat); mg.fillStyle = got.has(capId(c)) ? '#34c759' : '#ffd60a'; mg.fillRect(x - 1, y - 1, 2.5, 2.5); }
+    for (const r of regs || []) { // region flags still to collect: small dots, only those inside the map window
+      if (gotReg.has(r.id)) continue;
+      const [x, y] = OGE.minimap.xy(r.lon, r.lat);
+      if (x > 0 && x < 240 && y > 0 && y < 120) { mg.fillStyle = '#7fd4ff'; mg.fillRect(x - 0.75, y - 0.75, 1.5, 1.5); }
+    }
+    for (const c of caps || []) { // capitals: yellow to collect, green once collected
+      const [x, y] = OGE.minimap.xy(c.lon, c.lat);
+      mg.fillStyle = got.has(capId(c)) ? '#34c759' : '#ffd60a'; mg.beginPath(); mg.arc(x, y, 2.2, 0, 7); mg.fill();
+    }
   };
 
   // ---------- Region flags: the country's flag over every state or province; countries, continents and the world are achievements ----------
@@ -381,7 +393,7 @@
         seen.add(id);
         if (!imgs.has(fl.url)) imgs.set(fl.url, Object.assign(new Image(), { src: fl.url }));
         const [lon, lat] = f.geometry.coordinates;
-        out.push({ id, name: clean(p.name), a3: fl.a3, country: fl.name, cont: CONT[fl.cont] || 'Islas oceánicas', p: C.Cartesian3.fromDegrees(lon, lat, 1500), img: imgs.get(fl.url) });
+        out.push({ id, lon, lat, name: clean(p.name), a3: fl.a3, country: fl.name, cont: CONT[fl.cont] || 'Islas oceánicas', p: C.Cartesian3.fromDegrees(lon, lat, 1500), img: imgs.get(fl.url) });
       }
       regs = out;
     } catch (e) { OGE.toast('No se pudieron cargar las banderas: ' + e.message, true); }
@@ -389,10 +401,10 @@
   }
   function regStep() { // flying close to a region's flag collects it
     if (!regs) return;
-    const cam = viewer.camera.positionWC, R = Math.max(8000, s.v * warp * 3);
+    const cam = viewer.camera.positionWC, R = Math.max(5000, s.v * warp * 0.06); // you have to fly close: 5 km, or what is covered in a couple of frames at high speed
     for (const r of regs) {
       if (gotReg.has(r.id) || C.Cartesian3.distance(r.p, cam) > R) continue;
-      gotReg.add(r.id); localStorage.setItem(REGS, JSON.stringify([...gotReg]));
+      gotReg.add(r.id); localStorage.setItem(REGS, JSON.stringify([...gotReg])); run.flags++;
       const all = (fn) => regs.filter(fn).every((x) => gotReg.has(x.id)), mine = regs.filter((x) => x.a3 === r.a3), n = mine.filter((x) => gotReg.has(x.id)).length;
       if (arcade) score += 100;
       beep(1000, 2000, 0.2);
@@ -418,15 +430,16 @@
 
   // Scoreboard: the ten best arcade flights, kept on this computer.
   const SCORES = 'oge.scores', readScores = () => { try { return JSON.parse(localStorage.getItem(SCORES)) || []; } catch { return []; } };
-  const showScores = () => OGE.showTable('🏆 Mejores puntajes', ['#', 'Piloto', 'Puntos', 'Monedas', 'Fecha'],
-    readScores().map((r, i) => [i + 1, r.name, r.score, r.coins, r.date]),
+  const showScores = () => OGE.showTable('🏆 Mejores puntajes', ['#', 'Piloto', 'Puntos', 'Monedas', 'Banderas', 'Capitales', 'Jefes', 'Fecha'],
+    readScores().map((r, i) => [i + 1, r.name, r.score, r.coins, r.flags ?? 0, r.caps ?? 0, r.bosses ?? 0, r.date]),
     { note: T('Se guardan solo en este equipo.') + (caps ? ' ' + T('Capitales:') + ' ' + Object.entries(capProgress()).map(([k, [n, all]]) => `${n === all ? '🏆 ' : ''}${T(k)} ${n}/${all}`).join(' · ') : '') + (regs ? ' ' + T('Banderas de regiones:') + ' ' + regs.filter((r) => gotReg.has(r.id)).length + '/' + regs.length + '.' : '') });
   async function saveScore(pts, cns) {
+    const tally = { ...run }; // the flight may restart while the name is asked
     const v = await OGE.ask({ title: `Puntaje: ${pts} puntos y ${cns} monedas`, ok: 'Guardar', fields: [{ id: 'name', label: 'Tu nombre', value: localStorage.getItem('oge.pilot') || '' }] });
     const name = v && v.name.trim().slice(0, 24);
     if (name) {
       localStorage.setItem('oge.pilot', name);
-      localStorage.setItem(SCORES, JSON.stringify([...readScores(), { name, score: pts, coins: cns, date: new Date().toISOString().slice(0, 10) }].sort((a, b) => b.score - a.score || b.coins - a.coins).slice(0, 10)));
+      localStorage.setItem(SCORES, JSON.stringify([...readScores(), { name, score: pts, coins: cns, ...tally, date: new Date().toISOString().slice(0, 10) }].sort((a, b) => b.score - a.score || b.coins - a.coins).slice(0, 10)));
     }
     showScores();
   }
@@ -438,7 +451,7 @@
     scene.screenSpaceCameraController.enableInputs = true;
     document.body.classList.remove('flying');
     hud.hidden = true;
-    $('flyKeys').hidden = true;
+    $('flyKeys').hidden = true; $('flyRules').hidden = true;
     $('flyBtn').classList.remove('active');
     viewer.camera.setView({ orientation: { heading: viewer.camera.heading, pitch: Math.min(viewer.camera.pitch, rad(-20)), roll: 0 } }); // level view looking at the ground
     if (msg) OGE.toast(msg, error);
@@ -645,7 +658,8 @@
     else if (k === 'n') nextTurn();
     else if (k === 'p') setMute(!muted);
     else if (k === 'r' || k === 'v' || k === 'u') maneuver(k === 'r' ? 'roll' : k === 'v' ? 'loop' : 'uturn');
-    else if (k === 'k') $('flyKeys').hidden = !$('flyKeys').hidden;
+    else if (k === 'k') { $('flyKeys').hidden = !$('flyKeys').hidden; $('flyRules').hidden = true; }
+    else if (k === 'i') showRules();
     else keys.add(k);
     e.preventDefault(); e.stopPropagation();
   }, true);
@@ -660,7 +674,9 @@
   setMute(muted);
   setTurn(TURNS.includes(turn) ? turn : 3);
   $('flyScores').onclick = () => { paused = true; showScores(); };
-  $('flyHelp').onclick = () => { $('flyKeys').hidden = !$('flyKeys').hidden; };
+  $('flyHelp').onclick = () => { $('flyKeys').hidden = !$('flyKeys').hidden; $('flyRules').hidden = true; };
+  const showRules = () => { $('flyRules').hidden = !$('flyRules').hidden; $('flyKeys').hidden = true; }; // how the game is played
+  $('flyRulesBtn').onclick = showRules;
   for (const [id, key] of [['flyUp', 'pageup'], ['flyDown', 'pagedown'], ['flyLeft', 'a'], ['flyRight', 'd']]) { // held down like the keys
     const b = $(id);
     b.addEventListener('pointerdown', (e) => {

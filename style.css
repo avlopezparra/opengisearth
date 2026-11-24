@@ -107,8 +107,8 @@ body.flying #flyBtns { display: flex; }
 #flyBtns button { padding: 10px 14px; font-size: 14px; opacity: .85; touch-action: none; user-select: none; }
 #flyBtns > div { display: flex; gap: 8px; }
 #flyBtns > div button { flex: 1; }
-#flyKeys { position: absolute; z-index: 4; right: 190px; bottom: 60px; margin: 0; padding: 10px 14px 10px 28px; background: var(--bg); border-radius: 6px; font-size: 13px; line-height: 1.7; }
-#flyKeys[hidden] { display: none; }
+#flyKeys, #flyRules { position: absolute; z-index: 4; right: 190px; bottom: 60px; margin: 0; padding: 10px 14px 10px 28px; background: var(--bg); border-radius: 6px; font-size: 13px; line-height: 1.7; }
+#flyKeys[hidden], #flyRules[hidden] { display: none; }
 
 /* Map compass, under Cesium's home/help buttons */
 #compass { position: absolute; top: 46px; right: 8px; z-index: 3; width: 44px; height: 44px; padding: 0; border-radius: 50%; background: var(--bg); border: 1px solid #777; }
@@ -130,3 +130,8 @@ body.flying #minimap { pointer-events: none; }
 @media (max-width: 700px) { #mmBox:not(.min) { width: 150px; height: 75px; } }
 #wxBar[hidden] { display: none !important; }
 body.flying #wxBar { display: none !important; }
+
+/* Icon library in the placemark properties */
+#pIcons { display: flex; flex-wrap: wrap; gap: 3px; max-height: 132px; overflow: auto; padding: 4px; background: #1b1b1f; border-radius: 4px; margin-bottom: 6px; }
+#pIcons button { width: 30px; height: 30px; padding: 0; background: #33343b center / 24px 24px no-repeat; border-radius: 4px; }
+#pIcons button.active { outline: 2px solid #ffd60a; background-color: #55565f; }
