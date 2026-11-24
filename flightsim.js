@@ -59,10 +59,11 @@
   // The objects live in the 3D world and are drawn on the HUD at their projected position and size.
   let arcade = false, objs = [], booms = [], score = 0, coins = 0;
   let hp = 100, bombs = 3, incoming = [], flash = 0, hit = 0; // incoming: enemy shots { p, vel, t }; flash/hit: time of the last bomb / damage
-  const SIZE = { ring: 1, coin: 0.35, enemy: 0.5, wall: 0.6 };
+  const SIZE = { ring: 1, coin: 0.35, enemy: 0.5, wall: 0.6, heart: 0.4, shield: 0.4, bomb: 0.4 };
+  let shields = 0, broke = 0; // each shield absorbs one hit and breaks; broke: when the last one broke
   const reach = () => Math.max(4000, s.v * warp * 7); // they appear about 7 s ahead, whatever the speed
   function spawn() {
-    const cam = viewer.camera, D = reach() * (0.6 + 0.6 * Math.random()), kind = ['ring', 'coin', 'coin', 'enemy', 'enemy', 'wall'][Math.floor(Math.random() * 6)];
+    const cam = viewer.camera, D = reach() * (0.6 + 0.6 * Math.random()), kind = ['ring', 'coin', 'coin', 'coin', 'enemy', 'enemy', 'enemy', 'wall', 'wall', 'heart', 'shield', 'bomb'][Math.floor(Math.random() * 12)]; // hearts, shields and bombs are rare
     const p = C.Cartesian3.clone(cam.positionWC), add = (v, k) => C.Cartesian3.add(p, C.Cartesian3.multiplyByScalar(v, k, new C.Cartesian3()), p);
     add(cam.directionWC, D); add(cam.rightWC, (Math.random() - 0.5) * D * 0.5); add(cam.upWC, (Math.random() - 0.5) * D * 0.25);
     const c = C.Cartographic.fromCartesian(p), floor = (scene.globe.getHeight(c) || 0) + 200;
@@ -70,6 +71,7 @@
     objs.push({ kind, p, size: D * 0.06 * SIZE[kind], next: performance.now() + 3000 + Math.random() * 4000 }); // sized for the speed it was created at; next: when an enemy fires
   }
   function hurt(n) {
+    if (shields) { shields--; broke = hit = performance.now(); return beep(1400, 300, 0.2); } // the shield takes the hit and breaks
     hp -= n; hit = performance.now(); beep(200, 80, 0.25);
     if (hp <= 0) stop(`Nave destruida: ${score} puntos y ${coins} monedas.`, true);
   }
@@ -93,6 +95,9 @@
       if (d < o.size * (o.kind === 'ring' ? 1 : 1.6) + slack) { // touched
         if (o.kind === 'enemy') { if (!rolling) hurt(25); }
         else if (o.kind === 'wall') hurt(20); // obstacles always hurt
+        else if (o.kind === 'heart') { hp = Math.min(100, hp + 25); beep(600, 1600, 0.25); }
+        else if (o.kind === 'shield') { shields = Math.min(3, shields + 1); beep(500, 1000, 0.25); }
+        else if (o.kind === 'bomb') { bombs++; beep(400, 900, 0.25); }
         else {
           score += o.kind === 'ring' ? 50 : 10;
           if (o.kind === 'ring') hp = Math.min(100, hp + 10); // rings repair the ship
@@ -130,6 +135,9 @@
       g.save(); g.shadowBlur = 8; g.beginPath();
       if (o.kind === 'ring') { g.strokeStyle = g.shadowColor = '#ffd60a'; g.lineWidth = Math.max(2, pr * 0.12); g.arc(q.x, q.y, pr, 0, 7); g.stroke(); }
       else if (o.kind === 'coin') { g.fillStyle = g.shadowColor = '#ffcc00'; g.ellipse(q.x, q.y, pr * Math.abs(Math.cos(now / 300)) + 1, pr, 0, 0, 7); g.fill(); } // spinning
+      else if (o.kind === 'shield') { g.strokeStyle = g.shadowColor = '#0a84ff'; g.fillStyle = 'rgba(10,132,255,.35)'; g.lineWidth = Math.max(2, pr * 0.15); for (let a = 0; a < 6; a++) g.lineTo(q.x + pr * Math.sin((a * Math.PI) / 3), q.y - pr * Math.cos((a * Math.PI) / 3)); g.closePath(); g.fill(); g.stroke(); }
+      else if (o.kind === 'bomb') { g.shadowColor = '#ff9f0a'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = Math.max(12, pr * 2) + 'px sans-serif'; g.fillText('💣', q.x, q.y); }
+      else if (o.kind === 'heart') { g.fillStyle = g.shadowColor = '#ff2d55'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = Math.max(12, pr * 2) + 'px sans-serif'; g.fillText('♥', q.x, q.y); }
       else if (o.kind === 'wall') { g.fillStyle = 'rgba(120,130,150,.85)'; g.strokeStyle = g.shadowColor = '#e5e5ea'; g.lineWidth = 2; g.rect(q.x - pr, q.y - pr * 0.6, pr * 2, pr * 1.2); g.fill(); g.stroke(); }
       else { g.fillStyle = g.shadowColor = '#ff453a'; g.moveTo(q.x, q.y - pr); g.lineTo(q.x + pr * 1.3, q.y); g.lineTo(q.x, q.y + pr * 0.5); g.lineTo(q.x - pr * 1.3, q.y); g.closePath(); g.fill(); }
       g.restore();
@@ -146,10 +154,11 @@
       g.save(); g.fillStyle = g.shadowColor = '#ff2df5'; g.shadowBlur = 10; g.beginPath(); g.arc(q.x, q.y, Math.max(3, (60 / C.Cartesian3.distance(b.p, viewer.camera.positionWC)) * f), 0, 7); g.fill(); g.restore();
     }
     const fade = (t0, ms, color) => { const k = (now - t0) / ms; if (k < 1) { g.save(); g.globalAlpha = 0.5 * (1 - k); g.fillStyle = color; g.fillRect(0, 0, w, h); g.restore(); } };
-    fade(flash, 450, '#fff'); fade(hit, 250, '#f00'); // bomb / damage
+    fade(flash, 450, '#fff'); fade(hit, 250, broke === hit ? '#0a84ff' : '#f00'); // bomb / shield broken / damage
+    if (shields) { g.save(); g.strokeStyle = 'rgba(10,132,255,.55)'; g.lineWidth = 3 * shields; g.beginPath(); g.ellipse(w / 2, h / 2, w * 0.46, h * 0.46, 0, 0, 7); g.stroke(); g.restore(); } // shield around the view, thicker with more layers
     text(`${T('PUNTOS')} ${score}  ·  ${T('MONEDAS')} ${coins}  ·  ${T('BOMBAS')} ${bombs}`, 24, 96, 16, 'left'); // below the heading tape
     g.save(); g.strokeRect(24, 110, 180, 12); g.fillStyle = hp > 50 ? '#39ff14' : hp > 25 ? '#ffd60a' : '#ff453a'; g.fillRect(24, 110, 1.8 * Math.max(0, hp), 12); g.restore();
-    text(`${T('VIDA')} ${Math.max(0, Math.round(hp))}`, 212, 117, 12, 'left');
+    text(`${T('VIDA')} ${Math.max(0, Math.round(hp))}  ·  ${T('ESCUDOS')} ${shields}/3`, 212, 117, 12, 'left');
   }
 
   async function open() {
@@ -158,14 +167,14 @@
       help: 'Arranca en el aire sobre el punto que estás mirando. Mouse: clic toma o suelta la palanca. Teclado: flechas, RePág/AvPág para el gas, G tren, F flaps, Espacio pausa, Esc salir. Starship: X o clic derecho dispara.',
       fields: [{ id: 'plane', label: 'Avión', type: 'select', options: Object.entries(PLANES).map(([k, p]) => [k, p.name]) },
         { id: 'mouse', label: 'Controlar con el mouse (como en Earth)', type: 'checkbox', value: true },
-        { id: 'arcade', label: 'Starship: modo arcade (enemigos, aros y monedas)', type: 'checkbox', value: true }] });
+        { id: 'arcade', label: 'Starship: modo arcade con enemigos y puntaje (desmárcalo para volar libre)', type: 'checkbox', value: true }] });
     if (v) start(v.plane, v.mouse, v.arcade);
   }
   function start(plane, useMouse, useArcade = true) {
     A = PLANES[plane];
     man = null;
     loadCaps();
-    arcade = !!A.ship && !!useArcade; hp = 100; bombs = 3; incoming = []; flash = hit = 0; objs = []; booms = []; score = coins = 0;
+    arcade = !!A.ship && !!useArcade; hp = 100; bombs = 3; incoming = []; flash = hit = 0; shields = 0; objs = []; booms = []; score = coins = 0;
     const la = OGE.lookAt(), c = la ? la.carto : viewer.camera.positionCartographic; // above the look-at point, not from orbit
     const ground = scene.globe.getHeight(c) || 0;
     s = { lon: c.longitude, lat: c.latitude, alt: ground + A.agl, heading: viewer.camera.heading, pitch: 0, roll: 0, v: A.v0, vs: 0,
@@ -450,6 +459,8 @@
     else if (k === 'b' && A.ship) bomb();
     else if (k === 't') nextWarp(e.shiftKey ? -1 : 1);
     else if (k === 'y') nextWarp(-1);
+    else if (k === '+' || k === '=' || k === '-') OGE.minimap.zoom(k === '-' ? -1 : 1);
+    else if (k === 'm') OGE.minimap.toggle();
     else if (k === 'r' || k === 'v' || k === 'u') maneuver(k === 'r' ? 'roll' : k === 'v' ? 'loop' : 'uturn');
     else if (k === 'k') $('flyKeys').hidden = !$('flyKeys').hidden;
     else keys.add(k);
@@ -471,5 +482,5 @@
     for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => keys.delete(key));
   }
   $('flyBtn').onclick = open;
-  OGE.flight = { start, stop, maneuver, state: () => s, flying: () => on, game: () => ({ score, coins, objs, hp, bombs, incoming }) };
+  OGE.flight = { start, stop, maneuver, state: () => s, flying: () => on, game: () => ({ score, coins, objs, hp, bombs, incoming, shields }) };
 })();

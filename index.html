@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OpenGISEarth</title>
-<script src="i18n_en.js?v=202611240233"></script>
-<script src="i18n.js?v=202611240233"></script>
+<script src="i18n_en.js?v=202611240243"></script>
+<script src="i18n.js?v=202611240243"></script>
 <script src="cesium/Cesium.js"></script>
 <link href="cesium/Widgets/widgets.css" rel="stylesheet">
-<link href="style.css?v=202611240233" rel="stylesheet">
+<link href="style.css?v=202611240243" rel="stylesheet">
 </head>
 <body>
 <aside id="panel">
@@ -67,11 +67,11 @@
 <div id="splitter" title="Arrastra para cambiar el ancho · doble clic para ocultar el panel"></div>
 <main id="main">
   <div id="globe"></div>
-  <canvas id="minimap" width="240" height="120" title="Minimapa: clic para ir a ese lugar"></canvas>
+  <div id="mmBox"><canvas id="minimap" width="240" height="120" title="Minimapa: clic para ir a ese lugar, rueda del mouse para acercar o alejar"></canvas><button id="mmIn" title="Acercar el minimapa (+)">+</button><button id="mmOut" title="Alejar el minimapa (−)">−</button><button id="mmMin" title="Minimizar o mostrar el minimapa (M)">▾</button></div>
     <canvas id="hud" hidden></canvas>
     <button id="compass" title="Brújula: la aguja roja marca el norte. Clic para poner el norte arriba."><span>N</span></button>
     <div id="flyBtns"><div><button id="flyLeft" title="Mantén pulsado para doblar a la izquierda (A)">◀ A</button><button id="flyRight" title="Mantén pulsado para doblar a la derecha (D)">D ▶</button></div><button id="flyUp" title="Mantén pulsado para aumentar la velocidad (E o RePág)">▲ Acelerar (E)</button><button id="flyDown" title="Mantén pulsado para disminuir la velocidad (Q o AvPág)">▼ Frenar (Q)</button><button id="flyWarp" title="Multiplica la velocidad de avance (T)">Turbo ×1 ▲ (T)</button><button id="flyWarpDown" title="Baja un nivel de turbo (Y)">Turbo ▼ (Y)</button><button id="flyHelp">? Controles (K)</button><button id="flyScores">🏆 Puntajes</button></div>
-    <ul id="flyKeys" hidden><li>W / S o ↑ ↓: bajar / subir la nariz</li><li>A / D: doblar a izquierda / derecha</li><li>← →: inclinar las alas (alabeo)</li><li>E / Q: acelerar / frenar</li><li>T / Y: subir / bajar el turbo (×2 … ×100)</li><li>X o clic derecho: disparar (Starship)</li><li>R: tonel · V: rizo completo · U: media vuelta (Starship)</li><li>B: bomba, destruye a los enemigos cercanos (Starship)</li><li>G: tren de aterrizaje · F: flaps · B: frenos</li><li>Clic: tomar o soltar la palanca con el mouse</li><li>Espacio: pausa · H: ocultar el HUD · K: esta ayuda · Esc: salir</li></ul>
+    <ul id="flyKeys" hidden><li>W / S o ↑ ↓: bajar / subir la nariz</li><li>A / D: doblar a izquierda / derecha</li><li>← →: inclinar las alas (alabeo)</li><li>E / Q: acelerar / frenar</li><li>T / Y: subir / bajar el turbo (×2 … ×100)</li><li>X o clic derecho: disparar (Starship)</li><li>R: tonel · V: rizo completo · U: media vuelta (Starship)</li><li>B: bomba, destruye a los enemigos cercanos (Starship)</li><li>+ / −: acercar o alejar el minimapa · M: minimizarlo</li><li>G: tren de aterrizaje · F: flaps · B: frenos</li><li>Clic: tomar o soltar la palanca con el mouse</li><li>Espacio: pausa · H: ocultar el HUD · K: esta ayuda · Esc: salir</li></ul>
   <button id="sideBtn" title="Mostrar u ocultar el panel lateral">☰</button>
   <nav id="tools" class="bar" aria-label="Herramientas">
     <button class="fold" title="Plegar o desplegar esta barra">▾</button>
@@ -157,20 +157,20 @@
 <script src="vendor/shpwrite.js"></script>
 <script src="vendor/sql-wasm.js"></script>
 <script>document.getElementById("langSel").value = OGE_LANG;</script>
-<script src="app.js?v=202611240233"></script>
-<script src="geo.js?v=202611240233"></script>
-<script src="draw.js?v=202611240233"></script>
-<script src="edit.js?v=202611240233"></script>
-<script src="places.js?v=202611240233"></script>
-<script src="terrain.js?v=202611240233"></script>
-<script src="borders.js?v=202611240233"></script>
-<script src="osmvector.js?v=202611240233"></script>
-<script src="layers.js?v=202611240233"></script>
-<script src="tools.js?v=202611240233"></script>
-<script src="db.js?v=202611240233"></script>
-<script src="print.js?v=202611240233"></script>
-<script src="relief.js?v=202611240233"></script>
-<script src="flightsim.js?v=202611240233"></script>
-<script src="google3d.js?v=202611240233"></script>
+<script src="app.js?v=202611240243"></script>
+<script src="geo.js?v=202611240243"></script>
+<script src="draw.js?v=202611240243"></script>
+<script src="edit.js?v=202611240243"></script>
+<script src="places.js?v=202611240243"></script>
+<script src="terrain.js?v=202611240243"></script>
+<script src="borders.js?v=202611240243"></script>
+<script src="osmvector.js?v=202611240243"></script>
+<script src="layers.js?v=202611240243"></script>
+<script src="tools.js?v=202611240243"></script>
+<script src="db.js?v=202611240243"></script>
+<script src="print.js?v=202611240243"></script>
+<script src="relief.js?v=202611240243"></script>
+<script src="flightsim.js?v=202611240243"></script>
+<script src="google3d.js?v=202611240243"></script>
 </body>
 </html>
