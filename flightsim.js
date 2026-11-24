@@ -43,12 +43,20 @@
     if (!arcade) return;
     credit = who; // who scores what this shot destroys
     const cam = viewer.camera, to = new C.Cartesian3(); // an enemy inside the aim cone is destroyed
-    let best = null, bestAng = 9;
+    let best = null, bestAng = 9, bossHit = null, bossAng = 9;
     for (const o of objs) {
       if (o.kind !== 'enemy' && o.kind !== 'boss' && o.kind !== 'airliner') continue;
       C.Cartesian3.subtract(o.p, cam.positionWC, to);
       const d = C.Cartesian3.magnitude(to), ang = Math.acos(clamp(C.Cartesian3.dot(to, ray.direction) / d, -1, 1));
-      if (ang < Math.atan((o.size * 1.5) / d) + rad(1.2) && ang < bestAng) { best = o; bestAng = ang; }
+      if (o.kind === 'boss') { if (ang < Math.atan(o.size / d) + rad(0.4) && ang < bossAng) { bossHit = o; bossAng = ang; } } // a boss only counts when the laser really meets it
+      else if (ang < Math.atan((o.size * 1.5) / d) + rad(1.2) && ang < bestAng) { best = o; bestAng = ang; }
+    }
+    if (!best) best = bossHit; // shots at the enemies around a boss go to those enemies, not to the boss
+    if (!best && $('layerSats').checked) for (const sat of OGE.satellites()) { // a satellite hit gives life back and disappears until the page is reloaded
+      if (!sat.p || OGE.satHidden.has(sat.name)) continue;
+      C.Cartesian3.subtract(sat.p, cam.positionWC, to);
+      const d = C.Cartesian3.magnitude(to);
+      if (Math.acos(clamp(C.Cartesian3.dot(to, ray.direction) / d, -1, 1)) < rad(1.5)) { OGE.satHidden.add(sat.name); hp = Math.min(maxHp, hp + 25); sfx('heart'); booms.push({ p: sat.p, t: performance.now() }); OGE.toast(`🛰 ${sat.name}: +25 ${T('de vida')}`); return; }
     }
     if (best && best.kind === 'boss') hitBoss(best, 1);
     else if (best && best.kind === 'airliner' && --best.hp > 0) { booms.push({ p: best.p, t: performance.now() }); sfx('shieldBreak'); }
@@ -1178,10 +1186,11 @@
     else if (s.ground) text(T('EN TIERRA'), cx, cy - r - 46, 16);
     else if (s.v < A.vStall * (1 - 0.1 * s.flaps)) text(T('PÉRDIDA — baja la nariz y da gas'), cx, cy - r - 46, 16);
     if ($('layerSats').checked) for (const sat of OGE.satellites()) { // live satellites, as bright moving dots when they are in view
-      if (!sat.p || C.Cartesian3.distance(sat.p, viewer.camera.positionWC) > 2.5e6) continue; // only the satellites near the ship
+      if (!sat.p || OGE.satHidden.has(sat.name) || C.Cartesian3.distance(sat.p, viewer.camera.positionWC) > 2.5e6) continue; // only the satellites near the ship, and not the ones shot down
       const q = (C.SceneTransforms.worldToWindowCoordinates || C.SceneTransforms.wgs84ToWindowCoordinates)(scene, sat.p);
       if (!q || q.x < 0 || q.y < 0 || q.x > w || q.y > h) continue;
-      g.save(); g.fillStyle = g.shadowColor = /ISS|ZARYA/.test(sat.name) ? '#ffd60a' : '#bfe6ff'; g.shadowBlur = 10; g.beginPath(); g.arc(q.x, q.y, 3, 0, 7); g.fill();
+      g.save(); g.fillStyle = g.shadowColor = /ISS|ZARYA/.test(sat.name) ? '#ffd60a' : '#bfe6ff'; g.shadowBlur = 10; const sr = clamp(3 + 4e5 / C.Cartesian3.distance(sat.p, viewer.camera.positionWC), 3, 26); g.beginPath(); g.arc(q.x, q.y, sr, 0, 7); g.fill(); // bigger as it gets closer
+      if (sr > 7) { g.fillStyle = '#2b6fd6'; g.fillRect(q.x - sr * 2.6, q.y - sr * 0.45, sr * 1.5, sr * 0.9); g.fillRect(q.x + sr * 1.1, q.y - sr * 0.45, sr * 1.5, sr * 0.9); } // solar panels when close
       if (/ISS|ZARYA/.test(sat.name)) { g.font = '600 11px sans-serif'; g.fillText('ISS', q.x + 6, q.y + 4); } g.restore();
     }
     if (regs && quest()) drawRegs();
