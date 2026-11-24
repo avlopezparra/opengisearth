@@ -242,7 +242,7 @@
 
   // ---------- Wikidata facts of a country, a capital or a city, like Wikipedia's infobox; a click on its name, flag or symbol opens them ----------
   const FACTS = {
-    country: [['capital', 'Capital', 'P36'], ['pop', 'Población', 'P1082'], ['area', 'Superficie', 'P2046'], ['currency', 'Moneda', 'P38'], ['lang', 'Idioma oficial', 'P37'], ['spoken', 'Idioma más hablado', 'P2936'], ['hos', 'Jefe de Estado', 'P35'], ['hog', 'Jefe de Gobierno', 'P6'],
+    country: [['capital', 'Capital', 'P36'], ['pop', 'Población', 'P1082'], ['area', 'Superficie', 'P2046'], ['currency', 'Moneda', 'P38'], ['lang', 'Idioma oficial', 'P37'], ['religion', 'Religión oficial', 'P3075'], ['worldview', 'Religión o creencia', 'P140'], ['spoken', 'Idioma más hablado', 'P2936'], ['hos', 'Jefe de Estado', 'P35'], ['hog', 'Jefe de Gobierno', 'P6'],
       ['gov', 'Forma de gobierno', 'P122'], ['gdp', 'PIB nominal', 'P2131'], ['hdi', 'Índice de desarrollo humano', 'P1081'], ['inception', 'Fundación', 'P571'], ['code', 'Prefijo telefónico', 'P474'], ['tld', 'Dominio de internet', 'P78'], ['cont', 'Continente', 'P30'], ['anthem', 'Himno nacional', 'P85']],
     region: [['country', 'País', 'P17'], ['capital', 'Capital', 'P36'], ['pop', 'Población', 'P1082'], ['area', 'Superficie', 'P2046'], ['hog', 'Gobernador o jefe de gobierno', 'P6'], ['inception', 'Fundación', 'P571'], ['tz', 'Zona horaria', 'P421'], ['web', 'Sitio web', 'P856']],
     place: [['country', 'País', 'P17'], ['admin', 'Región', 'P131'], ['pop', 'Población', 'P1082'], ['area', 'Superficie', 'P2046'], ['elev', 'Altitud', 'P2044'], ['inception', 'Fundación', 'P571'], ['hog', 'Alcalde o jefe de gobierno', 'P6'], ['tz', 'Zona horaria', 'P421'], ['web', 'Sitio web', 'P856']],
@@ -293,7 +293,7 @@
           const me = m.get(key);
           if (me == null) return '';
           const all = [...m.values()], same = [...m].filter(([k]) => contOf(k) === contOf(key)).map(([, v]) => v);
-          const list = (pred) => tops.push({ label, rows: [...m].filter(([k]) => pred(k)).sort((a, b) => b[1] - a[1]).map(([k, v], i) => [i + 1, (flags.get(k) || {}).name || k, fmtV(v)]) }) - 1; // kept for the click on the chip
+          const list = (pred) => tops.push({ label, rows: [...m].filter(([k]) => pred(k)).sort((a, b) => b[1] - a[1]).map(([k, v], i) => [i + 1, (flags.get(k) || {}).name || k, fmtV(v), k]) }) - 1; // kept for the click on the chip
           return `\u0001${all.filter((v) => v > me).length + 1}/${all.length}/${T('mundo')}/${list(() => true)}\u0001${same.filter((v) => v > me).length + 1}/${same.length}/${T(CN[contOf(key)] || contOf(key) || '')}/${list((k) => contOf(k) === contOf(key))}`; // rank/total/where/list, drawn as chips
 
         };
@@ -351,7 +351,7 @@
           if (r === null) { span.append(Object.assign(document.createElement('span'), { textContent: pTxt, style: `display:inline-block;background:${pColor};color:#fff;border-radius:10px;padding:0 8px;margin:1px 4px 1px 0;font-weight:600;font-size:12px` })); continue; }
           const [n, total, where, li] = r.split('/'), q = (n - 1) / Math.max(1, total - 1), color = q <= 0.25 ? '#2e9e3a' : q <= 0.5 ? '#8bbf2a' : q <= 0.75 ? '#e0a020' : '#d9483b';
           const chip = span.appendChild(Object.assign(document.createElement('span'), { title: T('Clic: ver la clasificación'), textContent: `#${n} / ${total} ${where}`, style: `display:inline-block;background:${color};color:#fff;border-radius:10px;padding:0 8px;margin:1px 4px 1px 0;font-weight:600;font-size:12px;text-shadow:0 1px 1px rgba(0,0,0,.35)` })); chip.style.cursor = 'pointer';
-          chip.onclick = () => { const t = tops[li]; if (t) OGE.showTable(`${t.label} — ${where}`, ['#', T('País'), T('Valor')], t.rows.map((r) => r.slice(0, 3)), { note: T('Fuente de los datos: Banco Mundial y Wikidata.') }); }; }
+          chip.onclick = () => { const t = tops[li]; if (t) OGE.showTable(`${t.label} — ${where}`, ['#', T('País'), T('Valor')], t.rows.map((r) => r.slice(0, 3)), { note: T('Fuente de los datos: Banco Mundial y Wikidata.') + ' ' + T('Clic en un país: su ficha.'), onRow: (i) => { const a3 = t.rows[i][3], f = flags.get(a3); if (f) wikiInfo({ oge: 'country', q: f.q, a3, name: f.name }); } }); }; }
         return span;
       };
       for (const r of table) r[1] = chips(r[1]);
@@ -493,6 +493,7 @@
       OGE.hint(`${list.length} ${T('aviones en vivo cerca de la vista')} (adsb.fi).`);
     } catch (e) { OGE.toast('No se pudieron cargar los aviones en vivo: ' + e.message, true); }
   }
+  if (cbP.checked) setTimeout(() => cbP.dispatchEvent(new Event('change')), 0);
   cbP.addEventListener('change', () => {
     if (!planes) planes = viewer.scene.primitives.add(new C.BillboardCollection());
     planes.show = cbP.checked;
@@ -507,7 +508,9 @@
   async function loadSats() {
     const groups = ['stations', 'visual', 'weather', 'gnss'], recs = [];
     for (const g of groups) {
-      const txt = await (await fetch(`https://celestrak.org/NORAD/elements/gp.php?GROUP=${g}&FORMAT=tle`)).text(), L = txt.split(/\r?\n/);
+      const key = 'oge.tle.' + g, old = JSON.parse(localStorage.getItem(key) || 'null');
+      const txt = old && Date.now() - old.t < 6 * 3600e3 ? old.txt : await (await fetch(`https://celestrak.org/NORAD/elements/gp.php?GROUP=${g}&FORMAT=tle`)).text(), L = txt.split(/\r?\n/);
+      if (!old || old.txt !== txt) try { localStorage.setItem(key, JSON.stringify({ t: Date.now(), txt })); } catch { /* storage full: not cached */ }
       for (let i = 0; i + 2 < L.length; i += 3) if (L[i + 1].startsWith('1 ')) recs.push({ name: L[i].trim(), group: g, rec: satellite.twoline2satrec(L[i + 1], L[i + 2]) });
     }
     return recs;
@@ -532,6 +535,7 @@
     g.fillStyle = big ? '#ffd60a' : '#e6e9ef'; g.fillRect(18, 15, 12, 18); g.strokeStyle = '#333'; g.strokeRect(18, 15, 12, 18);
     return cv;
   })());
+  if (cbS.checked) setTimeout(() => cbS.dispatchEvent(new Event('change')), 0); // ticked from the last session: load it now
   cbS.addEventListener('change', async () => {
     if (!sats) sats = viewer.scene.primitives.add(new C.BillboardCollection());
     sats.show = cbS.checked;

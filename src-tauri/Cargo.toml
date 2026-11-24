@@ -9,6 +9,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 ureq = "2"
+tungstenite = "0.24"
 
 [profile.release]
 opt-level = "s"

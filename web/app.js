@@ -52,6 +52,7 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
   // Point of view of the visitor's country (from the browser language or time zone), as Natural Earth does with its POV fields.
   // In Argentina and Spain the Malvinas / Falkland Islands are shown as part of Argentina.
   OGE.pov = (() => { const l = navigator.language || '', tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; return /-CL$/i.test(l) || /America\/(Santiago|Punta_Arenas)|Pacific\/Easter/.test(tz) ? 'CL' : /-AR$/i.test(l) || /Argentina|Buenos_Aires/.test(tz) ? 'AR' : /-ES$/i.test(l) || tz === 'Europe/Madrid' ? 'ES' : ''; })();
+  if (window.__TAURI__) $('dlBtn').hidden = true; // already the desktop program
   OGE.malvinasAR = OGE.pov === 'AR' || OGE.pov === 'ES';
   OGE.antarticaCL = OGE.pov === 'CL'; // in Chile the Chilean Antarctic Territory (53° W – 90° W, south of 60° S) is shown as part of the country
 
