@@ -216,6 +216,13 @@
     return shp.combine([shp.parseShp(s), shp.parseDbf(d)]).features.filter((f) => f.geometry).map((f) => { const p = f.properties; return { lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1],
       name: clean(OGE_LANG === 'en' ? p.NAME_EN : p.NAME_ES) || clean(p.NAME), q: clean(p.WIKIDATAID), capital: +p.ADM0CAP === 1, rank: +p.SCALERANK || 0 }; });
   })().catch((e) => { placesP = null; throw e; }));
+  let moreP = null; // the 10m places (simple file: no Wikidata ids, no translated names), only for the cities layer
+  const moreData = () => moreP || (moreP = (async () => {
+    const [base, s, d] = await Promise.all([placeData(), buf('10m_cultural/ne_10m_populated_places_simple.shp'), buf('10m_cultural/ne_10m_populated_places_simple.dbf')]);
+    const clean = (v) => String(v ?? '').replace(/\0/g, '').trim(), near = (a, b) => Math.abs(a.lon - b.lon) < 0.15 && Math.abs(a.lat - b.lat) < 0.15;
+    return shp.combine([shp.parseShp(s), shp.parseDbf(d)]).features.filter((f) => f.geometry && +f.properties.adm0cap !== 1).map((f) => ({ lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1], name: clean(f.properties.name), q: '', capital: false, rank: +f.properties.scalerank || 0 }))
+      .filter((c) => !base.some((b) => near(b, c))); // the big ones are already there, with their Wikidata card
+  })().catch((e) => { moreP = null; throw e; }));
   function placeLayer(cb, capital) { // capital: true = the capitals layer, false = the other cities
     let layer = null, busy = false;
     const sync = async () => {
@@ -224,10 +231,11 @@
       busy = true;
       try {
         const bills = viewer.scene.primitives.add(new C.BillboardCollection()), image = dotImage(capital);
-        for (const c of (await placeData()).filter((x) => x.capital === capital)) {
+        for (const c of (capital ? await placeData() : [...await placeData(), ...await moreData()]).filter((x) => x.capital === capital)) {
+          const far = capital ? 2.5e7 : c.rank <= 1 ? 2e7 : c.rank <= 4 ? 9e6 : c.rank <= 7 ? 3e6 : 1.2e6; // smaller towns appear as one zooms in
           const common = { position: C.Cartesian3.fromDegrees(c.lon, c.lat), disableDepthTestDistance: Number.POSITIVE_INFINITY, id: { oge: 'place', q: c.q, name: c.name, capital } };
-          bills.add({ ...common, scale: capital ? 0.32 : 0.4, image, distanceDisplayCondition: new C.DistanceDisplayCondition(0, capital ? 2.5e7 : c.rank <= 1 ? 2e7 : 9e6) });
-          bills.add({ ...common, scale: 0.5, image: OGE.textImage(c.name, '600 12px sans-serif', C.Color.WHITE), pixelOffset: new C.Cartesian2(0, 15), distanceDisplayCondition: new C.DistanceDisplayCondition(0, 5e6) }); // names when zooming in
+          bills.add({ ...common, scale: capital ? 0.32 : 0.4, image, distanceDisplayCondition: new C.DistanceDisplayCondition(0, far) });
+          bills.add({ ...common, scale: 0.5, image: OGE.textImage(c.name, '600 12px sans-serif', C.Color.WHITE), pixelOffset: new C.Cartesian2(0, 15), distanceDisplayCondition: new C.DistanceDisplayCondition(0, Math.min(5e6, far / 2)) }); // names when zooming in
         }
         const occluder = new C.EllipsoidalOccluder(C.Ellipsoid.WGS84, viewer.camera.positionWC);
         viewer.scene.preRender.addEventListener(() => { if (!bills.show) return; occluder.cameraPosition = viewer.camera.positionWC; for (let i = 0; i < bills.length; i++) { const b = bills.get(i); b.show = occluder.isPointVisible(b.position); } });
@@ -366,8 +374,9 @@
     if (id && id.oge === 'plane') { const p = id.a; OGE.chime(); return OGE.showTable(`✈ ${(p.flight || p.r || p.hex || '').trim()}`, [T('Dato'), T('Valor')], [[T('Vuelo'), (p.flight || '').trim()], [T('Matrícula'), p.r], [T('Modelo'), p.desc || p.t], [T('Operador'), p.ownOp], [T('Altitud'), typeof p.alt_baro === 'number' ? `${Math.round(p.alt_baro * 0.3048).toLocaleString(OGE_LANG)} m (${p.alt_baro} ft)` : p.alt_baro], [T('Velocidad'), p.gs != null ? `${Math.round(p.gs * 1.852)} km/h` : ''], [T('Rumbo'), p.track != null ? Math.round(p.track) + '°' : ''], [T('Origen y destino'), ''], ['ICAO 24', p.hex]].filter((x) => x[1]), { note: T('Fuente: adsb.fi (datos abiertos ADS-B).') }); }
     if (id && FACTS[id.oge] && /^Q\d+$/.test(id.q || '')) return wikiInfo(id);
     // nothing picked: with a regional layer on, the municipality (or else the province) under the click, with OpenStreetMap's data and its Wikidata id
-    if (hit || !['layerAdmin1', 'fillAdmin1', 'layerRegionNames', 'layerRoads', 'layerCities'].some((k) => $(k).checked)) return; // the street layer's town names count too
-    const p = viewer.camera.pickEllipsoid(ev.position);
+    const town = id && id.oge === 'place' && !id.q ? hit.primitive.position : null; // a 10m town: asked to OSM at its position
+    if ((hit && !town) || !['layerAdmin1', 'fillAdmin1', 'layerRegionNames', 'layerRoads', 'layerCities'].some((k) => $(k).checked)) return; // the street layer's town names count too
+    const p = town || viewer.camera.pickEllipsoid(ev.position);
     if (!p) return;
     const [lon, lat] = geo.toLL(p);
     const rev = (zoom) => fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=${zoom}&extratags=1&namedetails=1&accept-language=${OGE_LANG}&lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}`).then((r) => r.json());
