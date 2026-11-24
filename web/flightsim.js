@@ -1179,7 +1179,8 @@
   hud.addEventListener('touchmove', (e) => {
     for (const t of e.changedTouches) if (t.identifier === touch.id) {
       const b = hud.getBoundingClientRect(), r = Math.min(b.width, b.height) * 0.18;
-      stick.x = clamp((t.clientX - b.left - touch.x0) / r, -1, 1); stick.y = clamp((t.clientY - b.top - touch.y0) / r, -1, 1);
+      const shape = (v) => { const m = Math.abs(clamp(v, -1, 1)); return m < 0.12 ? 0 : Math.sign(v) * ((m - 0.12) / 0.88) ** 1.7; }; // a small dead zone and a gentle curve: fine control near the middle, full turn at the edge
+      stick.x = shape((t.clientX - b.left - touch.x0) / r); stick.y = shape((t.clientY - b.top - touch.y0) / r);
     }
     e.preventDefault();
   }, { passive: false });

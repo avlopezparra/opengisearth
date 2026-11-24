@@ -205,11 +205,21 @@ body.game-only #panel, body.game-only #splitter { display: none; }
 /* With a keyboard: no buttons that only repeat keys */
 #flyBtns.keyboard > #flyActs, #flyBtns.keyboard > div:not(#flyExtra):not(#flyActs), #flyBtns.keyboard > #flyUp, #flyBtns.keyboard > #flyDown, #flyBtns.keyboard > #flyWarp, #flyBtns.keyboard > #flyWarpDown { display: none; }
 
-/* Phones: the stick on the left half steers, so the right column only has big touch buttons: actions, speed and turbo */
+/* Phones (portrait and landscape): the stick on the left half steers; the right corner keeps a compact block:
+   speed and turbo in a narrow column, beside it a big fire button and the four maneuvers, and "⋯ Más" underneath */
 #flyBtns.touch > div:not(#flyActs):not(#flyExtra) { display: none; }
-#flyBtns.touch > #flyActs { flex-direction: column; gap: 8px; }
-#flyBtns.touch > #flyActs button { width: 56px; height: 56px; border-radius: 50%; font-size: 24px; padding: 0; flex: none; }
-@media (max-width: 700px) { #flyBtns.touch { width: auto; flex-direction: column; align-items: flex-end; } #flyBtns.touch > button { flex: none; } }
+body.flying #flyBtns.touch { display: grid; grid-template-columns: auto 48px 48px; grid-auto-rows: 36px; gap: 5px; right: 8px; bottom: 8px; width: auto; align-items: stretch; }
+#flyBtns.touch > #flyActs { display: contents; }
+#flyBtns.touch button { padding: 0 8px; font-size: 12px; white-space: nowrap; min-width: 0; }
+#flyBtns.touch > #flyUp { grid-area: 1 / 1; } #flyBtns.touch > #flyDown { grid-area: 2 / 1; } #flyBtns.touch > #flyWarp { grid-area: 3 / 1; } #flyBtns.touch > #flyWarpDown { grid-area: 4 / 1; }
+#flyBtns.touch > #flyMore { grid-area: 5 / 1 / 6 / 4; }
+#flyActs button { border-radius: 12px; font-size: 20px; padding: 0; }
+#flyBtns.touch #flyActs button:nth-child(1) { grid-area: 1 / 2 / 3 / 4; font-size: 30px; border-radius: 18px; } /* fire: the big one */
+#flyBtns.touch #flyActs button:nth-child(2) { grid-area: 3 / 2; } #flyBtns.touch #flyActs button:nth-child(3) { grid-area: 3 / 3; }
+#flyBtns.touch #flyActs button:nth-child(4) { grid-area: 4 / 2; } #flyBtns.touch #flyActs button:nth-child(5) { grid-area: 4 / 3; }
+#flyBtns.touch > #flyExtra { grid-column: 1 / 4; grid-row: 6; }
+#flyBtns.touch.more > #flyExtra { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; max-height: 40vh; overflow: auto; }
+#flyBtns.touch #flyExtra button { padding: 6px; }
 
 /* With a keyboard the right column is not shown at all: K opens the controls (reminded on the HUD) */
 #flyBtns.keyboard { display: none !important; }
