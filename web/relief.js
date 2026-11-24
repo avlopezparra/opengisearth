@@ -35,11 +35,12 @@
   }
   // Greedy coloring: each territory takes the color least used by the earlier ones whose bounding box touches its own,
   // so neighbors differ wherever the palette allows.
+  const rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)), NEAR = TINTS.map((x) => TINTS.map((y) => Math.hypot(...rgb(x).map((v, k) => v - rgb(y)[k])) < 80));
   function colorize(geoms) {
     const boxes = geoms.map((g) => (g ? turf.bbox(g) : null)), out = [];
     geoms.forEach((g, i) => {
       const used = new Array(TINTS.length).fill(0), a = boxes[i];
-      if (a) for (let j = 0; j < i; j++) { const b = boxes[j]; if (b && a[0] <= b[2] && b[0] <= a[2] && a[1] <= b[3] && b[1] <= a[3]) used[out[j][1]]++; }
+      if (a) for (let j = 0; j < i; j++) { const b = boxes[j]; if (b && a[0] <= b[2] && b[0] <= a[2] && a[1] <= b[3] && b[1] <= a[3]) TINTS.forEach((_, c) => { used[c] += c === out[j][1] ? 1 : NEAR[out[j][1]][c] ? 0.6 : 0; }); } // a look-alike tint (red, salmon, brown) counts almost as the same
       let best = i % TINTS.length; // rotating start: the whole palette gets used
       for (let k = 0, c = best; k < TINTS.length; k++, c = (c + 1) % TINTS.length) if (used[c] < used[best]) best = c;
       out.push([g, best]);

@@ -1272,7 +1272,7 @@
   }
   $('shipBtn').onclick = async () => { // first the game mode
     if (on) return stop();
-    const v = await OGE.ask({ title: '🚀 OpenStarshipEarth', ok: 'Jugar',
+    const v = await OGE.ask({ title: '🚀 OpenStarshipEarth', ok: 'Jugar', help: 'Hecho por Alejandro Víctor López Parra @avlopezparra (github)',
       fields: [{ id: 'mode', label: 'Modo de juego', type: 'select', value: localStorage.getItem('oge.shipMode') || 'arcade', options: [
         ['adventure', '🗺 Aventura: países por etapas, banderas y jefe final'],
         ['arcade', '🎯 Partida libre con ranking: enemigos, aros, monedas y jefes'],
