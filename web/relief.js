@@ -757,6 +757,45 @@
     viewer.scene.preRender.removeEventListener(hist.tick);
     hist = null;
   }
+  // ---------- OpenHistoryTimeLine: a mode of its own for the historical maps (like GeaCron): only the map of the year and a timeline ----------
+  const MODERN = ['fillCountries', 'layerFlags', 'layerFlagsDep', 'layerNames', 'borders', 'layerCapitals', 'layerCities', 'layerDisputed', 'layerClaims', 'layerAdmin1', 'fillAdmin1', 'layerRegionNames', 'layerSats', 'layerWeather'];
+  let histWas = null, histPlay = null;
+  const bar = Object.assign(document.createElement('div'), { id: 'histBar', hidden: true });
+  bar.innerHTML = `<b class="ht">OpenHistoryTimeLine</b><button data-s="-5" title="${T('Retroceder varios años')}">◀◀</button><button data-s="-1" title="${T('Año anterior')}">◀</button>`
+    + `<span class="hy"></span><button data-s="1" title="${T('Año siguiente')}">▶</button><button data-s="5" title="${T('Avanzar varios años')}">▶▶</button>`
+    + `<button class="hp" title="${T('Reproducir: avanza solo')}">${T('Reproducir')}</button><input class="hr" type="range" min="1" step="1"><button class="hx" title="${T('Salir de OpenHistoryTimeLine')}">✕</button>`;
+  viewer.container.appendChild(bar);
+  const hy = bar.querySelector('.hy'), hr = bar.querySelector('.hr'), hp = bar.querySelector('.hp');
+  const showYear = () => { hr.max = sel.options.length - 1; hr.value = Math.max(1, sel.selectedIndex); hy.textContent = sel.selectedIndex > 0 ? sel.options[sel.selectedIndex].text : '—'; };
+  bar.querySelectorAll('[data-s]').forEach((b) => (b.onclick = () => pick(Math.max(1, sel.selectedIndex + +b.dataset.s))));
+  hr.oninput = () => pick(+hr.value);
+  hp.onclick = () => { // play: one year every 2.5 s, stopping at the last one
+    if (histPlay) { clearInterval(histPlay); histPlay = null; hp.textContent = T('Reproducir'); return; }
+    hp.textContent = T('Pausa');
+    histPlay = setInterval(() => { if (sel.selectedIndex >= sel.options.length - 1) return hp.onclick(); pick(sel.selectedIndex + 1); }, 2500);
+  };
+  sel.addEventListener('change', showYear);
+  function historyMode(on) {
+    document.body.classList.toggle('history-mode', on); bar.hidden = !on;
+    const flip = (id, v) => { const c = $(id); if (c && c.checked !== v) { c.checked = v; c.dispatchEvent(new Event('change')); } };
+    if (on) {
+      histWas = Object.fromEntries([...MODERN, 'fillHistory', 'histLines'].map((id) => [id, !!($(id) && $(id).checked)])); // the user's layers, given back on leaving
+      for (const id of MODERN) flip(id, false);
+      flip('fillHistory', true); flip('histLines', true);
+      if (sel.selectedIndex < 1) pick([...sel.options].findIndex((o) => +o.value === 1492) > 0 ? [...sel.options].findIndex((o) => +o.value === 1492) : 1);
+      viewer.camera.flyTo({ destination: C.Cartesian3.fromDegrees(15, 30, 2.2e7), duration: 1.5 });
+      OGE.toast(T('OpenHistoryTimeLine: muévete por los años con las flechas, la barra o Reproducir.'));
+    } else {
+      if (histPlay) hp.onclick();
+      if (histWas) for (const [id, v] of Object.entries(histWas)) flip(id, v);
+      histWas = null;
+    }
+    showYear();
+  }
+  OGE.historyMode = historyMode;
+  bar.querySelector('.hx').onclick = () => historyMode(false);
+  $('histBtn').onclick = () => historyMode(!document.body.classList.contains('history-mode'));
+  if (new URLSearchParams(location.search).has('history')) setTimeout(() => historyMode(true), 1200); // opengisearth.com/history opens it directly
   sel.addEventListener('change', async () => {
     const y = sel.value, mine = ++token;
     clearHist();
