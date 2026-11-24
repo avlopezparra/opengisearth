@@ -489,7 +489,7 @@
         else if (o.kind === 'crest') collect(o.cap); // the coat of arms wins the capital
         else if (o.kind === 'shield') { shields = Math.min(3, shields + 1); sfx('shield'); }
         else if (o.kind === 'bomb') { bombs++; sfx('bombGet'); }
-        else if (o.kind === 'itembox') { if (item) return true; item = Object.keys(ITEMS)[Math.floor(Math.random() * 4)]; sfx('achieve'); OGE.toast(`${ITEMS[item][0]} ${T(ITEMS[item][1])} — ${T('U para usarlo')}`); }
+        else if (o.kind === 'itembox') { if (items.length >= 3) return true; const item = Object.keys(ITEMS)[Math.floor(Math.random() * 4)]; items.push(item); sfx('achieve'); OGE.toast(`${ITEMS[item][0]} ${T(ITEMS[item][1])} — ${T('U para usarlo')}`); }
         else if (o.kind === 'mine') { if (o.own) return true; hurt(25); booms.push({ p: o.p, t: performance.now() }); }
         else {
           score += pts(10);
@@ -711,7 +711,7 @@
       if (got.has(capId(c))) continue;
       const d = C.Cartesian3.distance(c.p, cam);
       if (!arcade) { if (d < R) collect(c); continue; }
-      if (d > 2e5 || objs.some((o) => o.cap === c)) continue; // its boss or its coat of arms is already there
+      if (race || d > 2e5 || objs.some((o) => o.cap === c)) continue; // its boss or its coat of arms is already there (no bosses in a race)
       if (adv && (c.a3 !== adv.a3 || !adv.boss)) continue; // in the adventure the boss comes after the flags
       const type = bossKind(c.name), B = BOSSES[type], base = C.Cartesian3.fromDegrees(c.lon, c.lat, (scene.globe.getHeight(C.Cartographic.fromDegrees(c.lon, c.lat)) || 0) + 6000);
       objs.push({ kind: 'boss', born: performance.now(), type, cap: c, base, p: C.Cartesian3.clone(base), east: C.Cartesian3.normalize(C.Cartesian3.cross(C.Cartesian3.UNIT_Z, base, new C.Cartesian3()), new C.Cartesian3()), size: 700, hp: Math.ceil(B.hp * DIFF[diff].boss), max: Math.ceil(B.hp * DIFF[diff].boss), next: performance.now() + 2500 });
@@ -820,7 +820,7 @@
 
   // ---------- Race: fly from one chosen city to another; the goal shows on the screen and on the minimap, the best time per route is kept ----------
   let race = null; // { key, from, to: { name, lon, lat, p }, t0 }
-  let item = null; // the race item being held: 'missile' | 'mine' | 'boost' | 'shield'
+  let items = []; // the race items held (up to 3): 'missile' | 'mine' | 'boost' | 'shield'; U uses the first
   const ITEMS = { missile: ['🚀', 'Misil'], mine: ['⚫', 'Mina'], boost: ['⚡', 'Turbo'], shield: ['🛡', 'Escudo'] };
   function placeBoxes(a, b) { // a row of three boxes every few kilometres between the two cities
     const km = raceKm(), n = Math.max(3, Math.min(30, Math.round(km / 8)));
@@ -834,8 +834,8 @@
     }
   }
   function useItem() {
-    if (!item) return;
-    const it = item; item = null;
+    if (!items.length) return;
+    const it = items.shift();
     if (it === 'boost') startBoost();
     else if (it === 'shield') { shields = Math.min(3, shields + 1); sfx('shield'); }
     else if (it === 'mine') { // dropped right here: whoever flies into it gets hurt (not the one who dropped it)
@@ -877,7 +877,7 @@
     start('ship', true, true, true, false);
     s.heading = hd;
     race = { key: `${v.from}|${v.to}`.toLowerCase(), from: a, to: b, t0: performance.now() };
-    item = null; placeBoxes(a, b);
+    items = []; placeBoxes(a, b);
     graceT = performance.now() + 6000;
     const best = +localStorage.getItem('oge.race.' + race.key) || 0;
     OGE.toast(`🏁 ${a.name} → ${b.name}: ${Math.round(raceKm())} km.` + (best ? ` ${T('Mejor tiempo')}: ${fmtT(best)}.` : ''));
@@ -899,12 +899,13 @@
     const c = viewer.camera.positionCartographic, rel = bearing({ lon: deg(c.longitude), lat: deg(c.latitude) }, race.to) - viewer.camera.heading;
     g.save(); g.translate(w / 2, 70); g.rotate(rel); g.fillStyle = g.shadowColor = '#34c759'; g.shadowBlur = 10; g.beginPath(); g.moveTo(0, -16); g.lineTo(11, 10); g.lineTo(0, 4); g.lineTo(-11, 10); g.closePath(); g.fill(); g.restore();
     text(`🏁 ${race.to.name} · ${raceKm().toFixed(1)} km · ${fmtT(performance.now() - race.t0)}`, 24, 156, 14, 'left');
-    text(item ? `${T('OBJETO')}: ${ITEMS[item][0]} ${T(ITEMS[item][1])} (U)` : `${T('OBJETO')}: — ${T('(toca una caja ?)')}`, 24, 176, 14, 'left');
+    text(`${T('OBJETOS')} (U): ` + [0, 1, 2].map((i) => (items[i] ? `[${ITEMS[items[i]][0]} ${T(ITEMS[items[i]][1])}]` : '[ ]')).join(' '), 24, 176, 14, 'left'); // three slots, the first is used next
   }
 
   // ---------- Adventure: a campaign of country stages. Inside a stage the ship cannot leave the country; once all its region flags
   // are collected, the boss of its capital appears; beating it unlocks the next country. Progress is kept on this computer. ----------
   const ROUTE = ['CHL', 'ARG', 'URY', 'PRY', 'BOL', 'PER', 'ECU', 'COL', 'VEN', 'BRA', 'MEX', 'CUB', 'USA', 'CAN', 'ISL', 'GBR', 'IRL', 'PRT', 'ESP', 'FRA', 'ITA', 'GRC', 'EGY', 'MAR', 'NGA', 'KEN', 'ZAF', 'MDG', 'IND', 'CHN', 'JPN', 'AUS', 'NZL'];
+  let advOthers = null; // [{ f, box }] the countries the adventure stage forbids
   let adv = null, advShape = null, graceT = 0, liveT = 0;
   async function liveEnemies() {
     liveT = performance.now() + 15000; // asked every 15 s
@@ -921,7 +922,9 @@
   async function adventure(stage = advDone()) {
     const a3 = ROUTE[Math.min(stage, ROUTE.length - 1)];
     const [s2, d2] = await Promise.all([fetch(NE + '50m_cultural/ne_50m_admin_0_countries.shp').then((r) => r.arrayBuffer()), fetch(NE + '50m_cultural/ne_50m_admin_0_countries.dbf').then((r) => r.arrayBuffer())]);
-    const f = shp.combine([shp.parseShp(s2), shp.parseDbf(d2)]).features.find((x) => String(x.properties.ADM0_A3).replace(/\0/g, '').trim() === a3);
+    const all = shp.combine([shp.parseShp(s2), shp.parseDbf(d2)]).features, A3 = (x) => String(x.properties.ADM0_A3).replace(/\0/g, '').trim();
+    const f = all.find((x) => A3(x) === a3);
+    advOthers = all.filter((x) => x.geometry && A3(x) !== a3 && A3(x) !== 'ATA').map((x) => ({ f: x, box: turf.bbox(x) })); // the other countries (Antarctica is open to all)
     if (!f) return OGE.toast('No se encontró el país de la etapa.', true);
     advShape = f;
     const name = String(f.properties.NAME_ES || f.properties.NAME).replace(/\0/g, '').trim(), cp = caps && caps.find((x) => x.a3 === a3);
@@ -934,13 +937,21 @@
     OGE.toast(`${T('Etapa')} ${stage + 1}/${ROUTE.length}: ${name}. ${T('Recoge todas sus banderas y luego derrota al jefe de la capital.')}`);
   }
   function advStep() {
-    if (!adv || !regs) return;
+    if (!adv) return;
     const here = [C.Math.toDegrees(s.lon), C.Math.toDegrees(s.lat)];
-    if (advShape && !turf.booleanPointInPolygon(here, advShape)) { // the border bounces the ship back toward the inside
-      const c = turf.pointOnFeature(advShape).geometry.coordinates;
-      s.heading = Math.atan2((c[0] - here[0]) * Math.cos(s.lat), c[1] - here[1]);
-      if (performance.now() - (adv.warned || 0) > 3000) { adv.warned = performance.now(); OGE.toast(T('No puedes salir del país en esta etapa.')); sfx('shieldBreak'); }
+    // the sea, its islands (Easter Island…) and Antarctica are free: only the other countries are off limits; flying into one turns the ship back
+    const now = performance.now();
+    if (advOthers && now - (adv.checkT || 0) > 150) {
+      adv.checkT = now;
+      const inside = advOthers.find((o) => here[0] >= o.box[0] && here[0] <= o.box[2] && here[1] >= o.box[1] && here[1] <= o.box[3] && turf.booleanPointInPolygon(here, o.f));
+      if (!inside) adv.safe = [s.lon, s.lat];
+      else {
+        if (adv.safe) { s.lon = adv.safe[0]; s.lat = adv.safe[1]; } // back to the last free point
+        s.heading = C.Math.zeroToTwoPi(s.heading + Math.PI); boost = null; // and facing the way it came
+        if (now - (adv.warned || 0) > 2500) { adv.warned = now; OGE.toast(`${T('No puedes entrar en otro país en esta etapa')}: ${String(inside.f.properties.NAME_ES || inside.f.properties.NAME).replace(/\0/g, '').trim()}`); sfx('shieldBreak'); }
+      }
     }
+    if (!regs) return; // the flags of the stage are still loading
     const mine = regs.filter((r) => r.a3 === adv.a3), left = mine.filter((r) => !gotReg.has(r.id)).length;
     adv.left = left;
     if (left === 0 && !adv.boss) { // every flag: the capital's boss shows up
