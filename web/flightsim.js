@@ -17,7 +17,7 @@
   let on = false, paused = false, mouseCtl = false, showHud = true, A = null, s = null, last = 0;
   const WARPS = [1, 2, 5, 10, 25, 50, 100];
   let warp = 1; // turbo: multiplies the distance covered, to cross long stretches quickly
-  const setWarp = (v) => { warp = v; $('flyWarp').textContent = 'Turbo ×' + v + ' (T)'; $('flyWarp').classList.toggle('active', v > 1); };
+  const setWarp = (v) => { warp = v; $('flyWarp').textContent = 'Turbo ×' + v + ' ▲ (T)'; $('flyWarp').classList.toggle('active', v > 1); };
   const keys = new Set(), stick = { x: 0, y: 0 };
 
   // ---------- Starship lasers: bolts on the HUD, a flash where the aim hits the ground, and a short sound ----------
@@ -164,6 +164,7 @@
   function start(plane, useMouse, useArcade = true) {
     A = PLANES[plane];
     man = null;
+    loadCaps();
     arcade = !!A.ship && !!useArcade; hp = 100; bombs = 3; incoming = []; flash = hit = 0; objs = []; booms = []; score = coins = 0;
     const la = OGE.lookAt(), c = la ? la.carto : viewer.camera.positionCartographic; // above the look-at point, not from orbit
     const ground = scene.globe.getHeight(c) || 0;
@@ -178,10 +179,65 @@
     hud.hidden = false;
     $('flyBtn').classList.add('active');
   }
+  // ---------- Capitals: a collectible over each national capital; a whole continent is an achievement ----------
+  const NE = 'https://raw.githubusercontent.com/avlopezparra/natural-earth-vector/master/', CAPS = 'oge.capitals';
+  const CONT = { Africa: 'África', Asia: 'Asia', Europe: 'Europa', 'North America': 'Norteamérica', 'South America': 'Sudamérica', Oceania: 'Oceanía', Antarctica: 'Antártida' };
+  let caps = null, capsBusy = false; // [{ name, lon, lat, cont, p }]
+  const got = new Set((() => { try { return JSON.parse(localStorage.getItem(CAPS)) || []; } catch { return []; } })()), capId = (c) => c.name + '|' + c.cont;
+  const capOcc = new C.EllipsoidalOccluder(C.Ellipsoid.WGS84, viewer.camera.positionWC);
+  async function loadCaps() {
+    if (caps || capsBusy) return;
+    capsBusy = true;
+    try {
+      const get = (p) => fetch(NE + p).then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); });
+      const [ps, pd, cd] = await Promise.all([get('110m_cultural/ne_110m_populated_places_simple.shp'), get('110m_cultural/ne_110m_populated_places_simple.dbf'), get('50m_cultural/ne_50m_admin_0_countries.dbf')]);
+      const clean = (v) => String(v ?? '').replace(/\0/g, '').trim(), cont = new Map(shp.parseDbf(cd).map((r) => [clean(r.ADM0_A3), clean(r.CONTINENT)]));
+      caps = shp.combine([shp.parseShp(ps), shp.parseDbf(pd)]).features.filter((f) => f.geometry && +f.properties.adm0cap === 1).map((f) => {
+        const [lon, lat] = f.geometry.coordinates;
+        return { name: clean(f.properties.name), lon, lat, cont: CONT[cont.get(clean(f.properties.adm0_a3))] || 'Islas oceánicas', p: C.Cartesian3.fromDegrees(lon, lat, 1500) };
+      });
+    } catch (e) { OGE.toast('No se pudieron cargar las capitales: ' + e.message, true); }
+    capsBusy = false;
+  }
+  const capProgress = () => { // { continent: [collected, total] }
+    const out = {};
+    for (const c of caps || []) { const r = (out[c.cont] = out[c.cont] || [0, 0]); r[1]++; if (got.has(capId(c))) r[0]++; }
+    return out;
+  };
+  function capStep() { // flying close to a capital collects it
+    if (!caps) return;
+    const cam = viewer.camera.positionWC, R = Math.max(8000, s.v * warp * 3);
+    for (const c of caps) {
+      if (got.has(capId(c)) || C.Cartesian3.distance(c.p, cam) > R) continue;
+      got.add(capId(c)); localStorage.setItem(CAPS, JSON.stringify([...got]));
+      const [n, all] = capProgress()[c.cont];
+      if (arcade) score += 500;
+      beep(900, 1800, 0.3);
+      OGE.toast(n === all ? `🏆 Logro: todas las capitales de ${c.cont} (${n}).` : `⭐ Capital conseguida: ${c.name} — ${c.cont} ${n}/${all}.`);
+    }
+  }
+  function drawCaps() { // a star over each capital still to collect, when it is near and on this side of the globe
+    const toWin = C.SceneTransforms.worldToWindowCoordinates || C.SceneTransforms.wgs84ToWindowCoordinates, cam = viewer.camera.positionWC;
+    capOcc.cameraPosition = cam;
+    for (const c of caps) {
+      const d = C.Cartesian3.distance(c.p, cam);
+      if (got.has(capId(c)) || d > 2.5e6 || !capOcc.isPointVisible(c.p)) continue;
+      const q = toWin(scene, c.p);
+      if (!q) continue;
+      g.save(); g.fillStyle = g.shadowColor = '#5ac8fa'; g.shadowBlur = 10; g.textAlign = 'center';
+      g.font = (d < 3e5 ? 32 : 20) + 'px sans-serif'; g.fillText('★', q.x, q.y);
+      g.font = '600 12px sans-serif'; g.fillText(c.name, q.x, q.y + 20); g.restore();
+    }
+  }
+  OGE.minimap.extra = (mg) => { // collected capitals in green, the rest in yellow
+    for (const c of caps || []) { const [x, y] = OGE.minimap.xy(c.lon, c.lat); mg.fillStyle = got.has(capId(c)) ? '#34c759' : '#ffd60a'; mg.fillRect(x - 1, y - 1, 2.5, 2.5); }
+  };
+
   // Scoreboard: the ten best arcade flights, kept on this computer.
   const SCORES = 'oge.scores', readScores = () => { try { return JSON.parse(localStorage.getItem(SCORES)) || []; } catch { return []; } };
   const showScores = () => OGE.showTable('🏆 Mejores puntajes', ['#', 'Piloto', 'Puntos', 'Monedas', 'Fecha'],
-    readScores().map((r, i) => [i + 1, r.name, r.score, r.coins, r.date]), { note: 'Se guardan solo en este equipo.' });
+    readScores().map((r, i) => [i + 1, r.name, r.score, r.coins, r.date]),
+    { note: T('Se guardan solo en este equipo.') + (caps ? ' ' + T('Capitales:') + ' ' + Object.entries(capProgress()).map(([k, [n, all]]) => `${n === all ? '🏆 ' : ''}${T(k)} ${n}/${all}`).join(' · ') : '') });
   async function saveScore(pts, cns) {
     const v = await OGE.ask({ title: `Puntaje: ${pts} puntos y ${cns} monedas`, ok: 'Guardar', fields: [{ id: 'name', label: 'Tu nombre', value: localStorage.getItem('oge.pilot') || '' }] });
     const name = v && v.name.trim().slice(0, 24);
@@ -241,6 +297,7 @@
     }
     const stallV = A.vStall * (1 - 0.1 * s.flaps), q = A.ship ? 1 : clamp(s.v / (1.4 * A.vStall), 0, 1); // q: control effectiveness with speed
     const grav = A.ship ? 0 : G;
+    const airbrake = keys.has('q') || keys.has('pagedown') ? (A.ship ? A.thrust * 1.5 : 6) : 0; // Q also brakes: drag alone is too weak at low speed
     const elev = clamp(s.elev + s.trim, -1, 1), ground = scene.globe.getHeight(new C.Cartographic(s.lon, s.lat)) || 0;
     const drag = A.thrust * (s.v / A.vMax) ** 2 * (1 + 0.35 * s.flaps + (s.gear ? 0.15 : 0)); // at full throttle and level, vMax is reached
     if (s.ground) { // taxiing: rudder steers, brakes brake; takeoff by pulling with enough speed
@@ -258,7 +315,7 @@
       s.heading += pr * Math.sin(s.roll) + ((G * Math.sin(s.roll)) / Math.max(s.v, 20)) * dt + s.rud * A.yaw * q * dt;
       if (s.v < stallV) s.pitch -= rad(18) * dt; // stall
       s.pitch = clamp(s.pitch, rad(-89), rad(89));
-      s.v = clamp(s.v + (s.throttle * A.thrust - drag - grav * Math.sin(s.pitch)) * dt, 0, A.vMax * 1.3);
+      s.v = clamp(s.v + (s.throttle * A.thrust - drag - airbrake - grav * Math.sin(s.pitch)) * dt, 0, A.vMax * 1.3);
       s.vs = s.v * Math.sin(pe);
       s.alt += s.vs * dt * warp;
       if (A.ship && s.alt <= ground + 30) { // the starship bounces off the ground; in the arcade a hard touch costs life
@@ -279,6 +336,7 @@
     s.agl = s.alt - ground;
     viewer.camera.setView({ destination: C.Cartesian3.fromRadians(s.lon, s.lat, s.alt), orientation: { heading: s.heading, pitch: pe, roll: s.roll + rollOff } });
     if (arcade && on) arcadeStep(dt);
+    if (on) capStep();
   }
 
   // ---------- HUD ----------
@@ -295,6 +353,7 @@
     if (paused) text(T('PAUSA — Espacio para seguir'), cx, cy - r - 46, 16);
     else if (s.ground) text(T('EN TIERRA'), cx, cy - r - 46, 16);
     else if (s.v < A.vStall * (1 - 0.1 * s.flaps)) text(T('PÉRDIDA — baja la nariz y da gas'), cx, cy - r - 46, 16);
+    if (caps) drawCaps();
     if (arcade) drawArcade(w, h, text);
     shots = shots.filter((t0) => performance.now() - t0 < 220);
     for (const t0 of shots) { // two bolts converging on the aim point
@@ -389,7 +448,8 @@
     else if (k === 'c') { stick.x = stick.y = 0; s.trim = 0; }
     else if (k === 'x') fire();
     else if (k === 'b' && A.ship) bomb();
-    else if (k === 't') nextWarp();
+    else if (k === 't') nextWarp(e.shiftKey ? -1 : 1);
+    else if (k === 'y') nextWarp(-1);
     else if (k === 'r' || k === 'v' || k === 'u') maneuver(k === 'r' ? 'roll' : k === 'v' ? 'loop' : 'uturn');
     else if (k === 'k') $('flyKeys').hidden = !$('flyKeys').hidden;
     else keys.add(k);
@@ -397,8 +457,9 @@
   }, true);
   document.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()), true);
   window.addEventListener('blur', () => keys.clear());
-  const nextWarp = () => setWarp(WARPS[(WARPS.indexOf(warp) + 1) % WARPS.length]);
-  $('flyWarp').onclick = nextWarp;
+  const nextWarp = (d = 1) => setWarp(WARPS[clamp(WARPS.indexOf(warp) + d, 0, WARPS.length - 1)]); // stops at both ends
+  $('flyWarp').onclick = () => nextWarp(1);
+  $('flyWarpDown').onclick = () => nextWarp(-1);
   $('flyScores').onclick = () => { paused = true; showScores(); };
   $('flyHelp').onclick = () => { $('flyKeys').hidden = !$('flyKeys').hidden; };
   for (const [id, key] of [['flyUp', 'pageup'], ['flyDown', 'pagedown'], ['flyLeft', 'a'], ['flyRight', 'd']]) { // held down like the keys
