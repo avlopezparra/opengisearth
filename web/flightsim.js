@@ -1,7 +1,7 @@
 // Flight simulator in the style of Earth's: cockpit view with HUD, mouse or keyboard control and two aircraft.
 // Mouse: a click grabs or releases the stick; the cursor relative to the center moves it (down = pull = nose up).
 // Keyboard: arrows (or W/S) stick · PgUp/PgDn (or E/Q) throttle · A/D (or Shift+←/→) rudder · K key list · F / Shift+F flaps · G gear ·
-// A/D also turn (rudder) · T / G turbo up / down · L gear · , . (or B) brakes · Home/End trim · C center · Space pause · H HUD · Esc exit. Starship: X or right click fires.
+// A/D also turn (rudder) · T / G turbo up / down · L gear · , . (or B) brakes · Home/End trim · C center · Space pause · H HUD · Esc exit. OpenStarship: X or right click fires.
 (() => {
   const C = Cesium, { viewer, $ } = OGE;
   const scene = viewer.scene, rad = C.Math.toRadians, deg = C.Math.toDegrees, clamp = C.Math.clamp;
@@ -11,7 +11,7 @@
     sr22: { name: 'SR22 — avioneta de hélice, lenta y dócil', vStall: 31, vMax: 95, thrust: 3.2, roll: rad(45), pitch: rad(22), yaw: rad(20), agl: 600, v0: 70 },
     f16: { name: 'F-16 — caza a reacción, rápido y nervioso', vStall: 72, vMax: 420, thrust: 22, roll: rad(130), pitch: rad(38), yaw: rad(18), agl: 1500, v0: 220 },
     // ship: no stall and no gravity (it hovers and climbs to space), bounces off the ground instead of crashing, and fires
-    ship: { name: 'Starship — nave muy rápida con láseres; flota y sube al espacio', ship: true, vStall: 0, vMax: 8000, thrust: 400, roll: rad(220), pitch: rad(75), yaw: rad(35), agl: 3000, v0: 600 },
+    ship: { name: 'OpenStarship — nave muy rápida con láseres; flota y sube al espacio', ship: true, vStall: 0, vMax: 8000, thrust: 400, roll: rad(220), pitch: rad(75), yaw: rad(35), agl: 3000, v0: 600 },
   };
   const hud = $('hud'), g = hud.getContext('2d');
   let on = false, paused = false, mouseCtl = false, showHud = true, A = null, s = null, last = 0;
@@ -23,12 +23,12 @@
   const setTurn = (v) => { turn = v; localStorage.setItem('oge.flyTurn2', v); $('flyTurn').textContent = T('Giro') + ' ×' + v + ' (N)'; $('flyTurn').classList.toggle('active', v > 1); };
   const keys = new Set(), stick = { x: 0, y: 0 };
 
-  // ---------- Starship lasers: bolts on the HUD, a flash where the aim hits the ground, and a short sound ----------
+  // ---------- OpenStarship lasers: bolts on the HUD, a flash where the aim hits the ground, and a short sound ----------
   let shots = [], audio = null, aimMouse = false; // shots: { t, x, y } on the HUD; aimMouse: lasers follow the cursor
   const mouse = { x: 0, y: 0 };
   function fire() {
     const t = performance.now();
-    if (on && !A.ship) return OGE.toast('Disparar y las maniobras son solo de la Starship.');
+    if (on && !A.ship) return OGE.toast('Disparar y las maniobras son solo de la OpenStarship.');
     if (!on || paused || (shots.length && t - shots[shots.length - 1].t < 110)) return;
     const ax = aimMouse ? mouse.x : hud.clientWidth / 2, ay = aimMouse ? mouse.y : hud.clientHeight / 2; // where the lasers go
     const ray = viewer.camera.getPickRay(new C.Cartesian2(ax, ay)), ground = scene.globe.pick(ray, scene);
@@ -258,7 +258,7 @@
   const snap = () => ({ heading: s.heading, pitch: s.pitch, v: s.v, score, coins, bombs, t: performance.now() });
   function tutorial(startIt) {
     if (!startIt) { tut = null; return; }
-    if (!A || !A.ship) return OGE.toast('El tutorial guiado es para la Starship: elígela al pulsar Volar.');
+    if (!A || !A.ship) return OGE.toast('El tutorial guiado es para la OpenStarship: elígela al pulsar Volar.');
     arcade = true; objs = []; incoming = []; hp = 100; shields = 0;
     tut = { i: 0, ref: snap() };
   }
@@ -285,7 +285,7 @@
     g.restore();
   }
 
-  // ---------- Starship arcade: random enemies to shoot, rings to fly through and coins to collect ----------
+  // ---------- OpenStarship arcade: random enemies to shoot, rings to fly through and coins to collect ----------
   // The objects live in the 3D world and are drawn on the HUD at their projected position and size.
   let arcade = false, objs = [], booms = [], score = 0, coins = 0;
   let maxHp = 100; // grows with the life boosters found over big cities
@@ -305,7 +305,7 @@
     objs.push({ kind, p, size: D * 0.06 * SIZE[kind], look: Math.floor(Math.random() * ENEMY.length), next: performance.now() + 3000 + Math.random() * 4000 }); // sized for the speed it was created at; next: when an enemy fires
   }
   function hurt(n) {
-    if (tut) { hit = performance.now(); return; } // nothing hurts during the tutorial
+    if (tut || performance.now() < graceT) { hit = performance.now(); return; } // nothing hurts during the tutorial or the grace time
     if (shields) { shields--; broke = hit = performance.now(); return sfx('shieldBreak'); } // the shield takes the hit and breaks
     n *= DIFF[diff].hurt;
     hp -= n; hit = performance.now(); beep(200, 80, 0.25);
@@ -473,6 +473,7 @@
     const fade = (t0, ms, color) => { const k = (now - t0) / ms; if (k < 1) { g.save(); g.globalAlpha = 0.5 * (1 - k); g.fillStyle = color; g.fillRect(0, 0, w, h); g.restore(); } };
     fade(flash, 450, '#fff'); fade(hit, 250, broke === hit ? '#0a84ff' : '#f00'); // bomb / shield broken / damage
     if (shields) { g.save(); g.strokeStyle = 'rgba(10,132,255,.55)'; g.lineWidth = 3 * shields; g.beginPath(); g.ellipse(w / 2, h / 2, w * 0.46, h * 0.46, 0, 0, 7); g.stroke(); g.restore(); } // shield around the view, thicker with more layers
+    if (adv) text(`${T('ETAPA')} ${adv.i + 1}: ${adv.name} · ${adv.boss ? T('¡derrota al jefe!') : (adv.left ?? '?') + ' ' + T('banderas restantes')}`, 24, 136, 14, 'left');
     text(`${T('PUNTOS')} ${score}  ·  ${T('MONEDAS')} ${coins}  ·  ${T('BOMBAS')} ${bombs}`, 24, 96, 16, 'left'); // below the heading tape
     g.save(); g.strokeRect(24, 110, 180, 12); g.fillStyle = hp > maxHp / 2 ? '#39ff14' : hp > maxHp / 4 ? '#ffd60a' : '#ff453a'; g.fillRect(24, 110, (180 * Math.max(0, hp)) / maxHp, 12); g.restore();
     text(`${T('VIDA')} ${Math.max(0, Math.round(hp))}/${maxHp}  ·  ${T('ESCUDOS')} ${shields}/3`, 212, 117, 12, 'left');
@@ -482,14 +483,14 @@
     if (on) return stop();
     const last = (() => { try { return JSON.parse(localStorage.getItem('oge.flyOpts')) || {}; } catch { return {}; } })(); // the dialog remembers the last choices
     const v = await OGE.ask({ title: 'Simulador de vuelo', ok: 'Iniciar vuelo',
-      help: 'Arranca en el aire sobre el punto que estás mirando. Mouse: clic toma o suelta la palanca. Teclado: flechas, RePág/AvPág para el gas, L tren, F flaps, Espacio pausa, Esc salir. Starship: X o clic derecho dispara.',
+      help: 'Arranca en el aire sobre el punto que estás mirando. Mouse: clic toma o suelta la palanca. Teclado: flechas, RePág/AvPág para el gas, L tren, F flaps, Espacio pausa, Esc salir. OpenStarship: X o clic derecho dispara.',
       fields: [{ id: 'plane', label: 'Avión', type: 'select', value: PLANES[last.plane] ? last.plane : 'ship', options: Object.entries(PLANES).map(([k, p]) => [k, p.name]) },
         { id: 'mouse', label: 'Controlar con el mouse (como en Earth)', type: 'checkbox', value: last.mouse ?? true },
-        { id: 'arcade', label: 'Starship: modo arcade con enemigos y puntaje (desmárcalo para volar libre)', type: 'checkbox', value: last.arcade ?? true },
-        { id: 'aim', label: 'Starship: apuntar los disparos con el mouse (clic dispara; se vuela con el teclado)', type: 'checkbox', value: last.aim ?? false },
-        { id: 'diff', label: 'Starship: dificultad (cada una tiene su propio ranking)', type: 'select', value: diff, options: Object.entries(DIFF).map(([k, d]) => [k, d.name]) },
+        { id: 'arcade', label: 'OpenStarship: modo arcade con enemigos y puntaje (desmárcalo para volar libre)', type: 'checkbox', value: last.arcade ?? true },
+        { id: 'aim', label: 'OpenStarship: apuntar los disparos con el mouse (clic dispara; se vuela con el teclado)', type: 'checkbox', value: last.aim ?? false },
+        { id: 'diff', label: 'OpenStarship: dificultad (cada una tiene su propio ranking)', type: 'select', value: diff, options: Object.entries(DIFF).map(([k, d]) => [k, d.name]) },
         { id: 'quest', label: 'Coleccionar banderas y capitales (desmárcalo para volar solo por las vistas)', type: 'checkbox', value: quest() },
-        { id: 'tut', label: 'Starship: hacer el tutorial guiado (va diciendo qué hacer)', type: 'checkbox', value: !localStorage.getItem('oge.tutorial') }] }); // offered ticked the first time
+        { id: 'tut', label: 'OpenStarship: hacer el tutorial guiado (va diciendo qué hacer)', type: 'checkbox', value: !localStorage.getItem('oge.tutorial') }] }); // offered ticked the first time
     if (v) localStorage.setItem('oge.flyOpts', JSON.stringify({ ...v, tut: undefined }));
     if (v) { if (DIFF[v.diff]) { diff = v.diff; localStorage.setItem('oge.diff', diff); } localStorage.setItem('oge.quest', v.quest ? '1' : '0'); start(v.plane, v.mouse, v.arcade, v.aim, v.tut); }
   }
@@ -570,6 +571,7 @@
       const d = C.Cartesian3.distance(c.p, cam);
       if (!arcade) { if (d < R) collect(c); continue; }
       if (d > 2e5 || objs.some((o) => o.cap === c)) continue; // its boss or its coat of arms is already there
+      if (adv && (c.a3 !== adv.a3 || !adv.boss)) continue; // in the adventure the boss comes after the flags
       const type = bossKind(c.name), B = BOSSES[type], base = C.Cartesian3.fromDegrees(c.lon, c.lat, 3000);
       objs.push({ kind: 'boss', born: performance.now(), type, cap: c, base, p: C.Cartesian3.clone(base), east: C.Cartesian3.normalize(C.Cartesian3.cross(C.Cartesian3.UNIT_Z, base, new C.Cartesian3()), new C.Cartesian3()), size: 700, hp: Math.ceil(B.hp * DIFF[diff].boss), max: Math.ceil(B.hp * DIFF[diff].boss), next: performance.now() + 2500 });
       OGE.toast(`⚠ Jefe de ${c.name}: derrótalo para conseguir la capital.`);
@@ -659,6 +661,50 @@
     }
   }
 
+  // ---------- Adventure: a campaign of country stages. Inside a stage the ship cannot leave the country; once all its region flags
+  // are collected, the boss of its capital appears; beating it unlocks the next country. Progress is kept on this computer. ----------
+  const ROUTE = ['CHL', 'ARG', 'URY', 'PRY', 'BOL', 'PER', 'ECU', 'COL', 'VEN', 'BRA', 'MEX', 'CUB', 'USA', 'CAN', 'ISL', 'GBR', 'IRL', 'PRT', 'ESP', 'FRA', 'ITA', 'GRC', 'EGY', 'MAR', 'NGA', 'KEN', 'ZAF', 'MDG', 'IND', 'CHN', 'JPN', 'AUS', 'NZL'];
+  let adv = null, advShape = null, graceT = 0; // adv: { i, a3 } while a stage runs; advShape: the country's polygons
+  const advDone = () => +localStorage.getItem('oge.adventure') || 0; // stages beaten
+  async function adventure(stage = advDone()) {
+    const a3 = ROUTE[Math.min(stage, ROUTE.length - 1)];
+    const [s2, d2] = await Promise.all([fetch(NE + '50m_cultural/ne_50m_admin_0_countries.shp').then((r) => r.arrayBuffer()), fetch(NE + '50m_cultural/ne_50m_admin_0_countries.dbf').then((r) => r.arrayBuffer())]);
+    const f = shp.combine([shp.parseShp(s2), shp.parseDbf(d2)]).features.find((x) => String(x.properties.ADM0_A3).replace(/\0/g, '').trim() === a3);
+    if (!f) return OGE.toast('No se encontró el país de la etapa.', true);
+    advShape = f;
+    const name = String(f.properties.NAME_ES || f.properties.NAME).replace(/\0/g, '').trim(), cp = caps && caps.find((x) => x.a3 === a3);
+    const c = cp ? [cp.lon, cp.lat] : [+f.properties.LABEL_X, +f.properties.LABEL_Y]; // the stage starts over its capital
+    viewer.camera.setView({ destination: C.Cartesian3.fromDegrees(c[0], c[1], 40000), orientation: { heading: 0, pitch: -Math.PI / 2, roll: 0 } });
+    localStorage.setItem('oge.quest', '1');
+    adv = { i: stage, a3, name, boss: false };
+    start('ship', true, true, false, false);
+    graceT = performance.now() + 6000; // a few seconds without damage to get one's bearings
+    OGE.toast(`${T('Etapa')} ${stage + 1}/${ROUTE.length}: ${name}. ${T('Recoge todas sus banderas y luego derrota al jefe de la capital.')}`);
+  }
+  function advStep() {
+    if (!adv || !regs) return;
+    const here = [C.Math.toDegrees(s.lon), C.Math.toDegrees(s.lat)];
+    if (advShape && !turf.booleanPointInPolygon(here, advShape)) { // the border bounces the ship back toward the inside
+      const c = turf.pointOnFeature(advShape).geometry.coordinates;
+      s.heading = Math.atan2((c[0] - here[0]) * Math.cos(s.lat), c[1] - here[1]);
+      if (performance.now() - (adv.warned || 0) > 3000) { adv.warned = performance.now(); OGE.toast(T('No puedes salir del país en esta etapa.')); sfx('shieldBreak'); }
+    }
+    const mine = regs.filter((r) => r.a3 === adv.a3), left = mine.filter((r) => !gotReg.has(r.id)).length;
+    adv.left = left;
+    if (left === 0 && !adv.boss) { // every flag: the capital's boss shows up
+      const cap = caps && caps.find((x) => x.a3 === adv.a3);
+      if (cap) { got.delete(capId(cap)); adv.boss = true; adv.cap = cap; OGE.toast(`${T('¡Todas las banderas! El jefe de')} ${cap.name} ${T('te espera.')}`); sfx('achieve'); }
+    }
+    if (adv.boss && adv.cap && got.has(capId(adv.cap))) { // its capital won: stage cleared
+      localStorage.setItem('oge.adventure', String(Math.max(advDone(), adv.i + 1)));
+      const next = adv.i + 1;
+      OGE.toast(next < ROUTE.length ? `${T('¡Etapa superada!')} ${T('Siguiente')}: ${ROUTE[next]}.` : T('¡Completaste la aventura!'));
+      sfx('achieve');
+      adv = null; advShape = null;
+      if (next < ROUTE.length) setTimeout(() => { stop(); adventure(next); }, 2500);
+    }
+  }
+
   // Scoreboard: the ten best arcade flights, kept on this computer.
   // One scoreboard per difficulty (the easy one keeps the old key, so earlier scores stay there)
   const scoreKey = (d = diff) => (d === 'normal' ? 'oge.scores' : 'oge.scores.' + d);
@@ -677,7 +723,7 @@
     showScores();
   }
   function stop(msg, error) {
-    on = false; tut = null;
+    on = false; if (msg && adv) { adv = null; advShape = null; } // a crash ends the stage tut = null;
     music(false);
     if (arcade && !msg && score) msg = `Vuelo terminado: ${score} puntos y ${coins} monedas.`;
     if (arcade && (score || coins)) saveScore(score, coins);
@@ -706,10 +752,10 @@
   }
 
   // ---------- Simplified physics ----------
-  // Starship maneuvers: barrel roll (R), full loop (V) and half loop with a roll out, to turn back (U).
+  // OpenStarship maneuvers: barrel roll (R), full loop (V) and half loop with a roll out, to turn back (U).
   let man = null, lastRoll = 1; // man: { type, t0, dur, dir }
   function maneuver(type) {
-    if (on && !A.ship) return OGE.toast('Disparar y las maniobras son solo de la Starship.');
+    if (on && !A.ship) return OGE.toast('Disparar y las maniobras son solo de la OpenStarship.');
     if (!on || paused || man) return;
     const dir = keys.has('a') ? -1 : keys.has('d') ? 1 : (lastRoll = -lastRoll);
     man = { type, t0: performance.now(), dur: type === 'roll' ? 600 : type === 'loop' ? 2400 : 1500, dir };
@@ -775,7 +821,7 @@
     }
     if (arcade && on) arcadeStep(dt);
     if (tut && on) tutStep();
-    if (on && quest()) { capStep(); regStep(); } // the collection can be switched off to fly just for the views
+    if (on && quest()) { capStep(); regStep(); advStep(); } // the collection can be switched off to fly just for the views
   }
 
   // ---------- HUD ----------
@@ -944,9 +990,10 @@
   const syncQuest = () => { $('flyQuest').textContent = (quest() ? '🚩 ' : '🚫 ') + T('Colección') + ' (J)'; $('flyQuest').classList.toggle('active', quest()); };
   $('flyQuest').onclick = () => { localStorage.setItem('oge.quest', quest() ? '0' : '1'); syncQuest(); OGE.toast(quest() ? 'Colección activada.' : 'Colección desactivada: vuelo libre por las vistas.'); };
   syncQuest();
-  // Starship: drop straight down to the ground and lift off again
-  $('flyLand').onclick = () => { if (!on || !A.ship) return OGE.toast('Aterrizar y despegar son de la Starship.'); landing = landing ? null : 'down'; sfx(landing ? 'warpDown' : 'warpUp'); };
+  // OpenStarship: drop straight down to the ground and lift off again
+  $('flyLand').onclick = () => { if (!on || !A.ship) return OGE.toast('Aterrizar y despegar son de la OpenStarship.'); landing = landing ? null : 'down'; sfx(landing ? 'warpDown' : 'warpUp'); };
   $('flyLift').onclick = () => { if (!on || !A.ship) return; landing = 'up'; sfx('warpUp'); };
+  $('advBtn').onclick = () => { if (on) stop(); adventure(); };
   $('flyReset').onclick = async () => { // start the collection again: flags and capitals collected so far are forgotten
     paused = true;
     const v = await OGE.ask({ title: 'Reiniciar la colección', ok: 'Reiniciar', help: 'Se olvidan las banderas de regiones y las capitales conseguidas. Los puntajes no se borran.', fields: [] });
@@ -969,7 +1016,8 @@
     for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => keys.delete(key));
   }
   $('flyBtn').onclick = open;
-  $('shipBtn').onclick = () => { // straight into the Starship arcade, with the options used last time
+  if (new URLSearchParams(location.search).has('play')) setTimeout(() => { document.body.classList.add('game-only'); $('shipBtn').click(); }, 1500); // the OpenStarship page opens the game directly
+  $('shipBtn').onclick = () => { // straight into the OpenStarship arcade, with the options used last time
     if (on) return stop();
     let last = {}; try { last = JSON.parse(localStorage.getItem('oge.flyOpts')) || {}; } catch { /* first time */ }
     start('ship', last.mouse ?? true, true, last.aim ?? false, !localStorage.getItem('oge.tutorial'));

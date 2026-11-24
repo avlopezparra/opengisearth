@@ -192,3 +192,6 @@ dialog table td { border-color: rgba(47, 155, 224, .3); }
 
 /* Flight buttons on phones: two columns, smaller, so the view stays free */
 @media (max-width: 700px) { #flyBtns { right: 6px; bottom: 8px; flex-direction: row; flex-wrap: wrap; width: 150px; gap: 4px; } #flyBtns button { padding: 6px 8px; font-size: 11px; flex: 1 1 64px; } #flyBtns > div { flex-basis: 100%; } }
+
+/* OpenStarship page: only the game, without the atlas panels */
+body.game-only #panel, body.game-only #splitter { display: none; }
