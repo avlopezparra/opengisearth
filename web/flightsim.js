@@ -27,12 +27,26 @@
   // ---------- OpenStarshipEarth lasers: bolts on the HUD, a flash where the aim hits the ground, and a short sound ----------
   let shots = [], audio = null, aimMouse = false; // shots: { t, x, y } on the HUD; aimMouse: lasers follow the cursor
   const mouse = { x: 0, y: 0 };
-  function fire(who = 1) { // who: 1, or 2 for the local second player (it fires through its own reticle)
+  function fire(who = 1, auto = false) { // auto: aim by itself at the enemy nearest the middle of the view (B key, touch button, pad) // who: 1, or 2 for the local second player (it fires through its own reticle)
     const t = performance.now(), mine = shots.filter((sh) => sh.who === who);
     if (on && !A.ship) return OGE.toast('Disparar y las maniobras son solo de la OpenStarshipEarth.');
     if (!on || paused || (mine.length && t - mine[mine.length - 1].t < 110) || (who === 2 && (!p2 || p2.out || p2.sx == null))) return;
-    const ax = who === 2 ? p2.sx : aimMouse ? mouse.x : hud.clientWidth / 2, ay = who === 2 ? p2.sy - p2.R * 1.6 : aimMouse ? mouse.y : hud.clientHeight / 2; // where the lasers go
-    const ray = viewer.camera.getPickRay(new C.Cartesian2(ax, ay)), ground = scene.globe.pick(ray, scene);
+    let ax = who === 2 ? p2.sx : aimMouse ? mouse.x : hud.clientWidth / 2, ay = who === 2 ? p2.sy - p2.R * 1.6 : aimMouse ? mouse.y : hud.clientHeight / 2; // where the lasers go
+    if (auto && who === 1 && arcade) {
+      const toW = C.SceneTransforms.worldToWindowCoordinates || C.SceneTransforms.wgs84ToWindowCoordinates, cw = hud.clientWidth, ch = hud.clientHeight, camP = viewer.camera.positionWC;
+      let bestQ = null, bestS = Infinity;
+      for (const o of objs) {
+        if (o.kind !== 'enemy' && o.kind !== 'boss' && o.kind !== 'airliner') continue;
+        const d = C.Cartesian3.distance(o.p, camP); if (d > reach() * 1.5 && o.kind !== 'boss') continue;
+        if (C.Cartesian3.dot(C.Cartesian3.subtract(o.p, camP, new C.Cartesian3()), viewer.camera.directionWC) <= 0) continue;
+        const q = toW(scene, o.p); if (!q || q.x < 0 || q.y < 0 || q.x > cw || q.y > ch) continue;
+        const sc = Math.hypot(q.x - cw / 2, q.y - ch / 2) + d / 200; if (sc < bestS) { bestS = sc; bestQ = q; }
+      }
+      if (bestQ) { ax = bestQ.x; ay = bestQ.y; }
+    }
+    const ray = viewer.camera.getPickRay(new C.Cartesian2(ax, ay));
+    if (!ray) return; // no view to aim through (the map is not drawn yet)
+    const ground = scene.globe.pick(ray, scene);
     shots.push({ t, x: ax, y: ay, who });
     if (arcade) versus(who, ax, ay, ray);
     if (ground && C.Cartesian3.distance(ground, viewer.camera.positionWC) < 4e5) {
@@ -642,6 +656,11 @@
     landing = null;
     tut = null;
     aimMouse = !!A.ship && !!useAim; mouse.x = hud.clientWidth / 2; mouse.y = hud.clientHeight / 2;
+    requestAnimationFrame(() => { mouse.x = hud.clientWidth / 2; mouse.y = hud.clientHeight / 2; }); // once the HUD has its size: the aim starts centred
+    if (matchMedia('(pointer: coarse)').matches) { // touch devices: full screen and landscape
+      const de = document.documentElement, fs = de.requestFullscreen || de.webkitRequestFullscreen;
+      try { const pr = !document.fullscreenElement && fs && fs.call(de, { navigationUI: 'hide' }); Promise.resolve(pr).then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape')).catch(() => {}); } catch { /* not allowed here */ }
+    }
     man = null;
     loadCaps();
     loadRegs();
@@ -780,7 +799,7 @@
     try {
       const get = (p) => fetch(NE + p).then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); });
       const [ps, pd, flags] = await Promise.all([get('10m_cultural/ne_10m_admin_1_label_points.shp'), get('10m_cultural/ne_10m_admin_1_label_points.dbf'), OGE.flags()]);
-      const clean = (v) => String(v ?? '').replace(/\0/g, '').trim(), seen = new Set(), imgs = new Map(), out = [];
+      const clean = (v) => String(v ?? '').replace(/\0/g, '').trim(), seen = new Map(), imgs = new Map(), out = [];
       for (const f of shp.combine([shp.parseShp(ps), shp.parseDbf(pd)]).features) {
         const p = f.properties, id = clean(p.adm1_code), fl = flags.get(clean(p.sr_adm0_a3));
         if (!f.geometry || !id || !fl) continue;
@@ -788,8 +807,7 @@
         const [lon, lat] = f.geometry.coordinates, far = Math.hypot(lon - fl.lon, lat - fl.lat), prev = seen.get(id);
         if (prev) { if (far < prev.far) Object.assign(prev.r, { lon, lat, p: C.Cartesian3.fromDegrees(lon, lat, 4500) }), prev.far = far; continue; }
         if (!imgs.has(fl.url)) imgs.set(fl.url, Object.assign(new Image(), { src: fl.url }));
-        seen.set(id, { far, r: null });
-        out.push({ id, lon, lat, name: clean(p.name), a3: fl.a3, country: fl.name, cont: CONT[fl.cont] || 'Islas oceánicas', p: C.Cartesian3.fromDegrees(lon, lat, 4500), img: imgs.get(fl.url) }); // high enough to be collected without scraping the ground
+        const reg = { id, lon, lat, name: clean(p.name), a3: fl.a3, country: fl.name, cont: CONT[fl.cont] || 'Islas oceánicas', p: C.Cartesian3.fromDegrees(lon, lat, 4500), img: imgs.get(fl.url) }; out.push(reg); seen.set(id, { far, r: reg }); // high enough to be collected without scraping the ground
       }
       regs = out;
     } catch (e) { OGE.toast('No se pudieron cargar las banderas: ' + e.message, true); }
@@ -1535,7 +1553,7 @@
     else if (k === 'c' && A.ship && landing) $('flyLift').click(); // C takes off again after landing
     else if (k === 'c') { stick.x = stick.y = 0; s.trim = 0; }
     else if (k === 'q' && A && A.ship && !e.repeat) { stopped = !stopped; if (!stopped) { s.v = Math.max(s.v, A.v0 || 300); s.throttle = Math.max(s.throttle, 0.5); } } // Q: stop and hover; Q again: fly on
-    else if (k === 'b') fire(); // B fires
+    else if (k === 'b') fire(1, true); // B fires, aiming by itself at the nearest enemy
     else if (k === 'v' && A.ship) bomb(); // V drops a bomb
     else if (k === 'g') nextWarp(-1);
     else if (k === '+' || k === '=' || k === '-') OGE.minimap.zoom(k === '-' ? -1 : 1);

@@ -252,3 +252,10 @@ body.flying #flyBtns.touch { display: grid; grid-template-columns: auto 48px 48p
 #histBar button { padding: 4px 9px; }
 body.history-mode .cesium-viewer-bottom { display: none; }
 @media (max-width: 700px) { #histBar { flex-wrap: wrap; bottom: 8px; } #histBar .ht { width: 100%; text-align: center; } }
+
+/* Phones: the game is played in landscape; in portrait a notice asks to turn the phone */
+#rotateNote { display: none; }
+@media (pointer: coarse) and (orientation: portrait) {
+  body.flying #rotateNote { display: flex; position: fixed; inset: 0; z-index: 50; align-items: center; justify-content: center; text-align: center; padding: 24px;
+    background: rgba(8, 30, 60, .92); color: #fff; font-size: 20px; font-weight: 600; }
+}
