@@ -146,6 +146,49 @@
     c.beginPath(); c.arc(0, 8, 14, 0, 7); c.fillStyle = '#fff'; c.fill();
   });
 
+  // ---------- Boss types: each capital gets one (by its name). They are drawn procedurally so they can move. ----------
+  // hp: shots to beat it · every: ms between volleys · shots: per volley · color of its shots · sway: how far it moves around its post (m)
+  const BOSSES = {
+    fortress: { name: 'Fortaleza', hp: 15, every: 1600, shots: 1, color: '#ff2df5', sway: 0 },
+    snake: { name: 'Serpiente', hp: 12, every: 2200, shots: 1, color: '#7CFC00', sway: 2600 },
+    face: { name: 'Cara gigante', hp: 20, every: 2600, shots: 3, color: '#40e0ff', sway: 0 },
+    dragon: { name: 'Dragón', hp: 18, every: 1100, shots: 1, color: '#ff9f0a', sway: 1800 },
+  };
+  const bossKind = (name) => Object.keys(BOSSES)[[...name].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7) % 4];
+  function drawBoss(o, x, y, R, now) {
+    const t = now / 1000, k = o.type;
+    g.shadowColor = BOSSES[k].color; g.shadowBlur = 16; g.lineJoin = 'round';
+    if (k === 'fortress') g.drawImage(BOSS, x - R * 1.4, y - R * 1.4, R * 2.8, R * 2.8);
+    else if (k === 'snake') { // a chain of segments undulating behind the head
+      for (let i = 9; i >= 0; i--) {
+        const sx = x + i * R * 0.42, sy = y + Math.sin(t * 4 + i * 0.7) * R * 0.45, r = R * (0.5 - i * 0.03);
+        g.beginPath(); g.arc(sx, sy, r, 0, 7); g.fillStyle = i % 2 ? '#2e7d32' : '#66bb6a'; g.fill(); g.strokeStyle = '#0b3d0b'; g.lineWidth = 2; g.stroke();
+        if (!i) { // eyes and tongue
+          g.fillStyle = '#ffeb3b'; for (const e of [-1, 1]) { g.beginPath(); g.arc(sx - r * 0.35, sy + e * r * 0.35, r * 0.18, 0, 7); g.fill(); }
+          g.strokeStyle = '#ff1744'; g.lineWidth = 3; g.beginPath(); g.moveTo(sx - r, sy); g.lineTo(sx - r * 1.6, sy + Math.sin(t * 12) * r * 0.2); g.stroke();
+        }
+      }
+    } else if (k === 'face') { // a stone face whose mouth opens when it spits
+      const open = Math.max(0, 1 - (now - (o.spat || 0)) / 500);
+      g.beginPath(); g.ellipse(x, y, R * 1.15, R * 1.4, 0, 0, 7); g.fillStyle = '#8d8f99'; g.fill(); g.strokeStyle = '#3a3c44'; g.lineWidth = 3; g.stroke();
+      for (const e of [-1, 1]) {
+        g.beginPath(); g.ellipse(x + e * R * 0.45, y - R * 0.35, R * 0.26, R * 0.18, e * 0.3, 0, 7); g.fillStyle = '#111'; g.fill();
+        g.beginPath(); g.arc(x + e * R * 0.45, y - R * 0.35, R * 0.09, 0, 7); g.fillStyle = BOSSES.face.color; g.fill();
+      }
+      g.beginPath(); g.moveTo(x - R * 0.12, y - R * 0.05); g.lineTo(x, y + R * 0.25); g.lineTo(x + R * 0.12, y - R * 0.05); g.strokeStyle = '#3a3c44'; g.stroke();
+      g.beginPath(); g.ellipse(x, y + R * 0.7, R * 0.5, R * (0.1 + 0.3 * open), 0, 0, 7); g.fillStyle = open > 0.05 ? BOSSES.face.color : '#111'; g.fill(); g.stroke();
+    } else { // dragon: body, head and two flapping wings
+      const flap = Math.sin(t * 6) * 0.6;
+      for (const e of [-1, 1]) {
+        g.beginPath(); g.moveTo(x, y); g.lineTo(x + e * R * 1.9, y - R * (0.9 + flap)); g.lineTo(x + e * R * 1.5, y + R * 0.1); g.lineTo(x + e * R * 1.0, y - R * 0.2 * flap); g.lineTo(x + e * R * 0.6, y + R * 0.35); g.closePath();
+        g.fillStyle = '#b71c1c'; g.fill(); g.strokeStyle = '#4a0000'; g.lineWidth = 2; g.stroke();
+      }
+      g.beginPath(); g.ellipse(x, y + R * 0.1, R * 0.55, R * 0.8, 0, 0, 7); g.fillStyle = '#e53935'; g.fill(); g.stroke();
+      g.beginPath(); g.moveTo(x - R * 0.4, y - R * 0.6); g.lineTo(x, y - R * 1.3); g.lineTo(x + R * 0.4, y - R * 0.6); g.closePath(); g.fillStyle = '#c62828'; g.fill(); g.stroke(); // head
+      g.fillStyle = '#ffeb3b'; for (const e of [-1, 1]) { g.beginPath(); g.arc(x + e * R * 0.16, y - R * 0.85, R * 0.07, 0, 7); g.fill(); }
+    }
+  }
+
   // ---------- Starship arcade: random enemies to shoot, rings to fly through and coins to collect ----------
   // The objects live in the 3D world and are drawn on the HUD at their projected position and size.
   let arcade = false, objs = [], booms = [], score = 0, coins = 0;
@@ -193,7 +236,12 @@
     objs = objs.filter((o) => {
       C.Cartesian3.subtract(o.p, cam.positionWC, t);
       const d = C.Cartesian3.magnitude(t);
-      if (o.kind === 'boss') { if (d < o.size + slack && now - hit > 800 && !rolling) hurt(30); return d < 4e5; } // stays at its capital until left far behind
+      if (o.kind === 'boss') { // stays at its capital until left far behind
+        const sw = BOSSES[o.type].sway; // snakes and dragons weave around their post
+        if (sw) C.Cartesian3.add(o.base, C.Cartesian3.multiplyByScalar(o.east, Math.sin(now / 1300) * sw, t), o.p);
+        if (d < o.size + slack && now - hit > 800 && !rolling) hurt(30);
+        return d < 4e5;
+      }
       if (d < o.size * (o.kind === 'ring' ? 1 : 1.6) + slack) { // touched
         if (o.kind === 'enemy') { if (!rolling) hurt(25); }
         else if (o.kind === 'wall') hurt(20); // obstacles always hurt
@@ -216,11 +264,16 @@
     for (const o of objs) { // enemies fire at where the ship will be if it keeps flying straight
       const boss = o.kind === 'boss';
       if ((o.kind !== 'enemy' && !boss) || now < o.next) continue;
-      o.next = now + (boss ? 1200 + Math.random() * 800 : 4000 + Math.random() * 4000);
+      o.next = now + (boss ? BOSSES[o.type].every * (0.8 + Math.random() * 0.4) : 4000 + Math.random() * 4000);
       const d = C.Cartesian3.distance(o.p, cam.positionWC), speed = eff * 0.5 + 600, tt = d / (speed + eff);
       if (boss ? d > Math.max(reach() * 1.3, 6e4) : d > reach() * 1.3 || C.Cartesian3.dot(C.Cartesian3.subtract(o.p, cam.positionWC, t), cam.directionWC) < 0) continue;
       const target = C.Cartesian3.add(cam.positionWC, C.Cartesian3.multiplyByScalar(cam.directionWC, eff * tt, new C.Cartesian3()), new C.Cartesian3());
-      incoming.push({ p: C.Cartesian3.clone(o.p), vel: C.Cartesian3.multiplyByScalar(C.Cartesian3.subtract(target, o.p, t), 1 / tt, new C.Cartesian3()), t: now });
+      const n = boss ? BOSSES[o.type].shots : 1; // a volley fans out sideways
+      if (boss) o.spat = now;
+      for (let i = 0; i < n; i++) {
+        const aim = C.Cartesian3.add(target, C.Cartesian3.multiplyByScalar(cam.rightWC, (i - (n - 1) / 2) * d * 0.05, new C.Cartesian3()), new C.Cartesian3());
+        incoming.push({ p: C.Cartesian3.clone(o.p), vel: C.Cartesian3.multiplyByScalar(C.Cartesian3.subtract(aim, o.p, t), 1 / tt, new C.Cartesian3()), t: now, color: boss ? BOSSES[o.type].color : '#ff2df5' });
+      }
     }
     incoming = incoming.filter((b) => {
       C.Cartesian3.add(b.p, C.Cartesian3.multiplyByScalar(b.vel, dt, t), b.p);
@@ -244,9 +297,9 @@
       else if (o.kind === 'wall') { g.fillStyle = 'rgba(120,130,150,.85)'; g.strokeStyle = g.shadowColor = '#e5e5ea'; g.lineWidth = 2; g.rect(q.x - pr, q.y - pr * 0.6, pr * 2, pr * 1.2); g.fill(); g.stroke(); }
       else if (o.kind === 'boss') {
         const R = Math.max(14, pr);
-        g.shadowColor = '#ff2df5'; g.shadowBlur = 16; g.drawImage(BOSS, q.x - R * 1.4, q.y - R * 1.4, R * 2.8, R * 2.8);
-        g.shadowBlur = 0; g.fillStyle = '#300'; g.fillRect(q.x - 40, q.y - R - 16, 80, 6); g.fillStyle = '#ff453a'; g.fillRect(q.x - 40, q.y - R - 16, (80 * o.hp) / o.max, 6);
-        g.fillStyle = '#fff'; g.textAlign = 'center'; g.font = '600 12px sans-serif'; g.fillText(T('Jefe de') + ' ' + o.cap.name, q.x, q.y - R - 22);
+        drawBoss(o, q.x, q.y, R, now);
+        g.shadowBlur = 0; g.fillStyle = '#300'; g.fillRect(q.x - 40, q.y - R * 1.5 - 16, 80, 6); g.fillStyle = '#ff453a'; g.fillRect(q.x - 40, q.y - R * 1.5 - 16, (80 * o.hp) / o.max, 6); // its life
+        g.fillStyle = '#fff'; g.textAlign = 'center'; g.font = '600 12px sans-serif'; g.fillText(`${T(BOSSES[o.type].name)} · ${o.cap.name} · ${o.hp}/${o.max}`, q.x, q.y - R * 1.5 - 22);
       }
       else { const R = Math.max(10, pr * 1.6); g.shadowColor = '#ff453a'; g.drawImage(ENEMY[o.look || 0], q.x - R, q.y - R, R * 2, R * 2); } // enemy craft
       g.restore();
@@ -260,7 +313,7 @@
     for (const b of incoming) { // enemy shots
       const q = toWin(scene, b.p);
       if (!q) continue;
-      g.save(); g.fillStyle = g.shadowColor = '#ff2df5'; g.shadowBlur = 10; g.beginPath(); g.arc(q.x, q.y, Math.max(3, (60 / C.Cartesian3.distance(b.p, viewer.camera.positionWC)) * f), 0, 7); g.fill(); g.restore();
+      g.save(); g.fillStyle = g.shadowColor = b.color || '#ff2df5'; g.shadowBlur = 10; g.beginPath(); g.arc(q.x, q.y, Math.max(3, (60 / C.Cartesian3.distance(b.p, viewer.camera.positionWC)) * f), 0, 7); g.fill(); g.restore();
     }
     const fade = (t0, ms, color) => { const k = (now - t0) / ms; if (k < 1) { g.save(); g.globalAlpha = 0.5 * (1 - k); g.fillStyle = color; g.fillRect(0, 0, w, h); g.restore(); } };
     fade(flash, 450, '#fff'); fade(hit, 250, broke === hit ? '#0a84ff' : '#f00'); // bomb / shield broken / damage
@@ -291,7 +344,8 @@
     if (A.ship) OGE.minimap.zoom(99); // the starship starts with the minimap zoomed all the way in
     arcade = !!A.ship && !!useArcade; hp = 100; bombs = 2; incoming = []; flash = hit = 0; shields = 0;
     run = { flags: 0, caps: 0, bosses: 0 };
-    music(arcade); objs = []; booms = []; score = coins = 0;
+    music(arcade);
+    if (arcade && !localStorage.getItem('oge.tutorial')) { localStorage.setItem('oge.tutorial', '1'); showRules(); } // shown once on its own, then with I objs = []; booms = []; score = coins = 0;
     const la = OGE.lookAt(), c = la ? la.carto : viewer.camera.positionCartographic; // above the look-at point, not from orbit
     const ground = scene.globe.getHeight(c) || 0;
     s = { lon: c.longitude, lat: c.latitude, alt: ground + A.agl, heading: viewer.camera.heading, pitch: 0, roll: 0, v: A.v0, vs: 0,
@@ -346,7 +400,8 @@
       const d = C.Cartesian3.distance(c.p, cam);
       if (!arcade) { if (d < R) collect(c); continue; }
       if (d > 2e5 || objs.some((o) => o.cap === c)) continue;
-      objs.push({ kind: 'boss', cap: c, p: C.Cartesian3.fromDegrees(c.lon, c.lat, 3000), size: 700, hp: 15, max: 15, next: performance.now() + 2500 });
+      const type = bossKind(c.name), B = BOSSES[type], base = C.Cartesian3.fromDegrees(c.lon, c.lat, 3000);
+      objs.push({ kind: 'boss', type, cap: c, base, p: C.Cartesian3.clone(base), east: C.Cartesian3.normalize(C.Cartesian3.cross(C.Cartesian3.UNIT_Z, base, new C.Cartesian3()), new C.Cartesian3()), size: 700, hp: B.hp, max: B.hp, next: performance.now() + 2500 });
       OGE.toast(`⚠ Jefe de ${c.name}: derrótalo para conseguir la capital.`);
       beep(200, 500, 0.6);
     }
@@ -675,7 +730,10 @@
   setTurn(TURNS.includes(turn) ? turn : 3);
   $('flyScores').onclick = () => { paused = true; showScores(); };
   $('flyHelp').onclick = () => { $('flyKeys').hidden = !$('flyKeys').hidden; $('flyRules').hidden = true; };
-  const showRules = () => { $('flyRules').hidden = !$('flyRules').hidden; $('flyKeys').hidden = true; }; // how the game is played
+  const showRules = () => { // the tutorial; the game waits while it is open
+    $('flyRules').hidden = !$('flyRules').hidden; $('flyKeys').hidden = true;
+    if (on) { paused = !$('flyRules').hidden; last = performance.now(); }
+  };
   $('flyRulesBtn').onclick = showRules;
   for (const [id, key] of [['flyUp', 'pageup'], ['flyDown', 'pagedown'], ['flyLeft', 'a'], ['flyRight', 'd']]) { // held down like the keys
     const b = $(id);

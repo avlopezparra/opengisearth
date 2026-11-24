@@ -135,3 +135,5 @@ body.flying #wxBar { display: none !important; }
 #pIcons { display: flex; flex-wrap: wrap; gap: 3px; max-height: 132px; overflow: auto; padding: 4px; background: #1b1b1f; border-radius: 4px; margin-bottom: 6px; }
 #pIcons button { width: 30px; height: 30px; padding: 0; background: #33343b center / 24px 24px no-repeat; border-radius: 4px; }
 #pIcons button.active { outline: 2px solid #ffd60a; background-color: #55565f; }
+#flyRules { max-width: 520px; max-height: 70vh; overflow: auto; list-style: none; padding-left: 14px; }
+#flyRules li.h { font-weight: 700; color: #ffd60a; margin-top: 6px; }
