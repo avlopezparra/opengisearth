@@ -207,7 +207,7 @@
       for (const f of shp.combine([shp.parseShp(s), shp.parseDbf(d)]).features) {
         if (!f.geometry || +f.properties.adm0cap !== 1) continue;
         const position = C.Cartesian3.fromDegrees(f.geometry.coordinates[0], f.geometry.coordinates[1]), common = { position, scale: 0.5, disableDepthTestDistance: Number.POSITIVE_INFINITY };
-        bills.add({ ...common, image: starImage, distanceDisplayCondition: new C.DistanceDisplayCondition(0, 2.5e7) });
+        bills.add({ ...common, scale: 0.32, image: starImage, distanceDisplayCondition: new C.DistanceDisplayCondition(0, 2.5e7) });
         bills.add({ ...common, image: OGE.textImage(clean(f.properties.name), '600 12px sans-serif', C.Color.WHITE), pixelOffset: new C.Cartesian2(0, 15), distanceDisplayCondition: new C.DistanceDisplayCondition(0, 5e6) }); // names when zooming in
       }
       const occluder = new C.EllipsoidalOccluder(C.Ellipsoid.WGS84, viewer.camera.positionWC);

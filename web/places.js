@@ -73,6 +73,45 @@
     if (v && v.name.trim()) { OGE.setTarget(geo.addGroup(v.name.trim())); later(); }
   };
 
+  // ---------- Icon library of a placemark (own drawings and system symbols; Google Earth's icons map to these) ----------
+  const EMOJI = '🍴 ☕ 🍸 🍔 🚹 🚺 ♿ 🅿️ 🚕 🚌 🚚 🚆 ✈️ ⛴️ 🚁 🚇 🚊 ℹ️ ❓ 🚩 🌧️ 🌊 ❄️ ⚓ 🎣 ⛵ 🏊 ⛷️ 🌲 🔥 🧺 ⛺ 🏠 🚻 🥾 🚴 🏍️ 🏇 ⚽ ⛳ 🛍️ 🎬 🏪 🛒 🎭 🏡 📺 🔧 ⛽ 🏘️ 💇 💲 💶 💴 🚒 🏥 🛏️ 📞 ⚠️ 📈 ✉️ 👮 ☀️ ⛅ 🌋 📷 🎥 ⛰️ 🏛️ ⛪ 🕌 🏰 🎓 🏭 🌉'.split(' ');
+  const ICONS = ['pin', 'pushpin', 'dot', 'paddle:', ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ', ...'1 2 3 4 5 6 7 8 9 10'.split(' '), 'circle', 'diamond', 'square', 'star'].map((x, i) => (i < 4 ? x : 'paddle:' + x))
+    .concat(['circle', 'square', 'diamond', 'star', 'triangle', 'target', 'cross', 'arrow'].map((x) => 'shape:' + x), EMOJI.map((x) => 'emoji:' + x));
+  // Icons of Google Earth's own library (maps.google.com/mapfiles/kml/…) -> the open equivalent.
+  const GCOL = { ylw: '#ffd400', blue: '#1e88e5', blu: '#1e88e5', grn: '#43a047', ltblu: '#4fc3f7', pink: '#ec407a', purple: '#8e24aa', red: '#e53935', wht: '#ffffff', orange: '#fb8c00' };
+  const GSHAPE = { dining: '🍴', coffee: '☕', bars: '🍸', snack_bar: '🍔', man: '🚹', woman: '🚺', wheel_chair_accessible: '♿', parking_lot: '🅿️', cabs: '🚕', bus: '🚌', truck: '🚚', rail: '🚆', airports: '✈️', ferry: '⛴️', heliport: '🚁',
+    subway: '🚇', tram: '🚊', info: 'ℹ️', 'info-i': 'ℹ️', info_circle: 'ℹ️', flag: '🚩', rainy: '🌧️', water: '🌊', snowflake_simple: '❄️', marina: '⚓', fishing: '🎣', sailing: '⛵', swimming: '🏊', ski: '⛷️', parks: '🌲', campfire: '🔥',
+    picnic: '🧺', campground: '⛺', ranger_station: '🏠', toilets: '🚻', hiker: '🥾', trail: '🥾', cycling: '🚴', motorcycling: '🏍️', horsebackriding: '🏇', play: '⚽', golf: '⛳', shopping: '🛍️', movies: '🎬', convenience: '🏪',
+    grocery: '🛒', arts: '🎭', homegardenbusiness: '🏡', electronics: '📺', mechanic: '🔧', gas_stations: '⛽', realestate: '🏘️', salon: '💇', dollar: '💲', euro: '💶', yen: '💴', firedept: '🚒', hospitals: '🏥', lodging: '🛏️',
+    phone: '📞', caution: '⚠️', earthquake: '📈', post_office: '✉️', police: '👮', sunny: '☀️', partly_cloudy: '⛅', volcano: '🌋', camera: '📷', webcam: '🎥', mountains: '⛰️', forbidden: '🚫' };
+  const GFORM = { placemark_circle: 'circle', placemark_square: 'square', star: 'star', target: 'target', triangle: 'triangle', donut: 'circle', 'open-diamond': 'diamond', square: 'square', 'cross-hairs': 'cross', arrow: 'arrow', shaded_dot: 'circle', polygon: 'diamond' };
+  function googleIcon(u) {
+    const m = /mapfiles\/kml\/(pushpin|paddle|shapes|pal\d)\/([\w-]+?)(?:_maps|-lv)?\.png/i.exec(u);
+    if (!m) return /maps\.google\.|gstatic\.com/.test(u) ? { marker: 'pin', color: '#e53935' } : null; // other hosts keep their own image
+    const [, dir, n] = m, p = n.split('-');
+    if (dir === 'pushpin') return { marker: 'pushpin', color: GCOL[p[0]] || '#ffd400' };
+    if (dir === 'paddle') return p.length === 1 ? { marker: 'paddle:' + (GCOL[n] ? '' : n.toUpperCase()), color: GCOL[n] || '#e53935' }
+      : { marker: 'paddle:' + ({ circle: 'circle', diamond: 'diamond', square: 'square', stars: 'star' }[p[1]] || ''), color: GCOL[p[0]] || '#e53935' };
+    return GSHAPE[n] ? { marker: 'emoji:' + GSHAPE[n], color: '#ffffff' } : GFORM[n] ? { marker: 'shape:' + GFORM[n], color: '#ffd400' } : { marker: 'pin', color: '#e53935' };
+  }
+  function openIcons(ds) { // called on every KML that is opened
+    for (const e of ds.entities.values) {
+      const img = e.billboard && e.billboard.image && e.billboard.image.getValue(C.JulianDate.now()), st = img && googleIcon(String(img.url || img));
+      if (st) geo.setStyle(e, { ...geo.getStyle(e), ...st, scale: 1 });
+    }
+  }
+  let mk = 'pin'; // icon chosen in the dialog
+  function drawIcons() {
+    const color = $('pColor').value;
+    $('pIcons').replaceChildren(...ICONS.map((id) => {
+      const b = Object.assign(document.createElement('button'), { type: 'button', className: id === mk ? 'active' : '', title: id });
+      if (id === 'dot') b.textContent = '●'; else b.style.backgroundImage = `url(${geo.icon(id, color).toDataURL()})`;
+      b.onclick = () => { mk = id; $('pIconUrl').value = ''; drawIcons(); $('pIcons').dispatchEvent(new Event('input', { bubbles: true })); };
+      return b;
+    }));
+  }
+  $('pColor').addEventListener('input', drawIcons);
+
   // ---------- Properties (like Earth's dialog): name, description and style, with preview ----------
   const dlg = $('props'), form = dlg.firstElementChild;
   function apply(e, v) {
@@ -93,14 +132,14 @@
       $('rStroke').hidden = !lineLike; $('rFill').hidden = k !== 'polygon'; $('rColor').hidden = k !== 'point'; $('rImg').hidden = k !== 'image';
       if (lineLike) { $('pStroke').value = s.stroke; $('pWidth').value = s.width; }
       if (k === 'polygon') { $('pFill').value = s.fill; $('pFillOp').value = Math.round(s.fillOpacity * 100); }
-      if (k === 'point') $('pColor').value = s.color;
+      if (k === 'point') { $('pColor').value = s.color; $('pScale').value = s.scale || 1; const u = (s.marker || '').startsWith('url:'); $('pIconUrl').value = u ? s.marker.slice(4) : ''; mk = u ? 'pin' : s.marker || 'pin'; drawIcons(); }
       if (k === 'image') { $('pUrl').value = /^data:/.test(s.url) ? '' : s.url; $('pOpacity').value = Math.round(s.opacity * 100); $('pRot').value = s.rotation; }
       const read = () => ({ name: $('pName').value, desc: $('pDesc').value, style: { ...s,
         ...(lineLike ? { stroke: $('pStroke').value, width: Math.max(0, +$('pWidth').value || 0) } : {}),
         ...(k === 'polygon' ? { fill: $('pFill').value, fillOpacity: $('pFillOp').value / 100 } : {}),
-        ...(k === 'point' ? { color: $('pColor').value } : {}),
+        ...(k === 'point' ? { color: $('pColor').value, scale: Math.max(0.2, +$('pScale').value || 1), marker: $('pIconUrl').value.trim() ? 'url:' + $('pIconUrl').value.trim() : mk } : {}),
         ...(k === 'image' ? { url: $('pUrl').value.trim() || s.url, opacity: $('pOpacity').value / 100, rotation: +$('pRot').value || 0 } : {}) } });
-      form.oninput = (ev) => { if (ev.target.id !== 'pUrl') apply(e, read()); }; // the URL is applied on accept, not on every keystroke
+      form.oninput = (ev) => { if (ev.target.id !== 'pUrl' && ev.target.id !== 'pIconUrl') apply(e, read()); }; // the URL is applied on accept, not on every keystroke
       let settled = false;
       const finish = (okd) => { // on the submit or cancel itself, without relying on the "close" event
         if (settled) return;
@@ -179,6 +218,7 @@
     if (ext === 'kml' || ext === 'kmz') {
       ds = await C.KmlDataSource.load(file, { camera: viewer.scene.camera, canvas: viewer.scene.canvas, clampToGround: true });
       ds.name = ds.name || base;
+      openIcons(ds);
       for (const e of ds.entities.values) { // everything at height 0: snapping and topology compare positions
         const k = geo.kind(e);
         if (k && k !== 'image') geo.setRings(e, geo.rings(e).map((r) => r.map(geo.flat)));
@@ -294,6 +334,7 @@
           else ds = geo.addGroup(r.name, r.features);
         } else if (r.blob) {
           const kml = await C.KmlDataSource.load(r.blob, { camera: viewer.scene.camera, canvas: viewer.scene.canvas, clampToGround: true });
+          openIcons(kml);
           if (r.name === OGE.mine.name) { // previous format: drawings were saved as KMZ
             ds = OGE.mine;
             for (const f of kml.entities.values.map(geo.toFeature).filter(Boolean)) for (const o of geo.fromFeature(f)) ds.entities.add(o);

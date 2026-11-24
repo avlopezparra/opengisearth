@@ -12,13 +12,54 @@
   const css = (hexColor, a = 1) => C.Color.fromCssColorString(hexColor || '#ffffff').withAlpha(a);
   const hex = (c) => c.withAlpha(1).toCssHexString();
 
-  // White marker that is tinted with billboard.color.
-  const PIN = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="36"><path d="M12 1C6 1 1 6 1 12c0 9 11 23 11 23s11-14 11-23C23 6 18 1 12 1z" fill="#fff" stroke="#000" stroke-opacity=".55"/><circle cx="12" cy="12" r="4.5" fill="#000" fill-opacity=".45"/></svg>');
-  const DEF = { stroke: '#ffd400', strokeOpacity: 1, width: 3, fill: '#ffd400', fillOpacity: 0.35, color: '#e53935', marker: 'pin', opacity: 0.7, rotation: 0 };
+  const DEF = { stroke: '#ffd400', strokeOpacity: 1, width: 3, fill: '#ffd400', fillOpacity: 0.35, color: '#e53935', marker: 'pin', scale: 1, opacity: 0.7, rotation: 0 };
   const NEAR = 5e5; // under 500 km it is not clipped against the terrain; from afar the globe does hide what is on the other side
   const labelStyle = (text) => ({ text, font: '600 14px sans-serif', fillColor: C.Color.WHITE, outlineColor: C.Color.BLACK, outlineWidth: 2,
     style: C.LabelStyle.FILL_AND_OUTLINE, heightReference: C.HeightReference.CLAMP_TO_GROUND, disableDepthTestDistance: NEAR });
   const pinLabel = (text) => ({ ...labelStyle(text), pixelOffset: new C.Cartesian2(0, -44) });
+
+  // ---------- Placemark icons: drawn here (open designs), in the placemark's color ----------
+  // Ids: 'pin' · 'pushpin' · 'paddle:A' (any short text, or circle/diamond/square/star) · 'shape:star' · 'emoji:🍴' · 'url:https://…' · 'dot'
+  const iconCache = new Map();
+  function icon(id, color) {
+    const key = id + '|' + color;
+    if (iconCache.has(key)) return iconCache.get(key);
+    const cv = Object.assign(document.createElement('canvas'), { width: 64, height: 64 }), g = cv.getContext('2d'), [type, arg = ''] = id.split(/:(.*)/);
+    g.lineJoin = 'round'; g.lineWidth = 2.5; g.strokeStyle = 'rgba(0,0,0,.75)'; g.fillStyle = color; g.textAlign = 'center'; g.textBaseline = 'middle';
+    const done = () => { g.fill(); g.stroke(); };
+    if (type === 'emoji') { g.font = '46px sans-serif'; g.fillText(arg, 32, 35); }
+    else if (type === 'shape') {
+      g.beginPath();
+      if (arg === 'square') g.rect(11, 11, 42, 42);
+      else if (arg === 'diamond') { g.moveTo(32, 7); g.lineTo(57, 32); g.lineTo(32, 57); g.lineTo(7, 32); g.closePath(); }
+      else if (arg === 'triangle') { g.moveTo(32, 8); g.lineTo(58, 54); g.lineTo(6, 54); g.closePath(); }
+      else if (arg === 'star') { for (let i = 0; i < 10; i++) { const r = i % 2 ? 11 : 27, a = (i * Math.PI) / 5 - Math.PI / 2; g.lineTo(32 + r * Math.cos(a), 34 + r * Math.sin(a)); } g.closePath(); }
+      else if (arg === 'arrow') { g.moveTo(32, 5); g.lineTo(54, 30); g.lineTo(41, 30); g.lineTo(41, 58); g.lineTo(23, 58); g.lineTo(23, 30); g.lineTo(10, 30); g.closePath(); }
+      else g.arc(32, 32, 23, 0, 7);
+      done();
+      if (arg === 'target') { g.fillStyle = '#fff'; g.beginPath(); g.arc(32, 32, 14, 0, 7); done(); g.fillStyle = color; g.beginPath(); g.arc(32, 32, 6, 0, 7); done(); }
+      if (arg === 'cross') { g.strokeStyle = '#fff'; g.lineWidth = 5; g.beginPath(); g.moveTo(32, 16); g.lineTo(32, 48); g.moveTo(16, 32); g.lineTo(48, 32); g.stroke(); }
+    } else if (type === 'pushpin') { // a tilted pin: needle and round head
+      g.save(); g.strokeStyle = '#555'; g.lineWidth = 3; g.beginPath(); g.moveTo(24, 62); g.lineTo(36, 34); g.stroke(); g.restore();
+      g.beginPath(); g.ellipse(38, 30, 15, 7, -0.35, 0, 7); done();
+      g.beginPath(); g.arc(41, 19, 13, 0, 7); done();
+      g.fillStyle = 'rgba(255,255,255,.55)'; g.beginPath(); g.arc(37, 14, 4.5, 0, 7); g.fill();
+    } else { // teardrop: 'pin' (white dot) or 'paddle' (a letter, number or small shape)
+      g.beginPath(); g.moveTo(32, 62); g.bezierCurveTo(6, 36, 9, 3, 32, 3); g.bezierCurveTo(55, 3, 58, 36, 32, 62); done();
+      const glyph = { circle: '●', diamond: '◆', square: '■', star: '★' }[arg] ?? arg;
+      if (type === 'paddle' && glyph) { g.fillStyle = '#111'; g.font = `700 ${glyph.length > 1 ? 19 : 25}px sans-serif`; g.fillText(glyph, 32, 27); }
+      else { g.fillStyle = '#fff'; g.beginPath(); g.arc(32, 25, 8, 0, 7); g.fill(); }
+    }
+    cv._mk = { marker: id, color }; // getStyle reads the icon back from here
+    iconCache.set(key, cv);
+    return cv;
+  }
+  // Billboard options of a point style ({ marker, color, scale }).
+  const pinGraphics = (st) => {
+    const m = st.marker || 'pin', url = m.startsWith('url:'), bottom = /^(pin|pushpin|paddle)/.test(m);
+    return { image: url ? m.slice(4) : icon(m, st.color), scale: (url ? 1 : 0.5) * (st.scale || 1), verticalOrigin: bottom ? C.VerticalOrigin.BOTTOM : C.VerticalOrigin.CENTER,
+      heightReference: C.HeightReference.CLAMP_TO_GROUND, disableDepthTestDistance: NEAR };
+  };
 
   // ---------- Type and geometry of an entity ----------
   const isImage = (e) => !!e.rectangle && e.rectangle.material instanceof C.ImageMaterialProperty;
@@ -62,8 +103,10 @@
       const c = col(e.polyline.material, DEF.stroke);
       Object.assign(s, { stroke: hex(c), strokeOpacity: c.alpha, width: val(e.polyline.width, 2) });
     } else if (k === 'point') {
-      s.marker = e.billboard ? 'pin' : 'dot';
-      s.color = hex(val(e.billboard ? e.billboard.color : e.point.color, C.Color.WHITE));
+      const img = e.billboard && val(e.billboard.image), mk = img && img._mk, url = typeof img === 'string' && !img.startsWith('data:image/svg') ? img : null;
+      s.marker = !e.billboard ? 'dot' : mk ? mk.marker : url ? 'url:' + url : 'pin';
+      s.color = mk ? mk.color : hex(val(e.billboard ? e.billboard.color : e.point.color, C.Color.WHITE));
+      s.scale = e.billboard ? +(val(e.billboard.scale, 1) / (url ? 1 : mk ? 0.5 : 1)).toFixed(2) : 1;
     } else if (k === 'image') {
       const m = val(e.rectangle.material) || {};
       s.opacity = m.color ? m.color.alpha : 1;
@@ -83,7 +126,10 @@
     } else if (k === 'line') {
       e.polyline.material = css(s.stroke, s.strokeOpacity); e.polyline.width = s.width || 1;
     } else if (k === 'point') {
-      if (e.billboard) e.billboard.color = css(s.color); else e.point.color = css(s.color);
+      if (s.marker === 'dot') { // a plain dot is a point graphic; every other icon is a billboard
+        e.billboard = undefined;
+        e.point = new C.PointGraphics({ pixelSize: 8, color: css(s.color), outlineColor: C.Color.BLACK, outlineWidth: 1, heightReference: C.HeightReference.CLAMP_TO_GROUND, disableDepthTestDistance: NEAR });
+      } else { e.point = undefined; e.billboard = new C.BillboardGraphics(pinGraphics(s)); }
     } else if (k === 'image') {
       const color = C.Color.WHITE.withAlpha(s.opacity ?? 1);
       if (s.url && s.url !== getStyle(e).url) e.rectangle.material = new C.ImageMaterialProperty({ image: s.url, transparent: true, color });
@@ -171,8 +217,7 @@
         const text = o.label ?? common.name;
         if (st.marker === 'dot') return { ...common, position, point: { pixelSize: 8, color: css(st.color), outlineColor: C.Color.BLACK, outlineWidth: 1,
           heightReference: C.HeightReference.CLAMP_TO_GROUND, disableDepthTestDistance: NEAR }, label: o.label ? labelStyle(o.label) : undefined };
-        return { ...common, position, billboard: { image: PIN, color: css(st.color), verticalOrigin: C.VerticalOrigin.BOTTOM,
-          heightReference: C.HeightReference.CLAMP_TO_GROUND, disableDepthTestDistance: NEAR }, label: text ? pinLabel(text) : undefined };
+        return { ...common, position, billboard: pinGraphics(st), label: text ? pinLabel(text) : undefined };
       }
       const labeled = (ps) => (o.label ? { position: center(ps), label: labelStyle(o.label) } : {});
       if (g.type === 'LineString') {
@@ -258,5 +303,5 @@
   };
 
   OGE.geo = { toLL, fromLL, flat, kind, rings, setRings, sphere, center, getStyle, setStyle, toFeature, fromFeature, parts,
-    groups, addGroup, features, add, exportFC, wkt, pinLabel, labelStyle, nearest, sliceLine, DEF };
+    groups, addGroup, features, add, exportFC, wkt, pinLabel, labelStyle, nearest, sliceLine, DEF, icon };
 })();

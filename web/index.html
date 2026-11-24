@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OpenGISEarth</title>
-<script src="i18n_en.js?v=202611240334"></script>
-<script src="i18n.js?v=202611240334"></script>
+<script src="i18n_en.js?v=202611240346"></script>
+<script src="i18n.js?v=202611240346"></script>
 <script src="cesium/Cesium.js"></script>
 <link href="cesium/Widgets/widgets.css" rel="stylesheet">
-<link href="style.css?v=202611240334" rel="stylesheet">
+<link href="style.css?v=202611240346" rel="stylesheet">
 </head>
 <body>
 <aside id="panel">
@@ -72,7 +72,8 @@
   <div id="mmBox"><canvas id="minimap" width="240" height="120" title="Minimapa: clic para ir a ese lugar, rueda del mouse para acercar o alejar"></canvas><button id="mmIn" title="Acercar el minimapa (+)">+</button><button id="mmOut" title="Alejar el minimapa (−)">−</button><button id="mmMin" title="Minimizar o mostrar el minimapa (M)">▾</button></div>
     <canvas id="hud" hidden></canvas>
     <button id="compass" title="Brújula: la aguja roja marca el norte. Clic para poner el norte arriba."><span>N</span></button>
-    <div id="flyBtns"><div><button id="flyLeft" title="Mantén pulsado para doblar a la izquierda (A)">◀ A</button><button id="flyRight" title="Mantén pulsado para doblar a la derecha (D)">D ▶</button></div><button id="flyUp" title="Mantén pulsado para aumentar la velocidad (E o RePág)">▲ Acelerar (E)</button><button id="flyDown" title="Mantén pulsado para disminuir la velocidad (Q o AvPág)">▼ Frenar (Q)</button><button id="flyWarp" title="Multiplica la velocidad de avance (T)">Turbo ×1 ▲ (T)</button><button id="flyWarpDown" title="Baja un nivel de turbo (G)">Turbo ▼ (G)</button><button id="flyTurn" title="Cambia la rapidez de giro de A y D (N)">Giro ×1 (N)</button><button id="flyMute" title="Silencia o activa la música y los efectos (P)">🔊 Sonido (P)</button><button id="flyHelp">? Controles (K)</button><button id="flyScores">🏆 Puntajes</button></div>
+    <div id="flyBtns"><div><button id="flyLeft" title="Mantén pulsado para doblar a la izquierda (A)">◀ A</button><button id="flyRight" title="Mantén pulsado para doblar a la derecha (D)">D ▶</button></div><button id="flyUp" title="Mantén pulsado para aumentar la velocidad (E o RePág)">▲ Acelerar (E)</button><button id="flyDown" title="Mantén pulsado para disminuir la velocidad (Q o AvPág)">▼ Frenar (Q)</button><button id="flyWarp" title="Multiplica la velocidad de avance (T)">Turbo ×1 ▲ (T)</button><button id="flyWarpDown" title="Baja un nivel de turbo (G)">Turbo ▼ (G)</button><button id="flyTurn" title="Cambia la rapidez de giro de A y D (N)">Giro ×1 (N)</button><button id="flyMute" title="Silencia o activa la música y los efectos (P)">🔊 Sonido (P)</button><button id="flyHelp">? Controles (K)</button><button id="flyRulesBtn">📖 Instrucciones (I)</button><button id="flyScores">🏆 Puntajes</button></div>
+    <ul id="flyRules" hidden><li>Enemigos: dispárales (X o clic) y ganas 100 puntos; chocarlos quita 25 de vida.</li><li>Aros: atraviésalos (+50 puntos y reparan 10); dejarlos pasar quita 5.</li><li>Monedas: +10 puntos; cada 25 ganas una bomba.</li><li>Corazón: +25 de vida. Escudo: absorbe un golpe (hasta 3). 💣: una bomba extra.</li><li>Rectángulos grises: obstáculos, quitan 20. Tocar el suelo quita 15.</li><li>Jefes: custodian cada capital; 15 disparos los derrotan (+1000 y ganas la capital).</li><li>Banderas: pasa cerca de la bandera de cada región para coleccionarla; países, continentes y el mundo dan logros.</li><li>El tonel (R) desvía disparos y choques; B lanza una bomba.</li></ul>
     <ul id="flyKeys" hidden><li>W / S o ↑ ↓: bajar / subir la nariz</li><li>A / D: doblar a izquierda / derecha · N: girar más rápido (×2, ×3, ×5)</li><li>← →: inclinar las alas (alabeo)</li><li>E / Q: acelerar / frenar</li><li>T / G: subir / bajar el turbo (×2 … ×100)</li><li>X o clic derecho: disparar (Starship)</li><li>R: tonel · V: rizo completo · U: media vuelta (Starship)</li><li>B: bomba, destruye a los enemigos cercanos (Starship)</li><li>+ / −: acercar o alejar el minimapa · M: minimizarlo</li><li>P: silenciar o activar el sonido</li><li>L: tren de aterrizaje · F: flaps · B: frenos</li><li>Clic: tomar o soltar la palanca con el mouse</li><li>Espacio: pausa · H: ocultar el HUD · K: esta ayuda · Esc: salir</li></ul>
   <button id="sideBtn" title="Mostrar u ocultar el panel lateral">☰</button>
   <nav id="tools" class="bar" aria-label="Herramientas">
@@ -139,7 +140,9 @@
     <label>Descripción<textarea id="pDesc" rows="4" placeholder="Texto que aparece al hacer clic (admite HTML)"></textarea></label>
     <div id="rStroke" class="cols"><label>Color de línea<input id="pStroke" type="color"></label><label>Ancho (px; 0 = sin borde)<input id="pWidth" type="number" min="0" max="30" step="0.5"></label></div>
     <div id="rFill" class="cols"><label>Color de relleno<input id="pFill" type="color"></label><label>Opacidad del relleno<input id="pFillOp" type="range" min="0" max="100"></label></div>
-    <div id="rColor"><label>Color de la marca<input id="pColor" type="color"></label></div>
+    <div id="rColor"><div class="cols"><label>Color de la marca<input id="pColor" type="color"></label><label>Tamaño del icono<input id="pScale" type="number" min="0.2" max="5" step="0.1" value="1"></label></div>
+      <div>Icono</div><div id="pIcons"></div>
+      <label>Icono propio (URL de una imagen; vacío = usar la biblioteca)<input id="pIconUrl" placeholder="https://…"></label></div>
     <div id="rImg">
       <label>Imagen (URL; vacío = conservar la actual)<input id="pUrl" placeholder="https://…"></label>
       <div class="cols"><label>Opacidad<input id="pOpacity" type="range" min="0" max="100"></label><label>Rotación (°)<input id="pRot" type="number" step="1"></label></div>
@@ -159,21 +162,21 @@
 <script src="vendor/shpwrite.js"></script>
 <script src="vendor/sql-wasm.js"></script>
 <script>document.getElementById("langSel").value = OGE_LANG;</script>
-<script src="app.js?v=202611240334"></script>
-<script src="geo.js?v=202611240334"></script>
-<script src="draw.js?v=202611240334"></script>
-<script src="edit.js?v=202611240334"></script>
-<script src="places.js?v=202611240334"></script>
-<script src="terrain.js?v=202611240334"></script>
-<script src="borders.js?v=202611240334"></script>
-<script src="osmvector.js?v=202611240334"></script>
-<script src="layers.js?v=202611240334"></script>
-<script src="tools.js?v=202611240334"></script>
-<script src="db.js?v=202611240334"></script>
-<script src="print.js?v=202611240334"></script>
-<script src="relief.js?v=202611240334"></script>
-<script src="theme.js?v=202611240334"></script>
-<script src="flightsim.js?v=202611240334"></script>
-<script src="google3d.js?v=202611240334"></script>
+<script src="app.js?v=202611240346"></script>
+<script src="geo.js?v=202611240346"></script>
+<script src="draw.js?v=202611240346"></script>
+<script src="edit.js?v=202611240346"></script>
+<script src="places.js?v=202611240346"></script>
+<script src="terrain.js?v=202611240346"></script>
+<script src="borders.js?v=202611240346"></script>
+<script src="osmvector.js?v=202611240346"></script>
+<script src="layers.js?v=202611240346"></script>
+<script src="tools.js?v=202611240346"></script>
+<script src="db.js?v=202611240346"></script>
+<script src="print.js?v=202611240346"></script>
+<script src="relief.js?v=202611240346"></script>
+<script src="theme.js?v=202611240346"></script>
+<script src="flightsim.js?v=202611240346"></script>
+<script src="google3d.js?v=202611240346"></script>
 </body>
 </html>
