@@ -10,7 +10,7 @@
   function fillLayer(items) {
     const scheme = new C.GeographicTilingScheme(), TS = 256, deg = C.Math.toDegrees, polys = []; // one entry per polygon: { box, rings, color }
     for (const [g, n] of items) for (const rings of !g ? [] : g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : []) {
-      if (rings[0].length > 3) polys.push({ box: turf.bbox({ type: 'Polygon', coordinates: rings }), rings, color: TINTS[Math.abs(n) % TINTS.length] });
+      if (rings[0].length > 3) polys.push({ box: turf.bbox({ type: 'Polygon', coordinates: rings }), rings, color: typeof n === 'string' ? n : TINTS[Math.abs(n) % TINTS.length] }); // a color number or a CSS color
     }
     const layer = viewer.imageryLayers.addImageryProvider({
       tilingScheme: scheme, rectangle: scheme.rectangle, tileWidth: TS, tileHeight: TS, minimumLevel: 0, maximumLevel: 12,
@@ -60,12 +60,16 @@
     sync();
   }
   const buf = (path) => fetch(FORK + path).then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); });
-  lazyFill($('fillCountries'), async () => { // MAPCOLOR7 gives neighbors different colors
-    const [s, d] = await Promise.all([buf('50m_cultural/ne_50m_admin_0_countries.shp'), buf('50m_cultural/ne_50m_admin_0_countries.dbf')]);
-    const fs = shp.combine([shp.parseShp(s), shp.parseDbf(d)]).features, a3 = (f) => String(f.properties.ADM0_A3 ?? '').replace(/\0/g, '').trim(), arg = fs.find((f) => a3(f) === 'ARG');
-    const out = fs.map((f) => [f.geometry, (OGE.malvinasAR && arg && ['FLK', 'SGS'].includes(a3(f)) ? arg : f).properties.MAPCOLOR7 || 0]); // Malvinas in Argentina's color from that point of view
-    const chl = fs.find((f) => a3(f) === 'CHL');
-    if (OGE.antarticaCL && chl) out.push([{ type: 'Polygon', coordinates: [[[-90, -60], [-53, -60], [-53, -89.99], [-90, -89.99], [-90, -60]]] }, chl.properties.MAPCOLOR7 || 0]); // the Antarctic sector in Chile's color
+  lazyFill($('fillCountries'), async () => { // neighbors get different colors (Natural Earth's MAPCOLOR7 gave Israel and Palestine the same one)
+    const [s, d, ds, dd] = await Promise.all(['50m_cultural/ne_50m_admin_0_countries.shp', '50m_cultural/ne_50m_admin_0_countries.dbf', '10m_cultural/ne_10m_admin_0_disputed_areas.shp', '10m_cultural/ne_10m_admin_0_disputed_areas.dbf'].map(buf));
+    const clean = (v) => String(v ?? '').replace(/\0/g, '').trim(), fs = shp.combine([shp.parseShp(s), shp.parseDbf(d)]).features, a3 = (f) => clean(f.properties.ADM0_A3);
+    const out = colorize(fs.map((f) => f.geometry)), idx = new Map(fs.map((f, i) => [a3(f), out[i][1]]));
+    if (OGE.malvinasAR) fs.forEach((f, i) => { if (['FLK', 'SGS'].includes(a3(f)) && idx.has('ARG')) out[i][1] = idx.get('ARG'); }); // Malvinas and South Georgia in Argentina's color from that point of view
+    for (const f of shp.combine([shp.parseShp(ds), shp.parseDbf(dd)]).features) { // Crimea and the other areas claimed by Ukraine, in Ukraine's color (painted over the rest)
+      const p = f.properties;
+      if (f.geometry && idx.has('UKR') && /Ukrain/i.test(clean(p.NOTE_BRK) + ' ' + clean(p.BRK_NAME) + ' ' + clean(p.NAME))) out.push([f.geometry, idx.get('UKR')]);
+    }
+    if (OGE.antarticaCL && idx.has('CHL')) out.push([{ type: 'Polygon', coordinates: [[[-90, -60], [-53, -60], [-53, -89.99], [-90, -89.99], [-90, -60]]] }, idx.get('CHL')]); // the Chilean Antarctic Territory in Chile's color
     return out;
   }, 'las áreas de los países');
   lazyFill($('fillAdmin1'), async () => {
@@ -238,7 +242,7 @@
 
   // ---------- Wikidata facts of a country, a capital or a city, like Wikipedia's infobox; a click on its name, flag or symbol opens them ----------
   const FACTS = {
-    country: [['capital', 'Capital', 'P36'], ['pop', 'Población', 'P1082'], ['area', 'Superficie', 'P2046'], ['currency', 'Moneda', 'P38'], ['lang', 'Idioma oficial', 'P37'], ['hos', 'Jefe de Estado', 'P35'], ['hog', 'Jefe de Gobierno', 'P6'],
+    country: [['capital', 'Capital', 'P36'], ['pop', 'Población', 'P1082'], ['area', 'Superficie', 'P2046'], ['currency', 'Moneda', 'P38'], ['lang', 'Idioma oficial', 'P37'], ['spoken', 'Idioma más hablado', 'P2936'], ['hos', 'Jefe de Estado', 'P35'], ['hog', 'Jefe de Gobierno', 'P6'],
       ['gov', 'Forma de gobierno', 'P122'], ['gdp', 'PIB nominal', 'P2131'], ['hdi', 'Índice de desarrollo humano', 'P1081'], ['inception', 'Fundación', 'P571'], ['code', 'Prefijo telefónico', 'P474'], ['tld', 'Dominio de internet', 'P78'], ['cont', 'Continente', 'P30'], ['anthem', 'Himno nacional', 'P85']],
     region: [['country', 'País', 'P17'], ['capital', 'Capital', 'P36'], ['pop', 'Población', 'P1082'], ['area', 'Superficie', 'P2046'], ['hog', 'Gobernador o jefe de gobierno', 'P6'], ['inception', 'Fundación', 'P571'], ['tz', 'Zona horaria', 'P421'], ['web', 'Sitio web', 'P856']],
     place: [['country', 'País', 'P17'], ['admin', 'Región', 'P131'], ['pop', 'Población', 'P1082'], ['area', 'Superficie', 'P2046'], ['elev', 'Altitud', 'P2044'], ['inception', 'Fundación', 'P571'], ['hog', 'Alcalde o jefe de gobierno', 'P6'], ['tz', 'Zona horaria', 'P421'], ['web', 'Sitio web', 'P856']],
@@ -249,8 +253,8 @@
     try {
       const facts = FACTS[id.oge];
       // one branch per fact (a UNION), so that multi-valued facts do not multiply each other; the anthem's recording comes through its own item
-      const sparql = `SELECT ?k ?v ?vLabel WHERE { ${facts.map(([k, , p]) => `{ BIND("${k}" AS ?k) wd:${id.q} ${k === 'cont' ? `p:${p}/ps:${p}` : `wdt:${p}`} ?v }`).join(' UNION ')} UNION { BIND("audio" AS ?k) wd:${id.q} wdt:P85 ?a . ?a wdt:P51 ?v } ${id.oge === 'country' ? ['hos:P35', 'hog:P6'].map((x) => { const [k, p] = x.split(':'); const cur = `wd:${id.q} wdt:${p} ?h . ?h p:P102 ?st . ?st ps:P102 ?pt . FILTER NOT EXISTS { ?st pq:P582 ?end }`; // the leader's current party (no end date)
-          return `UNION { BIND("${k}Party" AS ?k) ${cur} BIND(?pt AS ?v) } UNION { BIND("${k}Pos" AS ?k) ${cur} ?pt wdt:P1387 ?v }`; }).join(' ') : ''} UNION { BIND("flag" AS ?k) wd:${id.q} wdt:P41 ?v } UNION { BIND("arms" AS ?k) wd:${id.q} wdt:P94 ?v } UNION { BIND("banner" AS ?k) wd:${id.q} wdt:P948 ?v } SERVICE wikibase:label { bd:serviceParam wikibase:language "${OGE_LANG},en". } }`;
+      const sparql = `SELECT ?k ?v ?vLabel ?when ?pp WHERE { ${facts.map(([k, , p]) => `{ BIND("${k}" AS ?k) wd:${id.q} ${k === 'cont' ? `p:${p}/ps:${p}` : `wdt:${p}`} ?v }`).join(' UNION ')} UNION { BIND("audio" AS ?k) wd:${id.q} wdt:P85 ?a . ?a wdt:P51 ?v } ${id.oge === 'country' ? ['hos:P35', 'hog:P6'].map((x) => { const [k, p] = x.split(':'); const all = `wd:${id.q} wdt:${p} ?h . ?h p:P102 ?st . ?st ps:P102 ?pt . OPTIONAL { ?st pq:P580 ?from } OPTIONAL { ?st pq:P582 ?to }`; // every party the leader has belonged to, with its dates
+          return `UNION { BIND("${k}Party" AS ?k) ${all} BIND(?pt AS ?v) BIND(COALESCE(?to, ?from) AS ?when) BIND(IF(BOUND(?to), "past", "now") AS ?pp) } UNION { BIND("${k}Pos" AS ?k) ${all} ?pt wdt:P1387 ?v }`; }).join(' ') : ''} UNION { BIND("flag" AS ?k) wd:${id.q} wdt:P41 ?v } UNION { BIND("arms" AS ?k) wd:${id.q} wdt:P94 ?v } UNION { BIND("banner" AS ?k) wd:${id.q} wdt:P948 ?v } SERVICE wikibase:label { bd:serviceParam wikibase:language "${OGE_LANG},en". } }`;
       const res = await fetch('https://query.wikidata.org/sparql?format=json&query=' + encodeURIComponent(sparql));
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const rows = (await res.json()).results.bindings, num = (v) => Number(v).toLocaleString(OGE_LANG);
@@ -259,24 +263,38 @@
       for (const [k, label] of facts) {
         const vals = [...new Set(rows.filter((r) => r.k.value === k).map((r) => (fmt[k] ? fmt[k](r.v.value) : r.vLabel.value)))].slice(0, fmt[k] ? 1 : 6);
         const lab = (kk) => [...new Set(rows.filter((r) => r.k.value === kk).map((r) => r.vLabel.value))].slice(0, 2);
-        const party = lab(k + 'Party'), pos = lab(k + 'Pos'); // the leader's party and, when Wikidata has it, its political position
-        const extra = party.length ? ` — ${party.join(', ')}${pos.length ? ` (${T('posición política')}: ${pos.join(', ')})` : ''}` : '';
-        if (vals.length) table.push([T(label), vals.join(', ') + extra]);
+        // the leader's current party (or the latest one, if none is current) and the left-right position of every party he or she belonged to
+        const parties = rows.filter((r) => r.k.value === k + 'Party'), isIndep = (r) => /independ/i.test(r.vLabel.value);
+        const now = parties.filter((r) => r.pp && r.pp.value === 'now'), byDate = (a, b) => String(b.when ? b.when.value : '').localeCompare(String(a.when ? a.when.value : ''));
+        const current = now.filter((r) => !isIndep(r)).sort(byDate)[0], latestReal = parties.filter((r) => !isIndep(r)).sort(byDate)[0];
+        const independentNow = !current && (now.some(isIndep) || (latestReal && latestReal.pp.value === 'past'));
+        const partyTxt = current ? current.vLabel.value : independentNow ? T('independiente') + (latestReal ? ` (${T('antes')}: ${latestReal.vLabel.value})` : '') : latestReal ? latestReal.vLabel.value : '';
+        const side = (t) => (/izquierda|left/.test(t) ? -1 : /derecha|right/.test(t) ? 1 : /centro|centre|center/.test(t) ? 0 : null); // far-right counts as right, far-left as left
+        const sides = rows.filter((r) => r.k.value === k + 'Pos').map((r) => side(r.vLabel.value.toLowerCase())).filter((x) => x !== null), avg = sides.length ? sides.reduce((a, b) => a + b, 0) / sides.length : null;
+        const pos = avg === null ? null : avg <= -0.5 ? ['Izquierda', '#d9483b'] : avg < -0.15 ? ['Centroizquierda', '#e88a6a'] : avg <= 0.15 ? ['Centro', '#e0b020'] : avg < 0.5 ? ['Centroderecha', '#5d9be0'] : ['Derecha', '#1f5fbf'];
+        if (vals.length) table.push([T(label), vals.join(', ') + (partyTxt ? ' — ' + partyTxt : '') + (pos ? `\u0002${T(pos[0])}\u0002${pos[1]}` : '')]);
       }
       if (id.osm) table.push(...osmRows(id.osm)); // OpenStreetMap adds its own facts to a municipality or region
       const claim = id.oge === 'country' && OGE.claims && OGE.claims[id.a3];
       if (claim) table.push([T('Reclamación antártica'), `${T(claim[0])} (${claim[2].map(([w, e]) => `${Math.abs(w)}° ${w < 0 ? 'O' : 'E'} – ${Math.abs(((e + 540) % 360) - 180)}° ${((e + 540) % 360) - 180 < 0 ? 'O' : 'E'}`).join(', ')}, ${T('al sur de 60° S')}) — ${T('congelada por el Tratado Antártico')}`]);
       if (!table.length) throw new Error('sin datos');
+      if (id.oge === 'country') { // the continent holding most of its land goes first (Natural Earth's CONTINENT field)
+        const main = ((await OGE.flags().catch(() => new Map())).get(id.a3) || {}).cont, CN = { Africa: 'Áfr', Asia: 'Asia', Europe: 'Europ', 'North America': 'Norte|North', 'South America': 'Sur|South', Oceania: 'Ocean' };
+        const row = table.find((r) => r[0] === T('Continente'));
+        if (row && main && CN[main]) { const parts = row[1].split(', '), re = new RegExp(CN[main], 'i'); row[1] = [...parts.filter((p) => re.test(p) && !/insular/i.test(p)), ...parts.filter((p) => !re.test(p) || /insular/i.test(p))].join(', '); }
+      }
+      const tops = []; // full rankings behind the chips
       const rawOf = (k) => { const r = rows.find((x) => x.k.value === k); return r ? +r.v.value : NaN; }, dens = rawOf('pop') / rawOf('area');
       if (isFinite(dens) && dens > 0) table.splice(table.findIndex((r) => r[0] === T('Superficie')) + 1, 0, [T('Densidad'), num(Math.round(dens * 10) / 10) + ' ' + T('hab./km²')]);
       if (id.oge === 'country') { // rankings in the world and in its continent, and World Bank open data
         const CN = { Africa: 'África', Asia: 'Asia', Europe: 'Europa', 'North America': 'Norteamérica', 'South America': 'Sudamérica', Oceania: 'Oceanía' };
         const flags = await OGE.flags().catch(() => new Map()), contOf = (a3) => (flags.get(a3) || {}).cont, byQ = new Map([...flags].map(([a3, f]) => [f.q, a3]));
-        const rank = (m, key) => { // m: Map<ISO3, value>
+        const rank = (m, key, label = '', fmtV = (v) => num(v)) => { // m: Map<ISO3, value>
           const me = m.get(key);
           if (me == null) return '';
           const all = [...m.values()], same = [...m].filter(([k]) => contOf(k) === contOf(key)).map(([, v]) => v);
-          return `\u0001${all.filter((v) => v > me).length + 1}/${all.length}/${T('mundo')}\u0001${same.filter((v) => v > me).length + 1}/${same.length}/${T(CN[contOf(key)] || contOf(key) || '')}`; // rank/total/where, drawn as chips
+          const list = (pred) => tops.push({ label, rows: [...m].filter(([k]) => pred(k)).sort((a, b) => b[1] - a[1]).map(([k, v], i) => [i + 1, (flags.get(k) || {}).name || k, fmtV(v)]) }) - 1; // kept for the click on the chip
+          return `\u0001${all.filter((v) => v > me).length + 1}/${all.length}/${T('mundo')}/${list(() => true)}\u0001${same.filter((v) => v > me).length + 1}/${same.length}/${T(CN[contOf(key)] || contOf(key) || '')}/${list((k) => contOf(k) === contOf(key))}`; // rank/total/where/list, drawn as chips
 
         };
         const add = (label, txt) => { const row = table.find((r) => r[0] === T(label)); if (row && txt) row[1] += txt; };
@@ -287,9 +305,11 @@
         };
         const usd = (v) => 'US$ ' + num(Math.round(v));
         try { // its two most populous cities
-          const q3 = `SELECT ?cLabel (MAX(?p) AS ?pop) WHERE { VALUES ?t { wd:Q515 wd:Q1549591 wd:Q1637706 wd:Q174844 wd:Q5119 } ?c wdt:P31 ?t ; wdt:P17 wd:${id.q} ; wdt:P1082 ?p . SERVICE wikibase:label { bd:serviceParam wikibase:language "${OGE_LANG},en". } } GROUP BY ?cLabel ORDER BY DESC(?pop) LIMIT 2`;
+          const q3 = `SELECT ?cLabel (MAX(?p) AS ?pop) WHERE { VALUES ?t { wd:Q515 wd:Q1549591 wd:Q1637706 wd:Q174844 wd:Q5119 } ?c wdt:P31 ?t ; wdt:P17 wd:${id.q} ; wdt:P1082 ?p . SERVICE wikibase:label { bd:serviceParam wikibase:language "${OGE_LANG},en". } } GROUP BY ?cLabel ORDER BY DESC(?pop) LIMIT 5`;
           const top = (await (await fetch('https://query.wikidata.org/sparql?format=json&query=' + encodeURIComponent(q3))).json()).results.bindings;
-          top.forEach((b3, i) => table.splice(table.findIndex((r) => r[0] === T('Capital')) + 1 + i, 0, [T(i ? 'Segunda ciudad más poblada' : 'Ciudad más poblada'), `${b3.cLabel.value} (${num(b3.pop.value)})`]));
+          const seen = []; // the metropolitan area and its own city are the same place: skip names already contained in one another
+          const uniq = top.filter((b3) => { const n = b3.cLabel.value.toLowerCase().replace(/ (city|metropolitan area|área metropolitana|greater .*)$/, '').replace(/^(área metropolitana de |gran )/, ''); if (seen.some((x) => x.includes(n) || n.includes(x))) return false; seen.push(n); return true; }).slice(0, 2);
+          uniq.forEach((b3, i) => table.splice(table.findIndex((r) => r[0] === T('Capital')) + 1 + i, 0, [T(i ? 'Segunda ciudad más poblada' : 'Ciudad más poblada'), `${b3.cLabel.value} (${num(b3.pop.value)})`]));
         } catch { /* optional */ }
         try {
           const hdi = new Map();
@@ -299,9 +319,9 @@
         } catch { /* the ranking is optional */ }
         try {
           const [pop, gdp, pc, mil, life] = await Promise.all(['SP.POP.TOTL', 'NY.GDP.MKTP.CD', 'NY.GDP.PCAP.CD', 'MS.MIL.XPND.CD', 'SP.DYN.LE00.IN'].map(wb));
-          add('Población', rank(pop.m, id.a3)); add('PIB nominal', rank(gdp.m, id.a3));
+          add('Población', rank(pop.m, id.a3, T('Población'))); add('PIB nominal', rank(gdp.m, id.a3, T('PIB nominal'), usd));
           for (const [d, label, f] of [[pc, 'PIB per cápita', usd], [mil, 'Gasto militar', usd], [life, 'Esperanza de vida', (v) => num(Math.round(v * 10) / 10) + ' ' + T('años')]]) {
-            if (d.m.has(id.a3)) table.push([`${T(label)} (${T('Banco Mundial')}, ${d.year.get(id.a3)})`, f(d.m.get(id.a3)) + rank(d.m, id.a3)]);
+            if (d.m.has(id.a3)) table.push([`${T(label)} (${T('Banco Mundial')}, ${d.year.get(id.a3)})`, f(d.m.get(id.a3)) + rank(d.m, id.a3, T(label), f)]);
           }
         } catch { /* optional too */ }
       }
@@ -322,12 +342,16 @@
       }
       if (audio) head.append(Object.assign(document.createElement('audio'), { controls: true, preload: 'none', src: audio.v.value.replace(/^http:/, 'https:'), style: 'width:100%;margin-bottom:6px;display:block', title: T('Himno nacional') }));
       const chips = (txt) => { // 'value\u0001rank/total/where…' -> the value followed by colored rank chips (green = top quarter, red = bottom quarter)
-        const [value, ...ranks] = String(txt).split('\u0001');
-        if (!ranks.length) return txt;
+        const [head, pTxt, pColor] = String(txt).split('\u0002'), [value, ...ranks] = head.split('\u0001');
+        if (!ranks.length && !pTxt) return txt;
+        if (pTxt) ranks.push(null); // the political position chip goes last
         const span = document.createElement('span');
         span.append(value + ' ');
-        for (const r of ranks) { const [n, total, where] = r.split('/'), q = (n - 1) / Math.max(1, total - 1), color = q <= 0.25 ? '#2e9e3a' : q <= 0.5 ? '#8bbf2a' : q <= 0.75 ? '#e0a020' : '#d9483b';
-          span.append(Object.assign(document.createElement('span'), { textContent: `#${n} / ${total} ${where}`, style: `display:inline-block;background:${color};color:#fff;border-radius:10px;padding:0 8px;margin:1px 4px 1px 0;font-weight:600;font-size:12px;text-shadow:0 1px 1px rgba(0,0,0,.35)` })); }
+        for (const r of ranks) {
+          if (r === null) { span.append(Object.assign(document.createElement('span'), { textContent: pTxt, style: `display:inline-block;background:${pColor};color:#fff;border-radius:10px;padding:0 8px;margin:1px 4px 1px 0;font-weight:600;font-size:12px` })); continue; }
+          const [n, total, where, li] = r.split('/'), q = (n - 1) / Math.max(1, total - 1), color = q <= 0.25 ? '#2e9e3a' : q <= 0.5 ? '#8bbf2a' : q <= 0.75 ? '#e0a020' : '#d9483b';
+          const chip = span.appendChild(Object.assign(document.createElement('span'), { title: T('Clic: ver la clasificación'), textContent: `#${n} / ${total} ${where}`, style: `display:inline-block;background:${color};color:#fff;border-radius:10px;padding:0 8px;margin:1px 4px 1px 0;font-weight:600;font-size:12px;text-shadow:0 1px 1px rgba(0,0,0,.35)` })); chip.style.cursor = 'pointer';
+          chip.onclick = () => { const t = tops[li]; if (t) OGE.showTable(`${t.label} — ${where}`, ['#', T('País'), T('Valor')], t.rows.map((r) => r.slice(0, 3)), { note: T('Fuente de los datos: Banco Mundial y Wikidata.') }); }; }
         return span;
       };
       for (const r of table) r[1] = chips(r[1]);
@@ -339,7 +363,7 @@
     const hit = viewer.scene.pick(ev.position), id = hit && hit.id;
     if (id && FACTS[id.oge] && /^Q\d+$/.test(id.q || '')) return wikiInfo(id);
     // nothing picked: with a regional layer on, the municipality (or else the province) under the click, with OpenStreetMap's data and its Wikidata id
-    if (hit || !['layerAdmin1', 'fillAdmin1', 'layerRegionNames'].some((k) => $(k).checked)) return;
+    if (hit || !['layerAdmin1', 'fillAdmin1', 'layerRegionNames', 'layerRoads', 'layerCities'].some((k) => $(k).checked)) return; // the street layer's town names count too
     const p = viewer.camera.pickEllipsoid(ev.position);
     if (!p) return;
     const [lon, lat] = geo.toLL(p);
@@ -374,11 +398,15 @@
   const claimOn = (() => { try { return JSON.parse(localStorage.getItem('oge.claims')) || Object.keys(CLAIMS); } catch { return Object.keys(CLAIMS); } })();
   let claimPrims = [];
   function drawClaims() {
-    for (const p of claimPrims) (p instanceof C.BillboardCollection ? viewer.scene.primitives : viewer.scene.groundPrimitives).remove(p);
+    for (const p of claimPrims) (p instanceof C.ImageryLayer ? viewer.imageryLayers : p instanceof C.BillboardCollection ? viewer.scene.primitives : viewer.scene.groundPrimitives).remove(p);
     claimPrims = [];
     if (!$('layerClaims').checked) return;
     const rhumb = (pts) => C.Cartesian3.fromDegreesArray(pts.flat());
     const line = (a, b, n = 48) => rhumb(Array.from({ length: n + 1 }, (_, i) => [a[0] + ((b[0] - a[0]) * i) / n, a[1] + ((b[1] - a[1]) * i) / n]));
+    const span = ([w, e]) => (e > 180 ? [[w, 180], [-180, e - 360]] : [[w, e]]), box = ([w, e]) => ({ type: 'Polygon', coordinates: [[[w, -60], [e, -60], [e, -89.99], [w, -89.99], [w, -60]]] });
+    const paint = fillLayer(claimOn.flatMap((a3) => (CLAIMS[a3] ? CLAIMS[a3][2].flatMap(span).map((sc) => [box(sc), CLAIMS[a3][1]]) : []))); // each sector in its claimant's color
+    paint.alpha = 0.35;
+    claimPrims.push(paint);
     const labels = viewer.scene.primitives.add(new C.BillboardCollection());
     claimPrims.push(labels);
     for (const a3 of claimOn) {
@@ -400,11 +428,9 @@
     return Object.assign(document.createElement('li'), {}).appendChild(lab).parentNode;
   }));
   $('layerClaims').addEventListener('change', () => {
-    $('claimList').hidden = !$('layerClaims').checked;
     if ($('layerClaims').checked) OGE.toast('Reclamaciones congeladas por el Tratado Antártico (1959, art. IV): no se reconocen ni se rechazan, y no se pueden hacer nuevas mientras esté vigente.');
     drawClaims();
   });
-  $('claimList').hidden = !$('layerClaims').checked;
   drawClaims();
 
   // ---------- Region names (states, provinces): a click opens their card (Wikidata + OpenStreetMap) ----------
