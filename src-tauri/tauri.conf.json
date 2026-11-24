@@ -5,6 +5,7 @@
   "identifier": "org.opengisearth.app",
   "build": { "frontendDist": "../web" },
   "app": {
+    "withGlobalTauri": true,
     "windows": [{ "title": "OpenGISEarth", "width": 1400, "height": 900, "dragDropEnabled": false }],
     "security": { "csp": null }
   },

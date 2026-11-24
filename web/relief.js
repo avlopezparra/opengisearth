@@ -361,6 +361,7 @@
   new C.ScreenSpaceEventHandler(viewer.scene.canvas).setInputAction((ev) => {
     if ((OGE.drawing && OGE.drawing()) || document.body.classList.contains('flying')) return; // not while drawing or flying
     const hit = viewer.scene.pick(ev.position), id = hit && hit.id;
+    if (id && id.oge === 'plane') { const p = id.a; OGE.chime(); return OGE.showTable(`✈ ${(p.flight || p.r || p.hex || '').trim()}`, [T('Dato'), T('Valor')], [[T('Vuelo'), (p.flight || '').trim()], [T('Matrícula'), p.r], [T('Modelo'), p.desc || p.t], [T('Operador'), p.ownOp], [T('Altitud'), typeof p.alt_baro === 'number' ? `${Math.round(p.alt_baro * 0.3048).toLocaleString(OGE_LANG)} m (${p.alt_baro} ft)` : p.alt_baro], [T('Velocidad'), p.gs != null ? `${Math.round(p.gs * 1.852)} km/h` : ''], [T('Rumbo'), p.track != null ? Math.round(p.track) + '°' : ''], [T('Origen y destino'), ''], ['ICAO 24', p.hex]].filter((x) => x[1]), { note: T('Fuente: adsb.fi (datos abiertos ADS-B).') }); }
     if (id && FACTS[id.oge] && /^Q\d+$/.test(id.q || '')) return wikiInfo(id);
     // nothing picked: with a regional layer on, the municipality (or else the province) under the click, with OpenStreetMap's data and its Wikidata id
     if (hit || !['layerAdmin1', 'fillAdmin1', 'layerRegionNames', 'layerRoads', 'layerCities'].some((k) => $(k).checked)) return; // the street layer's town names count too
@@ -457,6 +458,46 @@
   };
   cbRN.addEventListener('change', syncRegionNames);
   syncRegionNames();
+
+  // ---------- Live aircraft (ADS-B Exchange-style open feed from adsb.fi, no key): icons along their track, refreshed every 10 s ----------
+  const planeIcon = (() => { // a white airliner seen from above, pointing up (north)
+    const cv = Object.assign(document.createElement('canvas'), { width: 48, height: 48 }), g = cv.getContext('2d');
+    g.translate(24, 24); g.fillStyle = '#ffd60a'; g.strokeStyle = '#3a2a00'; g.lineWidth = 1.5; g.beginPath();
+    g.moveTo(0, -20); g.lineTo(3, -12); g.lineTo(3, -4); g.lineTo(20, 4); g.lineTo(20, 8); g.lineTo(3, 4); g.lineTo(3, 14); g.lineTo(8, 18); g.lineTo(8, 21); g.lineTo(0, 18); g.lineTo(-8, 21); g.lineTo(-8, 18); g.lineTo(-3, 14); g.lineTo(-3, 4); g.lineTo(-20, 8); g.lineTo(-20, 4); g.lineTo(-3, -4); g.lineTo(-3, -12); g.closePath(); g.fill(); g.stroke();
+    return cv;
+  })();
+  OGE.planeIcon = planeIcon;
+  let planes = null, planeTimer = null; // planes: BillboardCollection of the live aircraft
+  const cbP = $('layerPlanes');
+  OGE.livePlanes = async (lon, lat, km = 250) => { // the aircraft around a point (the flight game uses them too)
+    const url = `https://opendata.adsb.fi/api/v2/lat/${lat.toFixed(3)}/lon/${lon.toFixed(3)}/dist/${Math.min(250, Math.round(km))}`;
+    const tauri = window.__TAURI__ && window.__TAURI__.core; // the open flight feeds refuse browsers (no CORS): the desktop program fetches them itself
+    if (!tauri) throw new Error(T('los datos de vuelos en vivo solo se pueden leer desde el programa de escritorio (EXE), no desde la página web'));
+    const j = JSON.parse(await tauri.invoke('fetch_text', { url }));
+    return (j.aircraft || []).filter((a) => a.lat != null && a.lon != null);
+  };
+  async function refreshPlanes() {
+    if (!cbP.checked) return;
+    const c = viewer.camera.positionCartographic, km = Math.min(250, c.height / 2000);
+    const la = OGE.lookAt && OGE.lookAt(), at = la ? la.carto : c;
+    try {
+      const list = await OGE.livePlanes(C.Math.toDegrees(at.longitude), C.Math.toDegrees(at.latitude), Math.max(40, km));
+      planes.removeAll();
+      for (const a of list) {
+        const ft = typeof a.alt_baro === 'number' ? a.alt_baro : 0;
+        planes.add({ position: C.Cartesian3.fromDegrees(a.lon, a.lat, ft * 0.3048), image: planeIcon, scale: 0.55, rotation: -C.Math.toRadians(a.track || 0), alignedAxis: C.Cartesian3.ZERO,
+          disableDepthTestDistance: Number.POSITIVE_INFINITY, distanceDisplayCondition: new C.DistanceDisplayCondition(0, 3e6),
+          id: { oge: 'plane', a } });
+      }
+      OGE.hint(`${list.length} ${T('aviones en vivo cerca de la vista')} (adsb.fi).`);
+    } catch (e) { OGE.toast('No se pudieron cargar los aviones en vivo: ' + e.message, true); }
+  }
+  cbP.addEventListener('change', () => {
+    if (!planes) planes = viewer.scene.primitives.add(new C.BillboardCollection());
+    planes.show = cbP.checked;
+    clearInterval(planeTimer);
+    if (cbP.checked) { refreshPlanes(); planeTimer = setInterval(refreshPlanes, 10000); } else OGE.hint('');
+  });
 
   // ---------- Watershed: click a point, get the basin that drains to it, plus its rivers ----------
   let picking = null;

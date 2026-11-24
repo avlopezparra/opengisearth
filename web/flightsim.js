@@ -43,12 +43,14 @@
     const cam = viewer.camera, to = new C.Cartesian3(); // an enemy inside the aim cone is destroyed
     let best = null, bestAng = 9;
     for (const o of objs) {
-      if (o.kind !== 'enemy' && o.kind !== 'boss') continue;
+      if (o.kind !== 'enemy' && o.kind !== 'boss' && o.kind !== 'airliner') continue;
       C.Cartesian3.subtract(o.p, cam.positionWC, to);
       const d = C.Cartesian3.magnitude(to), ang = Math.acos(clamp(C.Cartesian3.dot(to, ray.direction) / d, -1, 1));
       if (ang < Math.atan((o.size * 1.5) / d) + rad(1.2) && ang < bestAng) { best = o; bestAng = ang; }
     }
     if (best && best.kind === 'boss') hitBoss(best, 1);
+    else if (best && best.kind === 'airliner' && --best.hp > 0) { booms.push({ p: best.p, t: performance.now() }); sfx('shieldBreak'); }
+    else if (best && best.kind === 'airliner') { objs.splice(objs.indexOf(best), 1); score += pts(300); booms.push({ p: best.p, t: performance.now() }); sfx('down'); }
     else if (best) { objs.splice(objs.indexOf(best), 1); score += pts(100); booms.push({ p: best.p, t: performance.now() }); sfx('down'); }
   }
   function beep(f0, f1, dur) {
@@ -359,9 +361,9 @@
         if (d < o.size + slack && now - hit > 800 && !rolling) hurt(30);
         return d < 4e5;
       }
-      const fixed = o.kind === 'crest' || o.kind === 'life'; // these wait where they are instead of being left behind
+      const fixed = o.kind === 'crest' || o.kind === 'life' || o.kind === 'airliner'; // these wait where they are instead of being left behind
       if (d < o.size * (o.kind === 'ring' ? 1 : 1.6) + slack) { // touched
-        if (o.kind === 'enemy') { if (!rolling) hurt(25); }
+        if (o.kind === 'enemy' || o.kind === 'airliner') { if (!rolling) hurt(25); }
         else if (o.kind === 'wall') hurt(20); // obstacles always hurt
         else if (o.kind === 'heart') { hp = Math.min(maxHp, hp + 25); sfx('heart'); }
         else if (o.kind === 'life') { maxHp = Math.min(300, maxHp + 25); hp = maxHp; usedTowns.add(o.town); sfx('achieve'); OGE.toast(`${T('Vida máxima')}: ${maxHp}`); }
@@ -384,7 +386,7 @@
     if (!on) return; // destroyed
     for (const o of objs) { // enemies fire at where the ship will be if it keeps flying straight
       const boss = o.kind === 'boss';
-      if ((o.kind !== 'enemy' && !boss) || now < o.next) continue;
+      if ((o.kind !== 'enemy' && o.kind !== 'airliner' && !boss) || now < o.next) continue;
       o.next = now + DIFF[diff].fire * (boss ? BOSSES[o.type].every * (0.8 + Math.random() * 0.4) : 4000 + Math.random() * 4000);
       const d = C.Cartesian3.distance(o.p, cam.positionWC), speed = (eff * 0.5 + 600) * DIFF[diff].shot, tt = d / (speed + eff);
       if (boss ? d > Math.max(reach() * 1.3, 6e4) : d > reach() * 1.3 || C.Cartesian3.dot(C.Cartesian3.subtract(o.p, cam.positionWC, t), cam.directionWC) < 0) continue;
@@ -401,6 +403,7 @@
       if (C.Cartesian3.distance(b.p, cam.positionWC) < 40 + slack * 1.5) { if (!rolling) hurt(8); return false; }
       return now - b.t < 8000;
     });
+    if (on && !tut && $('layerPlanes').checked && performance.now() > (liveT || 0)) liveEnemies(); // real aircraft nearby join as tougher enemies
     while (on && !tut && objs.filter((o) => !['boss', 'crest', 'life'].includes(o.kind)).length < 10) spawn();
   }
   function drawArcade(w, h, text) {
@@ -455,6 +458,10 @@
         drawBoss(o, q.x, q.y, R, now);
         g.shadowBlur = 0; g.fillStyle = '#300'; g.fillRect(q.x - 40, q.y - R * 1.5 - 16, 80, 6); g.fillStyle = '#ff453a'; g.fillRect(q.x - 40, q.y - R * 1.5 - 16, (80 * o.hp) / o.max, 6); // its life
         g.fillStyle = '#fff'; g.textAlign = 'center'; g.font = '600 12px sans-serif'; g.fillText(`${T(BOSSES[o.type].name)} · ${o.cap ? o.cap.name : T('práctica')} · ${o.hp}/${o.max}`, q.x, q.y - R * 1.5 - 22);
+      }
+      else if (o.kind === 'airliner') { // a real flight: the airliner icon turned along its track, with its callsign
+        const R = Math.max(14, pr * 2); g.save(); g.translate(q.x, q.y); g.rotate(C.Math.toRadians((o.a.track || 0)) - viewer.camera.heading); g.shadowColor = '#ffd60a'; g.shadowBlur = 16; g.drawImage(OGE.planeIcon, -R, -R, R * 2, R * 2); g.restore();
+        g.fillStyle = '#ffd60a'; g.textAlign = 'center'; g.font = '700 11px sans-serif'; g.fillText(`${(o.a.flight || o.a.r || '').trim()} · ${'●'.repeat(o.hp)}`, q.x, q.y + R + 12);
       }
       else { const R = Math.max(10, pr * 1.6); g.shadowColor = ['#ff6b5e', '#7fe3ff', '#e08bff'][o.look || 0]; g.shadowBlur = 18; g.drawImage(ENEMY[o.look || 0], q.x - R, q.y - R, R * 2, R * 2); } // enemy craft
       g.restore();
@@ -664,7 +671,18 @@
   // ---------- Adventure: a campaign of country stages. Inside a stage the ship cannot leave the country; once all its region flags
   // are collected, the boss of its capital appears; beating it unlocks the next country. Progress is kept on this computer. ----------
   const ROUTE = ['CHL', 'ARG', 'URY', 'PRY', 'BOL', 'PER', 'ECU', 'COL', 'VEN', 'BRA', 'MEX', 'CUB', 'USA', 'CAN', 'ISL', 'GBR', 'IRL', 'PRT', 'ESP', 'FRA', 'ITA', 'GRC', 'EGY', 'MAR', 'NGA', 'KEN', 'ZAF', 'MDG', 'IND', 'CHN', 'JPN', 'AUS', 'NZL'];
-  let adv = null, advShape = null, graceT = 0; // adv: { i, a3 } while a stage runs; advShape: the country's polygons
+  let adv = null, advShape = null, graceT = 0, liveT = 0;
+  async function liveEnemies() {
+    liveT = performance.now() + 15000; // asked every 15 s
+    try {
+      const list = (await OGE.livePlanes(C.Math.toDegrees(s.lon), C.Math.toDegrees(s.lat), 120)).slice(0, 6);
+      objs = objs.filter((o) => o.kind !== 'airliner'); // the old positions are replaced
+      for (const a of list) {
+        const ft = typeof a.alt_baro === 'number' ? a.alt_baro : 20000;
+        objs.push({ kind: 'airliner', a, p: C.Cartesian3.fromDegrees(a.lon, a.lat, Math.max(1500, ft * 0.3048)), size: 600, hp: 3, look: 0, next: performance.now() + 2000 + Math.random() * 3000 });
+      }
+    } catch { /* no feed: the game goes on without them */ }
+  } // adv: { i, a3 } while a stage runs; advShape: the country's polygons
   const advDone = () => +localStorage.getItem('oge.adventure') || 0; // stages beaten
   async function adventure(stage = advDone()) {
     const a3 = ROUTE[Math.min(stage, ROUTE.length - 1)];
