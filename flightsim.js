@@ -153,7 +153,7 @@
     shieldBreak: ['sine', 0.05, [98, 93, 88, 81]], down: ['triangle', 0.05, [76, 72, 67]], flag: ['sine', 0.08, [79, 83, 86]], capital: ['triangle', 0.1, [72, 79, 84, 88]],
     boss: ['triangle', 0.11, [72, 76, 79, 84, 88, 91, 96]], achieve: ['triangle', 0.13, [72, 76, 79, 84, 79, 84, 88, 96]], step: ['sine', 0.08, [84, 91]],
     roll: ['triangle', 0.05, [67, 74, 79, 86, 91]], loop: ['triangle', 0.08, [60, 67, 72, 79, 84, 79, 72]], warpUp: ['sawtooth', 0.05, [60, 72, 84]], warpDown: ['sawtooth', 0.05, [84, 72, 60]], thrust: ['sawtooth', 0.06, [48, 55]],
-    land: ['triangle', 0.09, [84, 79, 76, 72, 67, 64, 60, 55, 48]], liftoff: ['triangle', 0.09, [48, 55, 60, 64, 67, 72, 76, 79, 84]] }; // long falling / rising runs for landing and taking off
+    bossHit: ['square', 0.035, [52, 45, 40, 64]], land: ['triangle', 0.09, [84, 79, 76, 72, 67, 64, 60, 55, 48]], liftoff: ['triangle', 0.09, [48, 55, 60, 64, 67, 72, 76, 79, 84]] }; // long falling / rising runs for landing and taking off
   const DIFF = { easy: { name: 'Fácil', hurt: 0.5, fire: 1.6, shot: 0.7, boss: 0.6, pts: 0.5 }, normal: { name: 'Normal', hurt: 1, fire: 1, shot: 1, boss: 1, pts: 1 },
     hard: { name: 'Difícil', hurt: 1.6, fire: 0.6, shot: 1.4, boss: 1.6, pts: 2 }, ace: { name: 'As', hurt: 2.5, fire: 0.4, shot: 1.8, boss: 2.5, pts: 4 } };
   let diff = DIFF[localStorage.getItem('oge.diff')] ? localStorage.getItem('oge.diff') : 'normal';
@@ -402,7 +402,7 @@
   function hitBoss(o, n) { // a boss guards each capital in the arcade: beating it wins the capital
     if (!shieldOpen(o)) { booms.push({ p: o.p, t: performance.now() }); return sfx('shieldBreak'); } // deflected by the crystal shield
     if (BOSSES[o.type].spawns && escortsUp(o) >= 2) { booms.push({ p: o.p, t: performance.now() }); return sfx('shieldBreak'); } // the hive's core is covered
-    o.hp -= n; booms.push({ p: o.p, t: performance.now() }); beep(260, 90, 0.2);
+    o.hp -= n; booms.push({ p: o.p, t: performance.now() }); beep(260, 90, 0.2); sfx('bossHit'); // a metallic clang for every hit
     if (o.hp > 0) return;
     objs.splice(objs.indexOf(o), 1); gain(pts(o.from ? 300 : 1000)); if (!o.from) run.bosses++; flash = performance.now(); sfx('boss');
     if (o.type === 'face') objs = objs.filter((x) => { if (x.from !== o) return true; booms.push({ p: x.p, t: performance.now() }); return false; }); // its hands fall with it
@@ -1242,11 +1242,11 @@
         const lo = C.Math.toDegrees(s.lon), la = C.Math.toDegrees(s.lat), field = arcade && airports && airports.find(([x, y]) => Math.abs(y - la) < 0.04 && Math.abs((x - lo) * Math.cos(s.lat)) < 0.04); // ~4 km
         if (field && hp < maxHp) { hp = Math.min(maxHp, hp + 8 * dt); if (!refuelMsg) { refuelMsg = true; OGE.toast(T('🛬 Aeródromo: recuperando vida…')); sfx('heart'); } }
         s.v = 0; s.throttle = 0; s.pitch = 0; stopped = false;
-        // like a car: W / ↑ / E accelerate up to ~150 km/h, S / ↓ / Q brake and then reverse; the steering only turns while it rolls (and reverses backwards)
+        // like a car: W / ↑ / E accelerate up to ~400 km/h, S / ↓ / Q brake and then reverse; the steering only turns while it rolls (and reverses backwards)
         const kd = (x) => keys.has(x), gas = kd('w') || kd('arrowup') || kd('e') || kd('pageup') || stick.y < -0.2, brake = kd('s') || kd('arrowdown') || kd('q') || kd('pagedown') || stick.y > 0.2;
         let v = s.taxi || 0;
-        if (gas) v += (v < 0 ? 30 : 9) * dt; else if (brake) v -= (v > 0 ? 25 : 5) * dt; else v -= Math.sign(v) * Math.min(Math.abs(v), 4 * dt); // engine braking when nothing is pressed
-        s.taxi = v = clamp(v, -12, 42);
+        if (gas) v += (v < 0 ? 60 : 28) * dt; else if (brake) v -= (v > 0 ? 50 : 12) * dt; else v -= Math.sign(v) * Math.min(Math.abs(v), 4 * dt); // engine braking when nothing is pressed
+        s.taxi = v = clamp(v, -25, 110); // ground speed: up to ~400 km/h, separate from the flight speed
         s.lat += (v * dt * Math.cos(s.heading)) / R; s.lon = C.Math.negativePiToPi(s.lon + (v * dt * Math.sin(s.heading)) / (R * Math.cos(s.lat)));
         s.heading = C.Math.zeroToTwoPi(s.heading + s.rud * clamp(v / 12, -1, 1) * 0.9 * dt);
         s.alt = gnd + 12; // closer to the ground, like a car
@@ -1365,7 +1365,7 @@
 
     // Speed (knots) on the left, altitude (feet) on the right
     const bx = Math.min(r + 70, cx - 60);
-    g.strokeRect(cx - bx - 38, cy - 12, 76, 24); text(Math.round(s.v * warp * KT) + ' KT', cx - bx, cy + 1, 14); // the turbo counts as speed
+    g.strokeRect(cx - bx - 38, cy - 12, 76, 24); text(landing === 'parked' ? Math.round((s.taxi || 0) * 3.6) + ' km/h' : Math.round(s.v * warp * KT) + ' KT', cx - bx, cy + 1, 14); // the turbo counts as speed; on the ground, the driving speed
     { // turbo gauge under the speed: one segment per turbo level, lit up to the current one, and the real speed in km/h
       const n = WARPS.indexOf(warp), sw = 76 / WARPS.length;
       g.save(); WARPS.forEach((_, i) => { g.fillStyle = i <= n ? (i >= 4 ? '#ff453a' : i >= 2 ? '#ffd60a' : '#39ff14') : 'rgba(57,255,20,.18)'; g.fillRect(cx - bx - 38 + i * sw + 1, cy + 18, sw - 2, 8); }); g.restore();
