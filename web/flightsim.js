@@ -49,7 +49,7 @@
       if (ang < Math.atan((o.size * 1.5) / d) + rad(1.2) && ang < bestAng) { best = o; bestAng = ang; }
     }
     if (best && best.kind === 'boss') hitBoss(best, 1);
-    else if (best) { objs.splice(objs.indexOf(best), 1); score += 100; booms.push({ p: best.p, t: performance.now() }); beep(300, 60, 0.3); }
+    else if (best) { objs.splice(objs.indexOf(best), 1); score += 100; booms.push({ p: best.p, t: performance.now() }); sfx('down'); }
   }
   function beep(f0, f1, dur) {
     try {
@@ -107,6 +107,14 @@
       }
       if (until >= loop) { t0 += loop * u; for (const k of Object.keys(idx)) idx[k] = 0; } // next pass
     }, 60);
+  }
+  // Sound effects: short bell-like phrases (MIDI notes), one per event. [wave, seconds per note, notes]
+  const SFX = { coin: ['sine', 0.06, [88, 95]], ring: ['sine', 0.07, [84, 88, 91]], heart: ['sine', 0.09, [79, 84, 88]], shield: ['triangle', 0.09, [72, 79, 84]], bombGet: ['triangle', 0.08, [69, 76, 81]],
+    shieldBreak: ['sine', 0.05, [98, 93, 88, 81]], down: ['triangle', 0.05, [76, 72, 67]], flag: ['sine', 0.08, [79, 83, 86]], capital: ['triangle', 0.1, [72, 79, 84, 88]],
+    boss: ['triangle', 0.11, [72, 76, 79, 84, 88, 91, 96]], achieve: ['triangle', 0.13, [72, 76, 79, 84, 79, 84, 88, 96]], step: ['sine', 0.08, [84, 91]] };
+  function sfx(name) {
+    const d = SFX[name];
+    try { ac(); d[2].forEach((n, i) => tone(n, audio.currentTime + i * d[1], d[1] * 2.4, d[0], 0.07)); } catch { /* no audio device */ }
   }
   const setMute = (v) => { muted = v; localStorage.setItem('oge.mute', v ? '1' : ''); if (master) master.gain.value = v ? 0 : 1; $('flyMute').textContent = (v ? '🔇 ' : '🔊 ') + T('Sonido') + ' (P)'; $('flyMute').classList.toggle('active', v); };
 
@@ -228,7 +236,7 @@
       if (st.make && !has(st.need) && (!tut.made || age > 900)) { st.make(); if (!tut.made) tut.ref = snap(); tut.made = true; }
       return;
     }
-    beep(700, 1400, 0.25);
+    sfx('step');
     objs = []; incoming = [];
     if (++tut.i >= STEPS.length) { tut = null; return OGE.toast('Tutorial terminado. ¡Buen vuelo!'); }
     tut.ref = snap(); tut.made = false;
@@ -264,14 +272,17 @@
   }
   function hurt(n) {
     if (tut) { hit = performance.now(); return; } // nothing hurts during the tutorial
-    if (shields) { shields--; broke = hit = performance.now(); return beep(1400, 300, 0.2); } // the shield takes the hit and breaks
+    if (shields) { shields--; broke = hit = performance.now(); return sfx('shieldBreak'); } // the shield takes the hit and breaks
     hp -= n; hit = performance.now(); beep(200, 80, 0.25);
-    if (hp <= 0) stop(`Nave destruida: ${score} puntos y ${coins} monedas.`, true);
+    if (hp <= 0) {
+      [520, 390, 290, 200, 110].forEach((f, i) => setTimeout(() => beep(f, f * 0.55, 0.35), i * 190)); // falling notes: the ship is lost
+      stop(`Nave destruida: ${score} puntos y ${coins} monedas.`, true);
+    }
   }
   function hitBoss(o, n) { // a boss guards each capital in the arcade: beating it wins the capital
     o.hp -= n; booms.push({ p: o.p, t: performance.now() }); beep(260, 90, 0.2);
     if (o.hp > 0) return;
-    objs.splice(objs.indexOf(o), 1); score += 1000; run.bosses++; flash = performance.now(); beep(120, 30, 0.8);
+    objs.splice(objs.indexOf(o), 1); score += 1000; run.bosses++; flash = performance.now(); sfx('boss');
     if (o.cap) collect(o.cap); // the practice boss of the tutorial guards no capital
   }
   function bomb() { // clears every enemy and shot in range
@@ -301,14 +312,14 @@
       if (d < o.size * (o.kind === 'ring' ? 1 : 1.6) + slack) { // touched
         if (o.kind === 'enemy') { if (!rolling) hurt(25); }
         else if (o.kind === 'wall') hurt(20); // obstacles always hurt
-        else if (o.kind === 'heart') { hp = Math.min(100, hp + 25); beep(600, 1600, 0.25); }
-        else if (o.kind === 'shield') { shields = Math.min(3, shields + 1); beep(500, 1000, 0.25); }
-        else if (o.kind === 'bomb') { bombs++; beep(400, 900, 0.25); }
+        else if (o.kind === 'heart') { hp = Math.min(100, hp + 25); sfx('heart'); }
+        else if (o.kind === 'shield') { shields = Math.min(3, shields + 1); sfx('shield'); }
+        else if (o.kind === 'bomb') { bombs++; sfx('bombGet'); }
         else {
           score += o.kind === 'ring' ? 50 : 10;
           if (o.kind === 'ring') hp = Math.min(100, hp + 10); // rings repair the ship
           else if (++coins % 25 === 0) bombs++;
-          beep(o.kind === 'coin' ? 1500 : 800, o.kind === 'coin' ? 2200 : 1300, 0.12);
+          sfx(o.kind); // coin or ring
         }
         return false;
       }
@@ -447,7 +458,7 @@
     got.add(capId(c)); localStorage.setItem(CAPS, JSON.stringify([...got])); run.caps++;
     const [n, all] = capProgress()[c.cont];
     if (arcade) score += 500;
-    beep(900, 1800, 0.3);
+    sfx(n === all ? 'achieve' : 'capital');
     OGE.toast(n === all ? `🏆 Logro: todas las capitales de ${c.cont} (${n}).` : `⭐ Capital conseguida: ${c.name} — ${c.cont} ${n}/${all}.`);
   }
   // Free flight: flying close to a capital collects it. Arcade: a boss appears over it and must be beaten first.
@@ -521,7 +532,7 @@
       gotReg.add(r.id); localStorage.setItem(REGS, JSON.stringify([...gotReg])); run.flags++;
       const all = (fn) => regs.filter(fn).every((x) => gotReg.has(x.id)), mine = regs.filter((x) => x.a3 === r.a3), n = mine.filter((x) => gotReg.has(x.id)).length;
       if (arcade) score += 100;
-      beep(1000, 2000, 0.2);
+      sfx(n === mine.length ? 'achieve' : 'flag'); // a completed country (or continent, or the world) is an achievement
       OGE.toast(all(() => true) ? '🏆 Logro: todas las banderas del mundo.' : all((x) => x.cont === r.cont) ? `🏆 Logro: todas las banderas de ${r.cont}.`
         : n === mine.length ? `🏆 Logro: todas las banderas de ${r.country} (${n}).` : `🚩 Bandera conseguida: ${r.name}, ${r.country} — ${n}/${mine.length}.`);
     }
@@ -807,5 +818,10 @@
     for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => keys.delete(key));
   }
   $('flyBtn').onclick = open;
+  $('shipBtn').onclick = () => { // straight into the Starship arcade, with the options used last time
+    if (on) return stop();
+    let last = {}; try { last = JSON.parse(localStorage.getItem('oge.flyOpts')) || {}; } catch { /* first time */ }
+    start('ship', last.mouse ?? true, true, last.aim ?? false, !localStorage.getItem('oge.tutorial'));
+  };
   OGE.flight = { start, stop, maneuver, state: () => s, flying: () => on, game: () => ({ score, coins, objs, hp, bombs, incoming, shields, regs, tut: tut && tut.i }) };
 })();
