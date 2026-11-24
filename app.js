@@ -15,6 +15,22 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
     c.addEventListener('change', () => localStorage.setItem(key, c.type === 'checkbox' ? (c.checked ? '1' : '0') : c.value));
   });
 
+  // Layers that can slow the app down: marked with a turtle, they ask before switching on, and one button switches them all off
+  const HEAVY = ['layerSats', 'layerCities', 'layerAdmin1', 'fillAdmin1', 'layerRegionNames', 'layerWeather', 'layerRoads', 'layerBuildings', 'layerGoogle3d', 'fillHistory'];
+  for (const id of HEAVY) {
+    const c = $(id);
+    if (!c) continue;
+    c.parentElement.append(' 🐢');
+    c.addEventListener('click', async (e) => { // only a person's click asks; the app may still switch them on by itself
+      if (!e.isTrusted || !c.checked || c.dataset.ok) return;
+      e.preventDefault(); // the box stays off until the answer
+      const v = await OGE.ask({ title: '🐢 Esta opción puede hacer lenta la aplicación', ok: 'Activar igualmente', help: 'Dibuja muchos elementos o descarga muchos datos. En equipos modestos el mapa puede ir a tirones. Puedes apagar todas las opciones pesadas con el botón 🐢 de Capas.' });
+      if (!v) return;
+      c.dataset.ok = '1'; c.checked = true; c.dispatchEvent(new Event('change')); delete c.dataset.ok;
+    });
+  }
+  $('lightBtn').onclick = () => { let n = 0; for (const id of HEAVY) { const c = $(id); if (c && c.checked) { c.checked = false; c.dispatchEvent(new Event('change')); n++; } } OGE.toast(n ? `${n} ${T('opciones pesadas desactivadas.')}` : T('No había opciones pesadas activas.')); };
+
   // ---------- Viewer ----------
   const IMAGERY = {
     // Sentinel-2 cloudless 2016 by EOX (CC BY 4.0). The 2018+ editions are CC BY-NC-SA.
