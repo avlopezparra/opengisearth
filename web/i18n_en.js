@@ -295,7 +295,7 @@
     'opciones pesadas desactivadas.': 'heavy options turned off.',
     'No había opciones pesadas activas.': 'No heavy options were on.',
     'solo los cercanos': 'only nearby ones',
-    'E: turbo temporal de 5 s (en la nave) · Q: detenerse / seguir · RePág / AvPág: gas': 'E: 5 s temporary turbo (on the ship) · Q: stop / fly on · PgUp / PgDn: throttle',
+    'E: turbo temporal de 2,5 s (en la nave) · Q: detenerse / seguir · RePág / AvPág: gas': 'E: 2.5 s temporary turbo (on the ship) · Q: stop / fly on · PgUp / PgDn: throttle',
     'K: ver los controles': 'K: show the controls',
     'Hecho por Alejandro Víctor López Parra @avlopezparra (github)': 'Made by Alejandro Víctor López Parra @avlopezparra (GitHub)',
     'Modo de juego': 'Game mode',

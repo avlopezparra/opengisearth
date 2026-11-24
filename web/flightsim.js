@@ -1109,14 +1109,14 @@
   // ---------- Simplified physics ----------
   // OpenStarshipEarth maneuvers: barrel roll (R), full loop (V) and half loop with a roll out, to turn back (F).
   let man = null, lastRoll = 1; // man: { type, t0, dur, dir }
-  function startBoost() { // the next turbo level for 5 seconds
+  function startBoost() { // two turbo levels for 2.5 seconds
     if (landing) return; // on the ground E is the accelerator of the 'car'
     stopped = false;
     if (s.v < (A.v0 || 300)) { s.v = A.v0 || 300; s.throttle = Math.max(s.throttle, 0.5); } // stopped with Q: E gets it moving again
     if (boost || performance.now() < boostCd) return;
     stopped = false;
     const to = WARPS[Math.min(WARPS.length - 1, WARPS.indexOf(warp) + 2)]; // two turbo levels up
-    boost = { t0: performance.now(), from: warp, to }; boostCd = performance.now() + 6000; setWarp(to); sfx('thrust');
+    boost = { t0: performance.now(), from: warp, to }; boostCd = performance.now() + 3500; setWarp(to); sfx('thrust');
   }
   function maneuver(type) {
     if (on && !A.ship) return OGE.toast('Disparar y las maniobras son solo de la OpenStarshipEarth.');
@@ -1158,7 +1158,7 @@
       s.pitch = clamp(s.pitch, rad(-89), rad(89));
       s.v = clamp(s.v + (s.throttle * A.thrust - drag - airbrake - grav * Math.sin(s.pitch)) * dt, 0, A.vMax * 1.3);
       if (A.ship && airbrake) { s.v = Math.max(0, s.v - Math.max(A.thrust * 3, s.v * 4) * dt); if (boost) { if (warp === boost.to) setWarp(boost.from); boost = null; } } // Q: the ship stops in about a second and hovers
-      else if (A.ship && boost && performance.now() - boost.t0 > 5000) { if (warp === boost.to) setWarp(boost.from); boost = null; } // after 5 s, back to the turbo it had (unless changed by hand) // the burst rises and falls back to the speed it had
+      else if (A.ship && boost && performance.now() - boost.t0 > 2500) { if (warp === boost.to) setWarp(boost.from); boost = null; } // after 2.5 s, back to the turbo it had (unless changed by hand) // the burst rises and falls back to the speed it had
       s.vs = s.v * Math.sin(pe);
       s.alt += s.vs * dt * warp;
       if (A.ship && keys.has(' ')) { s.alt += 250 * dt; s.vs += 250; } // Space: a gentle climb, ~250 m/s
