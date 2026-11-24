@@ -82,6 +82,26 @@
   }
   // The theme (theme.js: the user's own loop) is played by a small synth: brass lead and harmony, bass and three drum sounds.
   const TH = window.OGE_THEME, VOICE = { lead: ['sawtooth', 0.045], harmony: ['square', 0.018], bass: ['triangle', 0.09] };
+  // [modulator ratio, modulation index at the attack, index it decays to, decay seconds, volume, carrier detune in cents]
+  const FM = { lead: [1, 3.2, 1.1, 0.25, 0.07, 4], harmony: [2, 1.6, 0.4, 0.4, 0.028, -6], bass: [1, 4.5, 1.4, 0.12, 0.11, 0] };
+  let musicBus = null; // music → (dry + echo) → master
+  function bus() {
+    if (musicBus) return musicBus;
+    musicBus = audio.createGain();
+    const echo = audio.createDelay(1), fb = audio.createGain(), lp = audio.createBiquadFilter(), wet = audio.createGain();
+    echo.delayTime.value = 0.19; fb.gain.value = 0.32; lp.type = 'lowpass'; lp.frequency.value = 2800; wet.gain.value = 0.28;
+    musicBus.connect(master); musicBus.connect(echo); echo.connect(lp).connect(fb).connect(echo); lp.connect(wet).connect(master);
+    return musicBus;
+  }
+  function fmTone(k, midi, t, dur) { // a carrier sine whose frequency is swung by a modulator sine: bright at the attack, mellower after
+    const [ratio, i0, i1, dec, vol, cents] = FM[k], f = 440 * 2 ** ((midi - 69) / 12) * 2 ** (cents / 1200);
+    const car = audio.createOscillator(), mod = audio.createOscillator(), depth = audio.createGain(), v = audio.createGain();
+    car.frequency.value = f; mod.frequency.value = f * ratio;
+    depth.gain.setValueAtTime(f * i0, t); depth.gain.exponentialRampToValueAtTime(f * i1, t + Math.min(dec, dur));
+    v.gain.setValueAtTime(0.0001, t); v.gain.exponentialRampToValueAtTime(vol, t + 0.008); v.gain.setValueAtTime(vol, t + dur * 0.75); v.gain.exponentialRampToValueAtTime(0.0001, t + dur + 0.05);
+    mod.connect(depth).connect(car.frequency); car.connect(v).connect(bus());
+    car.start(t); mod.start(t); car.stop(t + dur + 0.08); mod.stop(t + dur + 0.08);
+  }
   let noise = null;
   function tone(midi, t, dur, type, vol) {
     const o = audio.createOscillator(), v = audio.createGain();
@@ -115,7 +135,7 @@
         const n = th[k] || [];
         while (idx[k] < n.length && n[idx[k]] < until) {
           const at = t0 + n[idx[k]] * u, len = n[idx[k] + 1] * u, pitch = n[idx[k] + 2];
-          if (!paused && at > audio.currentTime - 0.05) { if (k === 'drums') drum(pitch, at); else tone(pitch, at, Math.min(len, 1.5), VOICE[k][0], VOICE[k][1]); }
+          if (!paused && at > audio.currentTime - 0.05) { if (k === 'drums') drum(pitch, at); else fmTone(k, pitch, at, Math.min(len, 1.5)); }
           idx[k] += 3;
         }
       }
@@ -399,7 +419,7 @@
     });
   }
   function arcadeStep(dt) {
-    if (tune) { const BT = window.OGE_BOSS_THEME, near = BT && objs.some((o) => o.kind === 'boss' && C.Cartesian3.distance(o.p, viewer.camera.positionWC) < 6e4), want = near ? BT : TH; if (want !== tune) music(true, want); } // Boss Fight OpenStarshipEarth while a boss is close
+    if (tune) { const BT = window.OGE_BOSS_THEME, near = BT && objs.some((o) => o.kind === 'boss' && C.Cartesian3.distance(o.p, viewer.camera.positionWC) < 6e4), base = (adv && window.OGE_ADV_THEME) || (race && window.OGE_RACE_THEME) || TH, want = near ? BT : base; if (want !== tune) music(true, want); } // Boss Fight OpenStarshipEarth while a boss is close
     const cam = viewer.camera, t = new C.Cartesian3(), far = reach() * 2.5, eff = s.v * warp, slack = eff * 0.03, now = performance.now(); // slack: distance covered in one frame
     const rolling = man && man.type === 'roll'; // a barrel roll deflects enemies and shots
     objs = objs.filter((o) => {
