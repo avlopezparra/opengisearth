@@ -31,11 +31,11 @@
 <meta name="twitter:description" content="OpenGISEarth: globo 3D y editor SIG de código abierto, alternativa libre a Google Earth Pro. Mapas, fronteras, países históricos, satélites en vivo, herramientas de geoprocesamiento y el juego OpenStarshipEarth.">
 <meta name="twitter:image" content="https://opengisearth.com/og-image.png">
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "WebApplication", "name": "OpenGISEarth", "url": "https://opengisearth.com/", "description": "OpenGISEarth: open-source 3D globe and GIS editor, a free alternative to Google Earth Pro. Maps, borders, historical countries, live satellites, geoprocessing tools and the OpenStarshipEarth game.", "applicationCategory": "ReferenceApplication", "operatingSystem": "Web, Windows", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}, "inLanguage": ["es", "en"], "image": "https://opengisearth.com/og-image.png", "author": {"@type": "Person", "name": "Alejandro Víctor López Parra", "url": "https://github.com/avlopezparra"}, "sameAs": ["https://github.com/avlopezparra/opengisearth"]}</script>
-<script src="i18n_en.js?v=20261124153244"></script>
-<script src="i18n.js?v=20261124153244"></script>
+<script src="i18n_en.js?v=20261124153837"></script>
+<script src="i18n.js?v=20261124153837"></script>
 <script src="cesium/Cesium.js"></script>
 <link href="cesium/Widgets/widgets.css" rel="stylesheet">
-<link href="style.css?v=20261124153244" rel="stylesheet">
+<link href="style.css?v=20261124153837" rel="stylesheet">
 </head>
 <body>
 <noscript><div style="padding:2em;font-family:sans-serif;max-width:60em">
@@ -114,9 +114,9 @@
   <div id="mmBox"><canvas id="minimap" width="240" height="120" title="Minimapa: clic para ir a ese lugar, rueda del mouse para acercar o alejar"></canvas><button id="mmIn" title="Acercar el minimapa (+)">+</button><button id="mmOut" title="Alejar el minimapa (−)">−</button><button id="mmMin" title="Minimizar o mostrar el minimapa (M)">▾</button></div>
     <canvas id="hud" hidden></canvas>
     <button id="compass" title="Brújula: la aguja roja marca el norte. Clic para poner el norte arriba."><span>N</span></button>
-    <div id="flyBtns"><div id="flyActs"><button data-key="x" title="Disparar (X)">🔫</button><button data-key="r" title="Tonel (R)">🌀</button><button data-key="v" title="Rizo (V)">➰</button><button data-key="u" title="Media vuelta (U)">↩</button><button data-key="b" title="Bomba (B)">💣</button></div><div><button id="flyLeft" title="Mantén pulsado para doblar a la izquierda (A)">◀ A</button><button id="flyRight" title="Mantén pulsado para doblar a la derecha (D)">D ▶</button></div><button id="flyUp" title="Mantén pulsado para aumentar la velocidad (E o RePág)">▲ Acelerar (E)</button><button id="flyDown" title="Mantén pulsado para disminuir la velocidad (Q o AvPág)">▼ Frenar (Q)</button><button id="flyWarp" title="Multiplica la velocidad de avance (T)">Turbo ×1 ▲ (T)</button><button id="flyWarpDown" title="Baja un nivel de turbo (G)">Turbo ▼ (G)</button><button id="flyMore" title="Más opciones">⋯ Más</button><div id="flyExtra"><button id="flyMp" title="Multijugador y colores de las naves">👥 Multijugador</button><button id="flyTurn" title="Cambia la rapidez de giro de A y D (N)">Giro ×1 (N)</button><button id="flyMute" title="Silencia o activa la música y los efectos (P)">🔊 Sonido (P)</button><button id="flyHelp">? Controles (K)</button><button id="flyTutBtn" title="Empieza el tutorial guiado: explica cada cosa y espera a que la hagas (O)">🎓 Tutorial guiado (O)</button><button id="flyRulesBtn">📖 Ayuda (I)</button><button id="flyScores">🏆 Puntajes</button><button id="flyFs" hidden>⛶ Pantalla completa</button><button id="flyQuest" title="Activa o desactiva la colección de banderas y capitales (J)">🚩 Colección (J)</button><button id="flyLand" title="Baja de golpe hasta el suelo (Z)">⬇ Aterrizar (Z)</button><button id="flyLift" title="Vuelve a despegar (C)">⬆ Despegar</button><button id="flyReset" title="Empieza otra vez la colección de banderas y capitales">↺ Reiniciar colección</button></div></div>
+    <div id="flyBtns"><div id="flyActs"><button data-key="x" title="Disparar (X)">🔫</button><button data-key="r" title="Tonel (R)">🌀</button><button data-key="v" title="Rizo (V)">➰</button><button data-key="f" title="Media vuelta (F)">↩</button><button data-key="b" title="Bomba (B)">💣</button></div><div><button id="flyLeft" title="Mantén pulsado para doblar a la izquierda (A)">◀ A</button><button id="flyRight" title="Mantén pulsado para doblar a la derecha (D)">D ▶</button></div><button id="flyUp" title="Mantén pulsado para aumentar la velocidad (E o RePág)">▲ Acelerar (E)</button><button id="flyDown" title="Mantén pulsado para disminuir la velocidad (Q o AvPág)">▼ Frenar (Q)</button><button id="flyWarp" title="Multiplica la velocidad de avance (T)">Turbo ×1 ▲ (T)</button><button id="flyWarpDown" title="Baja un nivel de turbo (G)">Turbo ▼ (G)</button><button id="flyMore" title="Más opciones">⋯ Más</button><div id="flyExtra"><button id="flyMp" title="Multijugador y colores de las naves">👥 Multijugador</button><button id="flyTurn" title="Cambia la rapidez de giro de A y D (N)">Giro ×1 (N)</button><button id="flyMute" title="Silencia o activa la música y los efectos (P)">🔊 Sonido (P)</button><button id="flyHelp">? Controles (K)</button><button id="flyTutBtn" title="Empieza el tutorial guiado: explica cada cosa y espera a que la hagas (O)">🎓 Tutorial guiado (O)</button><button id="flyRulesBtn">📖 Ayuda (I)</button><button id="flyThird" title="Ver la nave desde atrás (Y)">Cámara: tercera persona (Y)</button><button id="flyScores">🏆 Puntajes</button><button id="flyFs" hidden>⛶ Pantalla completa</button><button id="flyQuest" title="Activa o desactiva la colección de banderas y capitales (J)">🚩 Colección (J)</button><button id="flyLand" title="Baja de golpe hasta el suelo (Z)">⬇ Aterrizar (Z)</button><button id="flyLift" title="Vuelve a despegar (C)">⬆ Despegar</button><button id="flyReset" title="Empieza otra vez la colección de banderas y capitales">↺ Reiniciar colección</button></div></div>
     <ul id="flyRules" hidden><li class="h">Objetivo</li><li>Suma puntos, colecciona las banderas de las regiones y gana las capitales derrotando a sus jefes. Si tu vida llega a 0, la nave se destruye.</li><li class="h">Objetos</li><li>⭕ Aro: atraviésalo (+50 puntos y repara 10); dejarlo pasar quita 5.</li><li>🪙 Moneda: +10 puntos; cada 25 ganas una bomba.</li><li>♥ Corazón: +25 de vida.  🛡 Escudo: absorbe un golpe y se rompe (hasta 3).  💣 Bomba extra (escasa).</li><li>▭ Rectángulo gris: obstáculo, quita 20. Tocar el suelo quita 15.</li><li>🚩 Bandera: hay una sobre cada región; pasa a menos de 5 km para coleccionarla. Completar un país, un continente o el mundo da un logro.</li><li class="h">Enemigos</li><li>🛸 Naves enemigas (tres tipos): 100 puntos al derribarlas (X o clic). Disparan cada pocos segundos (−8) y chocarlas quita 25.</li><li class="h">Jefes</li><li>★ Sobre cada capital hay un jefe con barra de vida. Solo al derrotarlo ganas la capital (+1000 puntos).</li><li>🏰 Fortaleza: 15 de vida, dispara seguido.  🐍 Serpiente: 12 de vida, se mueve de lado a lado.</li><li>🗿 Cara gigante: 20 de vida, escupe ráfagas de tres disparos.  🐉 Dragón: 18 de vida, vuela de lado a lado y dispara rápido.</li><li>💎 Coloso de cristal: su escudo solo se abre 2 de cada 5 segundos; dispara cuando el núcleo esté rojo.  🐝 Colmena: lanza escoltas; derriba escoltas hasta que queden menos de dos para dañar su núcleo.  🗼 Faro: a media vida entra en furia y dispara en todas direcciones.</li><li class="h">Defensa</li><li>El tonel (R) desvía disparos y choques. La bomba (B) destruye a los enemigos cercanos y quita 6 de vida a un jefe.</li><li>Pulsa I para cerrar esta ayuda. O inicia el tutorial guiado.</li></ul>
-    <ul id="flyKeys" hidden><li>W / S o ↑ ↓: bajar / subir la nariz</li><li>A / D: doblar a izquierda / derecha · N: girar más rápido (×2, ×3, ×5)</li><li>← →: inclinar las alas (alabeo)</li><li>E: turbo temporal de 5 s (en la nave) · Q: detenerse / seguir · RePág / AvPág: gas</li><li>T / G: subir / bajar el turbo (×2 … ×100)</li><li>X o clic derecho: disparar (OpenStarshipEarth)</li><li>R: tonel · V: rizo completo · U: media vuelta (OpenStarshipEarth)</li><li>B: bomba, destruye a los enemigos cercanos (OpenStarshipEarth)</li><li>+ / −: acercar o alejar el minimapa · M: minimizarlo</li><li>P: silenciar o activar el sonido</li><li>J: activar o desactivar la colección de banderas y capitales</li><li>Z: aterrizar de golpe · C: despegar (OpenStarshipEarth)</li><li>Pantalla táctil: arrastra en la mitad izquierda para dirigir; toca la mitad derecha para disparar</li><li>L: tren de aterrizaje · F: flaps · B: frenos</li><li>Clic: tomar o soltar la palanca con el mouse</li><li>Jugador 2 (multijugador local): I J K L mover · O / U adelantarse / retrasarse · Enter disparar</li><li>Espacio: pausa · H: ocultar el HUD · K: esta ayuda · Esc: salir</li></ul>
+    <ul id="flyKeys" hidden><li>W / S o ↑ ↓: bajar / subir la nariz</li><li>A / D: doblar a izquierda / derecha · N: girar más rápido (×2, ×3, ×5)</li><li>← →: inclinar las alas (alabeo)</li><li>E: turbo temporal de 5 s (en la nave) · Q: detenerse / seguir · RePág / AvPág: gas</li><li>T / G: subir / bajar el turbo (×2 … ×100)</li><li>X o clic derecho: disparar (OpenStarshipEarth)</li><li>R: tonel · V: rizo completo · F: media vuelta (OpenStarshipEarth) · U: usar el objeto de la carrera</li><li>B: bomba, destruye a los enemigos cercanos (OpenStarshipEarth)</li><li>+ / −: acercar o alejar el minimapa · M: minimizarlo</li><li>P: silenciar o activar el sonido</li><li>J: activar o desactivar la colección de banderas y capitales</li><li>Z: aterrizar de golpe · C: despegar (OpenStarshipEarth)</li><li>Pantalla táctil: arrastra en la mitad izquierda para dirigir; toca la mitad derecha para disparar</li><li>L: tren de aterrizaje · F: flaps · B: frenos</li><li>Clic: tomar o soltar la palanca con el mouse</li><li>Jugador 2 (multijugador local): I J K L mover · O / U adelantarse / retrasarse · Enter disparar</li><li>Espacio: pausa · H: ocultar el HUD · K: esta ayuda · Esc: salir</li><li>Y: cámara en tercera o primera persona</li></ul>
   <button id="sideBtn" title="Mostrar u ocultar el panel lateral">☰</button>
   <nav id="tools" class="bar" aria-label="Herramientas">
     <button class="fold" title="Plegar o desplegar esta barra">▾</button>
@@ -205,21 +205,21 @@
 <script src="vendor/sql-wasm.js"></script>
 <script src="vendor/satellite.min.js"></script>
 <script>document.getElementById("langSel").value = OGE_LANG;</script>
-<script src="app.js?v=20261124153244"></script>
-<script src="geo.js?v=20261124153244"></script>
-<script src="draw.js?v=20261124153244"></script>
-<script src="edit.js?v=20261124153244"></script>
-<script src="places.js?v=20261124153244"></script>
-<script src="terrain.js?v=20261124153244"></script>
-<script src="borders.js?v=20261124153244"></script>
-<script src="osmvector.js?v=20261124153244"></script>
-<script src="layers.js?v=20261124153244"></script>
-<script src="tools.js?v=20261124153244"></script>
-<script src="db.js?v=20261124153244"></script>
-<script src="print.js?v=20261124153244"></script>
-<script src="relief.js?v=20261124153244"></script>
-<script src="theme.js?v=20261124153244"></script>
-<script src="flightsim.js?v=20261124153244"></script>
-<script src="google3d.js?v=20261124153244"></script>
+<script src="app.js?v=20261124153837"></script>
+<script src="geo.js?v=20261124153837"></script>
+<script src="draw.js?v=20261124153837"></script>
+<script src="edit.js?v=20261124153837"></script>
+<script src="places.js?v=20261124153837"></script>
+<script src="terrain.js?v=20261124153837"></script>
+<script src="borders.js?v=20261124153837"></script>
+<script src="osmvector.js?v=20261124153837"></script>
+<script src="layers.js?v=20261124153837"></script>
+<script src="tools.js?v=20261124153837"></script>
+<script src="db.js?v=20261124153837"></script>
+<script src="print.js?v=20261124153837"></script>
+<script src="relief.js?v=20261124153837"></script>
+<script src="theme.js?v=20261124153837"></script>
+<script src="flightsim.js?v=20261124153837"></script>
+<script src="google3d.js?v=20261124153837"></script>
 </body>
 </html>

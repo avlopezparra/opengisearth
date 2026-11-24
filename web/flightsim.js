@@ -131,6 +131,7 @@
     hard: { name: 'Difícil', hurt: 1.6, fire: 0.6, shot: 1.4, boss: 1.6, pts: 2 }, ace: { name: 'As', hurt: 2.5, fire: 0.4, shot: 1.8, boss: 2.5, pts: 4 } };
   let diff = DIFF[localStorage.getItem('oge.diff')] ? localStorage.getItem('oge.diff') : 'normal';
   const pts = (n) => Math.round(n * DIFF[diff].pts); // points earned scale with the difficulty
+  let third = localStorage.getItem('oge.third') === '1'; // third-person camera: behind and above the ship (Y switches)
   let stopped = false, airports = null, airBusy = false, refuelMsg = false; // stopped: Q toggles a hover; airports: [[lon, lat]] (Natural Earth) where landing heals
   let thrT = 0, boost = null, boostCd = 0, eHeld = false, landing = null; // boost: the ship's single burst on E { t0, base } // landing: 'down' while dropping, 'parked' on the ground, 'up' while lifting off
   let calm = false; // free flight chosen from the mode menu: nothing to collect
@@ -195,7 +196,8 @@
     hand: { name: 'Mano gigante', hp: 16, every: 2200, shots: 1, color: '#ffcc99', sway: 0, grab: true }, // chases the ship and grabs it: a barrel roll (R) breaks free
     beacon: { name: 'Faro', hp: 20, every: 1500, shots: 2, color: '#ff5c5c', sway: 0, phases: true }, // at half life it spins and fires all around
   };
-  const bossKind = (name) => Object.keys(BOSSES)[[...name].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7) % Object.keys(BOSSES).length];
+  const SOLO = Object.keys(BOSSES).filter((k) => k !== 'hand'); // the hands come with the stone face
+  const bossKind = (name) => SOLO[[...name].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7) % SOLO.length];
   function drawBoss(o, x, y, R, now) {
     const t = now / 1000, k = o.type;
     g.shadowColor = BOSSES[k].color; g.shadowBlur = 16; g.lineJoin = 'round';
@@ -227,7 +229,9 @@
         }
       }
     } else if (k === 'hand') {
-      const close = o.held ? 1 : 0.25 + 0.2 * Math.sin(t * 4), skin = '#ffcc99', edge = '#8d5a3a';
+      g.save(); if (o.mirror < 0) { g.translate(x * 2, 0); g.scale(-1, 1); } // the left one of a pair is mirrored
+      const close = o.held ? 1 : o.phase === 'windup' ? 0 : o.phase === 'lunge' ? 0.6 : 0.25 + 0.2 * Math.sin(t * 4), skin = '#ffcc99', edge = '#8d5a3a';
+      if (o.phase === 'windup' || o.phase === 'lunge') { g.fillStyle = 'rgba(255,40,40,.3)'; g.beginPath(); g.arc(x, y, R * (1.8 + 0.2 * Math.sin(t * 20)), 0, 7); g.fill(); } // about to grab
       g.lineCap = 'round'; g.strokeStyle = edge; g.lineWidth = 2;
       g.beginPath(); g.ellipse(x, y + R * 0.2, R * 0.75, R * 0.8, 0, 0, 7); g.fillStyle = skin; g.fill(); g.stroke(); // palm
       for (let i = 0; i < 4; i++) { // fingers: they curl toward the palm as the hand closes
@@ -238,6 +242,7 @@
       g.beginPath(); g.moveTo(x + R * 0.65, y + R * 0.3); g.quadraticCurveTo(x + R * 1.25, y - R * 0.2 * (1 - close), x + R * (1.1 - close * 0.6), y - R * 0.3); g.strokeStyle = edge; g.lineWidth = R * 0.34; g.stroke(); g.strokeStyle = skin; g.lineWidth = R * 0.26; g.stroke(); // thumb
       g.strokeStyle = 'rgba(141,90,58,.6)'; g.lineWidth = 2; g.beginPath(); g.arc(x, y + R * 0.3, R * 0.4, 3.6, 5.8); g.stroke(); // a palm line
       if (o.held) { g.fillStyle = 'rgba(255,0,0,.25)'; g.beginPath(); g.arc(x, y, R * 1.6, 0, 7); g.fill(); }
+      g.restore();
     } else if (k === 'face') { // a stone face whose mouth opens when it spits
       const open = Math.max(0, 1 - (now - (o.spat || 0)) / 500);
       g.beginPath(); g.ellipse(x, y, R * 1.15, R * 1.4, 0, 0, 7); g.fillStyle = '#8d8f99'; g.fill(); g.strokeStyle = '#3a3c44'; g.lineWidth = 3; g.stroke();
@@ -372,7 +377,8 @@
     if (BOSSES[o.type].spawns && escortsUp(o) >= 2) { booms.push({ p: o.p, t: performance.now() }); return sfx('shieldBreak'); } // the hive's core is covered
     o.hp -= n; booms.push({ p: o.p, t: performance.now() }); beep(260, 90, 0.2);
     if (o.hp > 0) return;
-    objs.splice(objs.indexOf(o), 1); gain(pts(1000)); run.bosses++; flash = performance.now(); sfx('boss');
+    objs.splice(objs.indexOf(o), 1); gain(pts(o.from ? 300 : 1000)); if (!o.from) run.bosses++; flash = performance.now(); sfx('boss');
+    if (o.type === 'face') objs = objs.filter((x) => { if (x.from !== o) return true; booms.push({ p: x.p, t: performance.now() }); return false; }); // its hands fall with it
     if (o.cap) { // the practice boss of the tutorial guards no capital
       const c = o.cap, fl = flagMap && flagMap.get(c.a3), img = fl && fl.arms ? Object.assign(new Image(), { src: fl.arms }) : null;
       objs.push({ kind: 'crest', cap: c, img, p: C.Cartesian3.fromDegrees(c.lon, c.lat, 5500), size: 900, next: 1e15 });
@@ -402,15 +408,23 @@
         const bc = C.Cartographic.fromCartesian(o.base), gh = scene.globe.getHeight(bc); // finer terrain may load later: keep 6 km over it
         if (gh !== undefined && bc.height < gh + 5000) o.base = C.Cartesian3.fromRadians(bc.longitude, bc.latitude, gh + 6000);
         const B = BOSSES[o.type], up = C.Cartesian3.normalize(o.base, new C.Cartesian3());
-        if (B.grab) { // the hand: flies at the ship (never more than 25 km from its capital) and grabs it when close
-          const to = C.Cartesian3.subtract(cam.positionWC, o.p, new C.Cartesian3()), dd = C.Cartesian3.magnitude(to);
-          if (o.held) { C.Cartesian3.clone(cam.positionWC, o.p); C.Cartesian3.add(o.p, C.Cartesian3.multiplyByScalar(cam.directionWC, 250, t), o.p); } // holding the ship right in front of the view
-          else if (dd > 1) C.Cartesian3.add(o.p, C.Cartesian3.multiplyByScalar(to, Math.min(1, (350 * dt) / dd), t), o.p);
-          if (C.Cartesian3.distance(o.p, o.base) > 25000) C.Cartesian3.clone(o.base, o.p);
-          if (!o.held && dd < 700 && now > (o.grabCd || 0) && now > graceT) { o.held = now; OGE.toast(T('¡La mano te atrapó! Haz un tonel (R) para soltarte.')); sfx('shieldBreak'); }
+        if (B.grab) { // the hand: keeps pace a little ahead of the ship, winds up (fingers spread, red glow), then lunges to grab it
+          const cp = cam.positionWC, ahead = C.Cartesian3.add(cp, C.Cartesian3.multiplyByScalar(cam.directionWC, 2500, new C.Cartesian3()), new C.Cartesian3());
+          C.Cartesian3.add(ahead, C.Cartesian3.multiplyByScalar(cam.rightWC, (o.mirror || 0) * 1300 + Math.sin(now / 900) * 900, t), ahead); // sways from side to side; a pair keeps to each side
+          const chase = Math.max(900, s.v * warp * 1.3) * dt, toward = (p, sp) => { const v = C.Cartesian3.subtract(p, o.p, new C.Cartesian3()), m = C.Cartesian3.magnitude(v); if (m > 1) C.Cartesian3.add(o.p, C.Cartesian3.multiplyByScalar(v, Math.min(1, sp / m), v), o.p); };
+          const far = C.Cartesian3.distance(cp, o.base) > 8e4; // the pilot fled its capital: it goes home
+          o.phase = o.phase || 'hover'; o.pt = o.pt || now;
+          if (o.held) { C.Cartesian3.clone(cp, o.p); C.Cartesian3.add(o.p, C.Cartesian3.multiplyByScalar(cam.directionWC, 250, t), o.p); }
+          else if (far) { toward(o.base, chase); o.phase = 'hover'; }
+          else if (o.phase === 'hover') { toward(ahead, chase); if (now - o.pt > 3000 + Math.random() * 1500 && now > graceT) { o.phase = 'windup'; o.pt = now; sfx('warpDown'); } }
+          else if (o.phase === 'windup') { toward(ahead, chase); if (now - o.pt > 800) { o.phase = 'lunge'; o.pt = now; } }
+          else if (o.phase === 'lunge') { toward(cp, Math.max(2500, s.v * warp * 3) * dt); if (now - o.pt > 1200) { o.phase = 'back'; o.pt = now; } }
+          else { toward(ahead, chase * 0.6); if (now - o.pt > 1200) { o.phase = 'hover'; o.pt = now; } }
+          const dd = C.Cartesian3.distance(cp, o.p);
+          if (!o.held && o.phase === 'lunge' && dd < 900 + slack && now > (o.grabCd || 0)) { o.held = now; o.phase = 'back'; OGE.toast(T('¡La mano te atrapó! Haz un tonel (R) para soltarte.')); sfx('shieldBreak'); }
           if (o.held) {
             s.v *= Math.max(0, 1 - 4 * dt); // it holds the ship still
-            if (rolling || now - o.held > 4000) { o.held = 0; o.grabCd = now + 5000; sfx('roll'); } // a barrel roll breaks free (it lets go by itself after 4 s)
+            if (rolling || now - o.held > 4000) { o.held = 0; o.grabCd = now + 4000; o.pt = now; sfx('roll'); } // a barrel roll breaks free (it lets go by itself after 4 s)
             else if (now - (o.squeeze || 0) > 600) { o.squeeze = now; hurt(6); }
           }
         } else {
@@ -446,7 +460,7 @@
         else if (o.kind === 'crest') collect(o.cap); // the coat of arms wins the capital
         else if (o.kind === 'shield') { shields = Math.min(3, shields + 1); sfx('shield'); }
         else if (o.kind === 'bomb') { bombs++; sfx('bombGet'); }
-        else if (o.kind === 'itembox') { if (item) return true; item = Object.keys(ITEMS)[Math.floor(Math.random() * 4)]; sfx('achieve'); OGE.toast(`${ITEMS[item][0]} ${T(ITEMS[item][1])} — ${T('F para usarlo')}`); }
+        else if (o.kind === 'itembox') { if (item) return true; item = Object.keys(ITEMS)[Math.floor(Math.random() * 4)]; sfx('achieve'); OGE.toast(`${ITEMS[item][0]} ${T(ITEMS[item][1])} — ${T('U para usarlo')}`); }
         else if (o.kind === 'mine') { if (o.own) return true; hurt(25); booms.push({ p: o.p, t: performance.now() }); }
         else {
           score += pts(10);
@@ -468,11 +482,12 @@
       const d = C.Cartesian3.distance(o.p, cam.positionWC), speed = (eff * 0.5 + 600) * DIFF[diff].shot, tt = d / (speed + eff);
       if (boss ? d > Math.max(reach() * 1.3, 6e4) : d > reach() * 1.3 || C.Cartesian3.dot(C.Cartesian3.subtract(o.p, cam.positionWC, t), cam.directionWC) < 0) continue;
       const target = C.Cartesian3.add(p2 && !p2.out && p2.p && Math.random() < 0.5 ? p2.p : cam.positionWC, C.Cartesian3.multiplyByScalar(cam.directionWC, eff * tt, new C.Cartesian3()), new C.Cartesian3()); // half the shots go for player 2
-      const n = boss ? (o.rage ? 8 : BOSSES[o.type].shots) : 1; // a volley fans out sideways (a raging beacon fires eight)
+      const panels = boss && o.type === 'face' && (o.volley = (o.volley || 0) + 1) % 2 === 1; // the stone face spits panels one volley, fires lasers the next
+      const n = boss ? (o.rage ? 8 : panels ? 7 : BOSSES[o.type].shots) : 1; // a volley fans out sideways (a raging beacon fires eight)
       if (boss) o.spat = now;
       for (let i = 0; i < n; i++) {
-        const spread = o.rage ? 0.18 : 0.05, aim = C.Cartesian3.add(target, C.Cartesian3.multiplyByScalar(o.rage && i % 2 ? cam.upWC : cam.rightWC, (i - (n - 1) / 2) * d * spread, new C.Cartesian3()), new C.Cartesian3());
-        incoming.push({ p: C.Cartesian3.clone(o.p), vel: C.Cartesian3.multiplyByScalar(C.Cartesian3.subtract(aim, o.p, t), 1 / tt, new C.Cartesian3()), t: now, color: boss ? BOSSES[o.type].color : '#ff2df5' });
+        const spread = o.rage ? 0.18 : panels ? 0.09 : 0.05, aim = C.Cartesian3.add(target, C.Cartesian3.multiplyByScalar(o.rage && i % 2 ? cam.upWC : cam.rightWC, (i - (n - 1) / 2) * d * spread, new C.Cartesian3()), new C.Cartesian3());
+        incoming.push({ p: C.Cartesian3.clone(o.p), vel: C.Cartesian3.multiplyByScalar(C.Cartesian3.subtract(aim, o.p, t), 1 / tt, new C.Cartesian3()), t: now, color: boss ? BOSSES[o.type].color : '#ff2df5', panel: panels, spin: Math.random() * 6 });
       }
     }
     incoming = incoming.filter((b) => {
@@ -554,7 +569,9 @@
     for (const b of incoming) { // enemy shots
       const q = toWin(scene, b.p);
       if (!q) continue;
-      g.save(); g.fillStyle = g.shadowColor = b.color || '#ff2df5'; g.shadowBlur = 10; g.beginPath(); g.arc(q.x, q.y, Math.max(3, (60 / C.Cartesian3.distance(b.p, viewer.camera.positionWC)) * f), 0, 7); g.fill(); g.restore();
+      const br = Math.max(3, (60 / C.Cartesian3.distance(b.p, viewer.camera.positionWC)) * f);
+      if (b.panel) { const a = b.spin + performance.now() / 150, sq = Math.abs(Math.cos(a * 0.7)); g.save(); g.translate(q.x, q.y); g.rotate(a); g.fillStyle = '#d7dde5'; g.fillRect(-br * 2, -br * 1.3 * sq, br * 4, br * 2.6 * sq); g.strokeStyle = '#ff7a1a'; g.lineWidth = Math.max(1.5, br * 0.35); g.strokeRect(-br * 2, -br * 1.3 * sq, br * 4, br * 2.6 * sq); g.restore(); continue; } // a tumbling panel
+      g.save(); g.fillStyle = g.shadowColor = b.color || '#ff2df5'; g.shadowBlur = 10; g.beginPath(); g.arc(q.x, q.y, br, 0, 7); g.fill(); g.restore();
     }
     const fade = (t0, ms, color) => { const k = (now - t0) / ms; if (k < 1) { g.save(); g.globalAlpha = 0.5 * (1 - k); g.fillStyle = color; g.fillRect(0, 0, w, h); g.restore(); } };
     fade(flash, 450, '#fff'); fade(hit, 250, broke === hit ? '#0a84ff' : '#f00'); // bomb / shield broken / damage
@@ -668,6 +685,7 @@
       if (adv && (c.a3 !== adv.a3 || !adv.boss)) continue; // in the adventure the boss comes after the flags
       const type = bossKind(c.name), B = BOSSES[type], base = C.Cartesian3.fromDegrees(c.lon, c.lat, (scene.globe.getHeight(C.Cartographic.fromDegrees(c.lon, c.lat)) || 0) + 6000);
       objs.push({ kind: 'boss', born: performance.now(), type, cap: c, base, p: C.Cartesian3.clone(base), east: C.Cartesian3.normalize(C.Cartesian3.cross(C.Cartesian3.UNIT_Z, base, new C.Cartesian3()), new C.Cartesian3()), size: 700, hp: Math.ceil(B.hp * DIFF[diff].boss), max: Math.ceil(B.hp * DIFF[diff].boss), next: performance.now() + 2500 });
+      if (type === 'face') { const face = objs[objs.length - 1]; for (const side of [-1, 1]) objs.push({ kind: 'boss', born: performance.now(), type: 'hand', cap: null, from: face, base, p: C.Cartesian3.add(base, C.Cartesian3.multiplyByScalar(face.east, side * 1500, new C.Cartesian3()), new C.Cartesian3()), east: face.east, size: 500, hp: 6, max: 6, next: performance.now() + 4000, pt: performance.now() + side * 1500, mirror: side }); }
       OGE.toast(`⚠ Jefe de ${c.name}: derrótalo para conseguir la capital.`);
       beep(200, 500, 0.6);
     }
@@ -845,7 +863,7 @@
     const c = viewer.camera.positionCartographic, rel = bearing({ lon: deg(c.longitude), lat: deg(c.latitude) }, race.to) - viewer.camera.heading;
     g.save(); g.translate(w / 2, 70); g.rotate(rel); g.fillStyle = g.shadowColor = '#34c759'; g.shadowBlur = 10; g.beginPath(); g.moveTo(0, -16); g.lineTo(11, 10); g.lineTo(0, 4); g.lineTo(-11, 10); g.closePath(); g.fill(); g.restore();
     text(`🏁 ${race.to.name} · ${raceKm().toFixed(1)} km · ${fmtT(performance.now() - race.t0)}`, 24, 156, 14, 'left');
-    text(item ? `${T('OBJETO')}: ${ITEMS[item][0]} ${T(ITEMS[item][1])} (F)` : `${T('OBJETO')}: — ${T('(toca una caja ?)')}`, 24, 176, 14, 'left');
+    text(item ? `${T('OBJETO')}: ${ITEMS[item][0]} ${T(ITEMS[item][1])} (U)` : `${T('OBJETO')}: — ${T('(toca una caja ?)')}`, 24, 176, 14, 'left');
   }
 
   // ---------- Adventure: a campaign of country stages. Inside a stage the ship cannot leave the country; once all its region flags
@@ -1086,9 +1104,10 @@
   }
 
   // ---------- Simplified physics ----------
-  // OpenStarshipEarth maneuvers: barrel roll (R), full loop (V) and half loop with a roll out, to turn back (U).
+  // OpenStarshipEarth maneuvers: barrel roll (R), full loop (V) and half loop with a roll out, to turn back (F).
   let man = null, lastRoll = 1; // man: { type, t0, dur, dir }
   function startBoost() { // the next turbo level for 5 seconds
+    if (landing) return; // on the ground E is the accelerator of the 'car'
     stopped = false;
     if (s.v < (A.v0 || 300)) { s.v = A.v0 || 300; s.throttle = Math.max(s.throttle, 0.5); } // stopped with Q: E gets it moving again
     if (boost || performance.now() < boostCd) return;
@@ -1155,7 +1174,9 @@
     s.lon = C.Math.negativePiToPi(s.lon + (horiz * Math.sin(s.heading)) / (R * Math.cos(s.lat)));
     s.heading = C.Math.zeroToTwoPi(s.heading);
     s.agl = s.alt - ground;
+    s.rollOff = rollOff; // the drawing of the own ship (third person) turns with the maneuvers
     viewer.camera.setView({ destination: C.Cartesian3.fromRadians(s.lon, s.lat, s.alt), orientation: { heading: s.heading, pitch: pe, roll: s.roll + rollOff } });
+    if (third && A.ship) { const c = viewer.camera; c.moveBackward(380); c.moveUp(110); c.lookDown(Math.atan2(110, 380) * 0.8); } // third person: the camera sits behind and above the ship
     if (landing && A && A.ship) {
       const gnd = (scene.globe.getHeight(new C.Cartographic(s.lon, s.lat)) || 0) * scene.verticalExaggeration;
       if (landing !== 'parked') refuelMsg = false;
@@ -1163,14 +1184,19 @@
       else if (landing === 'parked') { // on the ground it rolls slowly: forward with W / ↑ / E, back with S / ↓ / Q; A, D and the arrows steer
         const lo = C.Math.toDegrees(s.lon), la = C.Math.toDegrees(s.lat), field = arcade && airports && airports.find(([x, y]) => Math.abs(y - la) < 0.04 && Math.abs((x - lo) * Math.cos(s.lat)) < 0.04); // ~4 km
         if (field && hp < maxHp) { hp = Math.min(maxHp, hp + 8 * dt); if (!refuelMsg) { refuelMsg = true; OGE.toast(T('🛬 Aeródromo: recuperando vida…')); sfx('heart'); } }
-        s.v = 0; s.throttle = 0; s.alt = gnd + 30; s.pitch = 0;
-        const kd = (x) => keys.has(x), want = (kd('w') || kd('arrowup') || kd('e') || kd('pageup') || stick.y < -0.2 ? 25 : 0) - (kd('s') || kd('arrowdown') || kd('q') || kd('pagedown') || stick.y > 0.2 ? 10 : 0);
-        s.taxi = (s.taxi || 0) + (want - (s.taxi || 0)) * Math.min(1, 3 * dt);
-        s.lat += (s.taxi * dt * Math.cos(s.heading)) / R; s.lon = C.Math.negativePiToPi(s.lon + (s.taxi * dt * Math.sin(s.heading)) / (R * Math.cos(s.lat)));
-        s.heading = C.Math.zeroToTwoPi(s.heading + s.rud * 0.8 * dt);
+        s.v = 0; s.throttle = 0; s.pitch = 0; stopped = false;
+        // like a car: W / ↑ / E accelerate up to ~150 km/h, S / ↓ / Q brake and then reverse; the steering only turns while it rolls (and reverses backwards)
+        const kd = (x) => keys.has(x), gas = kd('w') || kd('arrowup') || kd('e') || kd('pageup') || stick.y < -0.2, brake = kd('s') || kd('arrowdown') || kd('q') || kd('pagedown') || stick.y > 0.2;
+        let v = s.taxi || 0;
+        if (gas) v += (v < 0 ? 30 : 9) * dt; else if (brake) v -= (v > 0 ? 25 : 5) * dt; else v -= Math.sign(v) * Math.min(Math.abs(v), 4 * dt); // engine braking when nothing is pressed
+        s.taxi = v = clamp(v, -12, 42);
+        s.lat += (v * dt * Math.cos(s.heading)) / R; s.lon = C.Math.negativePiToPi(s.lon + (v * dt * Math.sin(s.heading)) / (R * Math.cos(s.lat)));
+        s.heading = C.Math.zeroToTwoPi(s.heading + s.rud * clamp(v / 12, -1, 1) * 0.9 * dt);
+        s.alt = gnd + 12; // closer to the ground, like a car
       }
       else if (landing === 'up') { s.pitch = 0; s.alt += Math.max(300, (gnd + 3000 - s.alt) * 1.5) * dt; if (s.alt >= gnd + 3000) { landing = null; s.throttle = 0.5; s.v = Math.max(s.v, 400); } }
       viewer.camera.setView({ destination: C.Cartesian3.fromRadians(s.lon, s.lat, s.alt), orientation: { heading: s.heading, pitch: s.pitch, roll: 0 } });
+      if (third && A.ship) { const c = viewer.camera; c.moveBackward(380); c.moveUp(110); c.lookDown(Math.atan2(110, 380) * 0.8); } // third person: the camera sits behind and above the ship
     }
     if (arcade && on) arcadeStep(dt);
     if (on) mpStep(dt);
@@ -1230,6 +1256,10 @@
     if (regs && quest()) drawRegs();
     if (caps && quest()) drawCaps();
     if (arcade) drawArcade(w, h, text);
+    if (third && A.ship && !p2) { // the own ship, where it really is, seen from behind
+      const q = (C.SceneTransforms.worldToWindowCoordinates || C.SceneTransforms.wgs84ToWindowCoordinates)(scene, C.Cartesian3.fromRadians(s.lon, s.lat, s.alt));
+      if (q) shipBack(q.x, q.y, 34, skin(1), s.roll * 0.6 + (s.rollOff || 0), hit);
+    }
     if (p2 || remote) mpDraw(w, h, text);
     if (tut) drawTutorial(w);
     if (touch.id !== null) { const r = Math.min(w, h) * 0.18; g.save(); g.strokeStyle = 'rgba(255,255,255,.6)'; g.lineWidth = 3; g.beginPath(); g.arc(touch.x0, touch.y0, r, 0, 7); g.stroke(); g.fillStyle = 'rgba(127,212,255,.7)'; g.beginPath(); g.arc(touch.x0 + stick.x * r, touch.y0 + stick.y * r, 18, 0, 7); g.fill(); g.restore(); } // the virtual stick
@@ -1353,8 +1383,10 @@
     if (k === 'escape') stop();
     else if (k === ' ') { paused = !paused; last = performance.now(); }
     else if (k === 'h') showHud = !showHud;
+    else if (k === 'y' && A && A.ship) { third = !third; localStorage.setItem('oge.third', third ? '1' : ''); OGE.toast(third ? T('Cámara en tercera persona (Y)') : T('Cámara en primera persona (Y)')); }
     else if (k === 'l') s.gear = !s.gear;
-    else if (k === 'f' && race && A.ship) useItem();
+    else if (k === 'u' && race && A.ship) useItem(); // U uses the race item
+    else if (k === 'f' && A && A.ship) maneuver('uturn'); // F: turn back (on the ship F has no flaps)
     else if (k === 'f' || k === ']' || k === '[') s.flaps = clamp(s.flaps + (e.shiftKey || k === '[' ? -1 : 1), 0, 2);
     else if (k === 'c' && A.ship && landing) $('flyLift').click(); // C takes off again after landing
     else if (k === 'c') { stick.x = stick.y = 0; s.trim = 0; }
@@ -1369,7 +1401,7 @@
     else if (k === 'j') $('flyQuest').click();
     else if (k === 'z') $('flyLand').click();
     else if (k === 'p') setMute(!muted);
-    else if (k === 'r' || k === 'v' || k === 'u') maneuver(k === 'r' ? 'roll' : k === 'v' ? 'loop' : 'uturn');
+    else if (k === 'r' || k === 'v') maneuver(k === 'r' ? 'roll' : 'loop');
     else if (k === 'k') { $('flyKeys').hidden = !$('flyKeys').hidden; $('flyRules').hidden = true; }
     else if (k === 'i') showRules();
     else if (k === 'o') tutorial(true);
@@ -1423,6 +1455,7 @@
     $('flyBtns').classList.add('keyboard');
     $('flyKeys').append(Object.assign(document.createElement('li'), { className: 'keyBtns' })); $('flyKeys').lastChild.append($('flyScores'), $('flyMp'), $('flyReset')); $('flyKeys').style.right = $('flyRules').style.right = '12px'; // no column of buttons beside them // the few actions without a key live in the K panel
   } else $('flyBtns').classList.add('touch'); // on a phone the stick steers (left half of the screen): the right column keeps the touch actions and the speed
+  $('flyThird').onclick = () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'y' }));
   $('flyMore').onclick = () => { const more = $('flyBtns').classList.toggle('more'); localStorage.setItem('oge.flyMore', more ? '1' : ''); }; // remembered
   $('flyBtns').classList.toggle('more', !!localStorage.getItem('oge.flyMore'));
   if (new URLSearchParams(location.search).has('play')) setTimeout(() => { document.body.classList.add('game-only'); $('shipBtn').click(); }, 1500); // the OpenStarshipEarth page opens the game directly
