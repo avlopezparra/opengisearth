@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OpenGISEarth</title>
-<script src="i18n_en.js?v=202611240413"></script>
-<script src="i18n.js?v=202611240413"></script>
+<script src="i18n_en.js?v=202611240424"></script>
+<script src="i18n.js?v=202611240424"></script>
 <script src="cesium/Cesium.js"></script>
 <link href="cesium/Widgets/widgets.css" rel="stylesheet">
-<link href="style.css?v=202611240413" rel="stylesheet">
+<link href="style.css?v=202611240424" rel="stylesheet">
 </head>
 <body>
 <aside id="panel">
@@ -47,6 +47,7 @@
     <li><label><input id="fillCountries" type="checkbox"> Colorear países</label></li>
     <li><label><input id="layerFlags" type="checkbox"> Banderas de países (Wikidata / Commons)</label></li>
     <li><label><input id="layerCapitals" type="checkbox" checked> Capitales (estrella roja)</label></li>
+    <li><label><input id="layerCities" type="checkbox"> Ciudades (círculo rojo)</label></li>
     <li><label>Países históricos <select id="historyYear" title="Fronteras y nombres de un año histórico (historical-basemaps)"><option value="">No mostrar</option></select></label>
       <button id="histPrev" class="mini" title="Año anterior">◀</button><button id="histNext" class="mini" title="Año siguiente">▶</button>
       <input id="histGo" type="number" placeholder="Año" title="Escribe un año (negativo = a. C.) y pulsa Enter: va al más cercano" style="width:5em"></li>
@@ -58,7 +59,7 @@
     <li><label><input id="layerWiki" type="checkbox"> Wikipedia</label></li>
     <li><label><input id="layerBuildings" type="checkbox"> Edificios 3D (OSM)</label></li>
     <li><label><input id="layerMinimap" type="checkbox" checked> Minimapa del mundo</label></li>
-    <li><label><input id="layerZoomSound" type="checkbox" checked> Sonido al acercar y alejar</label></li>
+    <li><label><input id="layerZoomSound" type="checkbox" checked> Sonido al acercar, alejar y girar</label></li>
     <li><label><input id="layerGrid" type="checkbox"> Meridianos y paralelos</label></li>
     <li><label><input id="layerGoogle3d" type="checkbox"> Ciudades 3D fotorrealistas (Google)</label>
       <button id="googleKeyBtn" class="mini" title="Poner o cambiar tu clave de Google Maps Platform">🔑 Clave</button></li>
@@ -92,7 +93,7 @@
     <span class="sep"></span>
     <button id="toolboxBtn" title="Caja de herramientas avanzadas (QGIS / ArcGIS)">🧰 Avanzado</button>
     <button id="watershedBtn" title="Cuenca hidrográfica: haz clic en un punto y se calcula la cuenca que drena hasta ahí (mghydro.com)">💧 Cuenca</button>
-    <button id="flyBtn" title="Simulador de vuelo">✈ Volar</button>
+    <button id="flyBtn" title="Simulador de vuelo">✈ Volar</button><button id="shipBtn" title="Vuela la Starship en modo arcade, sin pasar por el diálogo">🚀 Starship</button>
     <button id="printBtn" title="Diseño de impresión: exporta el mapa a PDF, PNG o SVG vectorial, con título, leyenda, escala y norte">🖨 Mapa</button>
     <button id="shotBtn" title="Guardar la vista como imagen PNG">📷</button>
     <button id="undo" title="Deshacer (Ctrl+Z)">↶</button>
@@ -163,21 +164,21 @@
 <script src="vendor/shpwrite.js"></script>
 <script src="vendor/sql-wasm.js"></script>
 <script>document.getElementById("langSel").value = OGE_LANG;</script>
-<script src="app.js?v=202611240413"></script>
-<script src="geo.js?v=202611240413"></script>
-<script src="draw.js?v=202611240413"></script>
-<script src="edit.js?v=202611240413"></script>
-<script src="places.js?v=202611240413"></script>
-<script src="terrain.js?v=202611240413"></script>
-<script src="borders.js?v=202611240413"></script>
-<script src="osmvector.js?v=202611240413"></script>
-<script src="layers.js?v=202611240413"></script>
-<script src="tools.js?v=202611240413"></script>
-<script src="db.js?v=202611240413"></script>
-<script src="print.js?v=202611240413"></script>
-<script src="relief.js?v=202611240413"></script>
-<script src="theme.js?v=202611240413"></script>
-<script src="flightsim.js?v=202611240413"></script>
-<script src="google3d.js?v=202611240413"></script>
+<script src="app.js?v=202611240424"></script>
+<script src="geo.js?v=202611240424"></script>
+<script src="draw.js?v=202611240424"></script>
+<script src="edit.js?v=202611240424"></script>
+<script src="places.js?v=202611240424"></script>
+<script src="terrain.js?v=202611240424"></script>
+<script src="borders.js?v=202611240424"></script>
+<script src="osmvector.js?v=202611240424"></script>
+<script src="layers.js?v=202611240424"></script>
+<script src="tools.js?v=202611240424"></script>
+<script src="db.js?v=202611240424"></script>
+<script src="print.js?v=202611240424"></script>
+<script src="relief.js?v=202611240424"></script>
+<script src="theme.js?v=202611240424"></script>
+<script src="flightsim.js?v=202611240424"></script>
+<script src="google3d.js?v=202611240424"></script>
 </body>
 </html>

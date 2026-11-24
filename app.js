@@ -279,14 +279,14 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
 
   // ---------- Chime when an information box opens (a place, a city's weather, a country's data) ----------
   let chimeAc = null;
-  OGE.chime = () => {
+  OGE.chime = (big) => { // big: the fuller sound of a capital
     if (localStorage.getItem('oge.mute')) return;
     try {
       chimeAc = chimeAc || new AudioContext();
-      [[880, 0], [1320, 0.09]].forEach(([f, d]) => { // two soft bell notes
+      (big ? [[523, 0], [659, 0.1], [784, 0.2], [1047, 0.32], [1319, 0.44]] : [[880, 0], [1320, 0.09]]).forEach(([f, d]) => { // two soft bell notes, or a rising fanfare
         const o = chimeAc.createOscillator(), v = chimeAc.createGain(), t = chimeAc.currentTime + d;
-        o.type = 'sine'; o.frequency.value = f; v.gain.setValueAtTime(0.07, t); v.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
-        o.connect(v).connect(chimeAc.destination); o.start(t); o.stop(t + 0.36);
+        o.type = big ? 'triangle' : 'sine'; o.frequency.value = f; v.gain.setValueAtTime(big ? 0.1 : 0.07, t); v.gain.exponentialRampToValueAtTime(0.001, t + (big ? 0.5 : 0.35));
+        o.connect(v).connect(chimeAc.destination); o.start(t); o.stop(t + 0.52);
       });
     } catch { /* no audio device */ }
   };
@@ -295,25 +295,29 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
   // ---------- Zoom sounds: sounds/zoom_in.wav and sounds/zoom_out.wav if they exist, otherwise a short synthesized sweep ----------
   const zoomClip = { in: new Audio('sounds/zoom_in.wav'), out: new Audio('sounds/zoom_out.wav') };
   for (const a of Object.values(zoomClip)) { a.preload = 'auto'; a.volume = 0.5; a.onerror = () => { a.bad = true; }; }
-  let zoomAc = null, zoomH = null, zoomT = 0;
+  let zoomAc = null, zoomH = null, zoomT = 0, zoomDir = null;
   function zoomSound(dir) {
     if (!$('layerZoomSound').checked || localStorage.getItem('oge.mute') || document.body.classList.contains('flying')) return; // switched off, muted, or the flight has its own sounds
-    const clip = zoomClip[dir];
-    if (!clip.bad && clip.readyState >= 2) { clip.currentTime = 0; clip.play().catch(() => {}); return; }
+    const far = C.Math.clamp((Math.log10(Math.max(1, viewer.camera.positionCartographic.height)) - 4) / 3.3, 0, 1), rate = 1.7 - far; // slow from far away, quick up close
+    const clip = zoomClip[dir] || { bad: true };
+    if (!clip.bad && clip.readyState >= 2) { clip.playbackRate = rate; clip.currentTime = 0; clip.play().catch(() => {}); return; }
     try {
       zoomAc = zoomAc || new AudioContext();
-      const o = zoomAc.createOscillator(), v = zoomAc.createGain(), t = zoomAc.currentTime, [f0, f1] = dir === 'in' ? [320, 880] : [880, 320];
-      o.type = 'sine'; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + 0.18);
-      v.gain.setValueAtTime(0.05, t); v.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
-      o.connect(v).connect(zoomAc.destination); o.start(t); o.stop(t + 0.21);
+      const o = zoomAc.createOscillator(), v = zoomAc.createGain(), t = zoomAc.currentTime, len = 0.2 / rate;
+      const [f0, f1] = dir === 'spin' ? [180, 520] : dir === 'in' ? [320 * rate, 880 * rate] : [880 * rate, 320 * rate];
+      o.type = dir === 'spin' ? 'triangle' : 'sine'; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + len * 0.9);
+      v.gain.setValueAtTime(0.05, t); v.gain.exponentialRampToValueAtTime(0.001, t + len);
+      o.connect(v).connect(zoomAc.destination); o.start(t); o.stop(t + len + 0.01);
     } catch { /* no audio device */ }
   }
   scene.postRender.addEventListener(() => { // sampled three times a second: a clear change of height is a zoom
     const now = performance.now();
     if (now - zoomT < 320) return;
     const h = viewer.camera.positionCartographic.height;
+    const dir = C.Cartesian3.normalize(viewer.camera.positionWC, new C.Cartesian3());
     if (zoomH !== null && (h < zoomH * 0.88 || h > zoomH * 1.14)) zoomSound(h < zoomH ? 'in' : 'out');
-    zoomH = h; zoomT = now;
+    else if (zoomDir && C.Cartesian3.angleBetween(dir, zoomDir) > 0.16) zoomSound('spin'); // the globe is being spun fast (more than ~9° per sample)
+    zoomH = h; zoomT = now; zoomDir = dir;
   });
 
   // ---------- View screenshot ----------
