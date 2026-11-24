@@ -18,6 +18,9 @@
   const WARPS = [1, 2, 5, 10, 25, 50, 100];
   let warp = 1; // turbo: multiplies the distance covered, to cross long stretches quickly
   const setWarp = (v) => { warp = v; $('flyWarp').textContent = 'Turbo ×' + v + ' ▲ (T)'; $('flyWarp').classList.toggle('active', v > 1); };
+  const TURNS = [1, 2, 3, 5];
+  let turn = +localStorage.getItem('oge.flyTurn') || 1; // multiplies how fast A/D turn
+  const setTurn = (v) => { turn = v; localStorage.setItem('oge.flyTurn', v); $('flyTurn').textContent = T('Giro') + ' ×' + v + ' (N)'; $('flyTurn').classList.toggle('active', v > 1); };
   const keys = new Set(), stick = { x: 0, y: 0 };
 
   // ---------- Starship lasers: bolts on the HUD, a flash where the aim hits the ground, and a short sound ----------
@@ -321,7 +324,7 @@
       const pr = elev * A.pitch * q * dt; // pulling the stick raises the nose in the aircraft's axis: when banked, it turns
       s.roll = C.Math.negativePiToPi(s.roll + s.ail * A.roll * q * dt);
       s.pitch += pr * Math.cos(s.roll) - (1 - Math.cos(s.roll)) * (grav / Math.max(s.v, 20)) * dt; // when banked it loses lift: the nose drops
-      s.heading += pr * Math.sin(s.roll) + ((G * Math.sin(s.roll)) / Math.max(s.v, 20)) * dt + s.rud * A.yaw * q * dt;
+      s.heading += pr * Math.sin(s.roll) + ((G * Math.sin(s.roll)) / Math.max(s.v, 20)) * dt + s.rud * A.yaw * q * dt * turn;
       if (s.v < stallV) s.pitch -= rad(18) * dt; // stall
       s.pitch = clamp(s.pitch, rad(-89), rad(89));
       s.v = clamp(s.v + (s.throttle * A.thrust - drag - airbrake - grav * Math.sin(s.pitch)) * dt, 0, A.vMax * 1.3);
@@ -461,6 +464,7 @@
     else if (k === 'y') nextWarp(-1);
     else if (k === '+' || k === '=' || k === '-') OGE.minimap.zoom(k === '-' ? -1 : 1);
     else if (k === 'm') OGE.minimap.toggle();
+    else if (k === 'n') nextTurn();
     else if (k === 'r' || k === 'v' || k === 'u') maneuver(k === 'r' ? 'roll' : k === 'v' ? 'loop' : 'uturn');
     else if (k === 'k') $('flyKeys').hidden = !$('flyKeys').hidden;
     else keys.add(k);
@@ -471,6 +475,9 @@
   const nextWarp = (d = 1) => setWarp(WARPS[clamp(WARPS.indexOf(warp) + d, 0, WARPS.length - 1)]); // stops at both ends
   $('flyWarp').onclick = () => nextWarp(1);
   $('flyWarpDown').onclick = () => nextWarp(-1);
+  const nextTurn = () => setTurn(TURNS[(TURNS.indexOf(turn) + 1) % TURNS.length] || 1);
+  $('flyTurn').onclick = nextTurn;
+  setTurn(TURNS.includes(turn) ? turn : 1);
   $('flyScores').onclick = () => { paused = true; showScores(); };
   $('flyHelp').onclick = () => { $('flyKeys').hidden = !$('flyKeys').hidden; };
   for (const [id, key] of [['flyUp', 'pageup'], ['flyDown', 'pagedown'], ['flyLeft', 'a'], ['flyRight', 'd']]) { // held down like the keys
