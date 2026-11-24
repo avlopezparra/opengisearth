@@ -62,34 +62,50 @@
   }
 
   // ---------- Sound: master volume (mute) and an original looping arcade theme, synthesized on the fly ----------
-  let master = null, muted = !!localStorage.getItem('oge.mute'), musicTimer = null, mStep = 0, mNext = 0;
+  let master = null, muted = !!localStorage.getItem('oge.mute'), musicTimer = null;
   function ac() {
     if (!audio) { audio = new AudioContext(); master = audio.createGain(); master.gain.value = muted ? 0 : 1; master.connect(audio.destination); }
     return audio;
   }
-  // Eight bars in A minor, eight eighth-notes each (MIDI numbers, 0 = rest), and the bass root of each bar.
-  const LEAD = [[69, 0, 72, 76, 81, 79, 76, 72], [77, 0, 72, 77, 81, 79, 77, 72], [76, 0, 72, 76, 79, 84, 83, 79], [74, 0, 71, 74, 79, 78, 79, 83],
-    [84, 81, 77, 81, 84, 0, 86, 84], [83, 79, 74, 79, 83, 0, 86, 88], [88, 0, 86, 84, 81, 0, 84, 86], [88, 86, 83, 80, 76, 80, 83, 88]];
-  const BASS = [45, 41, 48, 43, 41, 43, 45, 40], EIGHTH = 60 / 150 / 2; // 150 beats per minute
+  // The theme (theme.js: the user's own loop) is played by a small synth: brass lead and harmony, bass and three drum sounds.
+  const TH = window.OGE_THEME, VOICE = { lead: ['sawtooth', 0.045], harmony: ['square', 0.018], bass: ['triangle', 0.09] };
+  let noise = null;
   function tone(midi, t, dur, type, vol) {
     const o = audio.createOscillator(), v = audio.createGain();
     o.type = type; o.frequency.value = 440 * 2 ** ((midi - 69) / 12);
-    v.gain.setValueAtTime(vol, t); v.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    v.gain.setValueAtTime(vol, t); v.gain.setValueAtTime(vol, t + dur * 0.7); v.gain.exponentialRampToValueAtTime(0.001, t + dur);
     o.connect(v).connect(master); o.start(t); o.stop(t + dur + 0.02);
+  }
+  function drum(midi, t) { // 36 kick, 38/40 snare, anything else a hi-hat or cymbal
+    if (midi === 35 || midi === 36) {
+      const o = audio.createOscillator(), v = audio.createGain();
+      o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(40, t + 0.12);
+      v.gain.setValueAtTime(0.25, t); v.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+      return o.connect(v).connect(master), o.start(t), o.stop(t + 0.15);
+    }
+    if (!noise) { noise = audio.createBuffer(1, audio.sampleRate * 0.3, audio.sampleRate); const ch = noise.getChannelData(0); for (let i = 0; i < ch.length; i++) ch[i] = Math.random() * 2 - 1; }
+    const src = audio.createBufferSource(), f = audio.createBiquadFilter(), v = audio.createGain(), snare = midi === 38 || midi === 40, len = snare ? 0.14 : midi === 49 ? 0.3 : 0.05;
+    src.buffer = noise; f.type = 'highpass'; f.frequency.value = snare ? 1500 : 7000;
+    v.gain.setValueAtTime(snare ? 0.12 : 0.05, t); v.gain.exponentialRampToValueAtTime(0.001, t + len);
+    src.connect(f).connect(v).connect(master); src.start(t); src.stop(t + len);
   }
   function music(play) {
     clearInterval(musicTimer); musicTimer = null;
-    if (!play) return;
+    if (!play || !TH) return;
     try { ac(); } catch { return; } // no audio device
-    mStep = 0; mNext = audio.currentTime + 0.1;
+    const u = 60 / TH.bpm / TH.unit, loop = TH.beats * TH.unit, idx = { lead: 0, harmony: 0, bass: 0, drums: 0 }; // u: seconds per stored unit
+    let t0 = audio.currentTime + 0.1; // when the current pass of the loop started
     musicTimer = setInterval(() => { // schedules a little ahead of the clock
-      while (mNext < audio.currentTime + 0.25) {
-        const bar = Math.floor(mStep / 8) % 8, i = mStep % 8, n = LEAD[bar][i];
-        if (n && !paused) tone(n, mNext, EIGHTH * 0.9, 'square', 0.035);
-        if (!paused) tone(BASS[bar] + (i % 2 ? 12 : 0), mNext, EIGHTH * 0.8, 'triangle', 0.07);
-        if (!paused && i % 2 === 0) tone(33, mNext, 0.06, 'sine', 0.12); // pulse on the beat
-        mNext += EIGHTH; mStep++;
+      const until = (audio.currentTime + 0.3 - t0) / u;
+      for (const k of Object.keys(idx)) {
+        const n = TH[k];
+        while (idx[k] < n.length && n[idx[k]] < until) {
+          const at = t0 + n[idx[k]] * u, len = n[idx[k] + 1] * u, pitch = n[idx[k] + 2];
+          if (!paused && at > audio.currentTime - 0.05) { if (k === 'drums') drum(pitch, at); else tone(pitch, at, Math.min(len, 1.5), VOICE[k][0], VOICE[k][1]); }
+          idx[k] += 3;
+        }
       }
+      if (until >= loop) { t0 += loop * u; for (const k of Object.keys(idx)) idx[k] = 0; } // next pass
     }, 60);
   }
   const setMute = (v) => { muted = v; localStorage.setItem('oge.mute', v ? '1' : ''); if (master) master.gain.value = v ? 0 : 1; $('flyMute').textContent = (v ? '🔇 ' : '🔊 ') + T('Sonido') + ' (P)'; $('flyMute').classList.toggle('active', v); };
@@ -268,6 +284,7 @@
     aimMouse = !!A.ship && !!useAim; mouse.x = hud.clientWidth / 2; mouse.y = hud.clientHeight / 2;
     man = null;
     loadCaps();
+    loadRegs();
     if (A.ship) OGE.minimap.zoom(99); // the starship starts with the minimap zoomed all the way in
     arcade = !!A.ship && !!useArcade; hp = 100; bombs = 2; incoming = []; flash = hit = 0; shields = 0;
     music(arcade); objs = []; booms = []; score = coins = 0;
@@ -338,8 +355,8 @@
       if (got.has(capId(c)) || d > 2.5e6 || !capOcc.isPointVisible(c.p)) continue;
       const q = toWin(scene, c.p);
       if (!q) continue;
-      g.save(); g.fillStyle = g.shadowColor = '#5ac8fa'; g.shadowBlur = 10; g.textAlign = 'center';
-      g.font = (d < 3e5 ? 32 : 20) + 'px sans-serif'; g.fillText('★', q.x, q.y);
+      g.save(); g.fillStyle = g.shadowColor = '#e8112d'; g.shadowBlur = 10; g.textAlign = 'center'; g.strokeStyle = '#fff'; g.lineWidth = 2;
+      g.font = (d < 3e5 ? 32 : 20) + 'px sans-serif'; g.strokeText('★', q.x, q.y); g.fillText('★', q.x, q.y); g.fillStyle = '#fff';
       g.font = '600 12px sans-serif'; g.fillText(c.name, q.x, q.y + 20); g.restore();
     }
   }
@@ -347,11 +364,63 @@
     for (const c of caps || []) { const [x, y] = OGE.minimap.xy(c.lon, c.lat); mg.fillStyle = got.has(capId(c)) ? '#34c759' : '#ffd60a'; mg.fillRect(x - 1, y - 1, 2.5, 2.5); }
   };
 
+  // ---------- Region flags: the country's flag over every state or province; countries, continents and the world are achievements ----------
+  const REGS = 'oge.regions';
+  let regs = null, regsBusy = false; // [{ id, name, a3, country, cont, p, img }]
+  const gotReg = new Set((() => { try { return JSON.parse(localStorage.getItem(REGS)) || []; } catch { return []; } })());
+  async function loadRegs() {
+    if (regs || regsBusy) return;
+    regsBusy = true;
+    try {
+      const get = (p) => fetch(NE + p).then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); });
+      const [ps, pd, flags] = await Promise.all([get('10m_cultural/ne_10m_admin_1_label_points.shp'), get('10m_cultural/ne_10m_admin_1_label_points.dbf'), OGE.flags()]);
+      const clean = (v) => String(v ?? '').replace(/\0/g, '').trim(), seen = new Set(), imgs = new Map(), out = [];
+      for (const f of shp.combine([shp.parseShp(ps), shp.parseDbf(pd)]).features) {
+        const p = f.properties, id = clean(p.adm1_code), fl = flags.get(clean(p.sr_adm0_a3));
+        if (!f.geometry || !id || seen.has(id) || !fl) continue; // the file repeats each region at several scales
+        seen.add(id);
+        if (!imgs.has(fl.url)) imgs.set(fl.url, Object.assign(new Image(), { src: fl.url }));
+        const [lon, lat] = f.geometry.coordinates;
+        out.push({ id, name: clean(p.name), a3: fl.a3, country: fl.name, cont: CONT[fl.cont] || 'Islas oceánicas', p: C.Cartesian3.fromDegrees(lon, lat, 1500), img: imgs.get(fl.url) });
+      }
+      regs = out;
+    } catch (e) { OGE.toast('No se pudieron cargar las banderas: ' + e.message, true); }
+    regsBusy = false;
+  }
+  function regStep() { // flying close to a region's flag collects it
+    if (!regs) return;
+    const cam = viewer.camera.positionWC, R = Math.max(8000, s.v * warp * 3);
+    for (const r of regs) {
+      if (gotReg.has(r.id) || C.Cartesian3.distance(r.p, cam) > R) continue;
+      gotReg.add(r.id); localStorage.setItem(REGS, JSON.stringify([...gotReg]));
+      const all = (fn) => regs.filter(fn).every((x) => gotReg.has(x.id)), mine = regs.filter((x) => x.a3 === r.a3), n = mine.filter((x) => gotReg.has(x.id)).length;
+      if (arcade) score += 100;
+      beep(1000, 2000, 0.2);
+      OGE.toast(all(() => true) ? '🏆 Logro: todas las banderas del mundo.' : all((x) => x.cont === r.cont) ? `🏆 Logro: todas las banderas de ${r.cont}.`
+        : n === mine.length ? `🏆 Logro: todas las banderas de ${r.country} (${n}).` : `🚩 Bandera conseguida: ${r.name}, ${r.country} — ${n}/${mine.length}.`);
+    }
+  }
+  function drawRegs() { // the flags still to collect, when near and on this side of the globe
+    const toWin = C.SceneTransforms.worldToWindowCoordinates || C.SceneTransforms.wgs84ToWindowCoordinates, cam = viewer.camera.positionWC;
+    capOcc.cameraPosition = cam;
+    for (const r of regs) {
+      if (gotReg.has(r.id)) continue;
+      const d = C.Cartesian3.distance(r.p, cam);
+      if (d > 6e5 || !capOcc.isPointVisible(r.p) || !r.img.complete || !r.img.naturalWidth) continue;
+      const q = toWin(scene, r.p);
+      if (!q) continue;
+      const w = d < 1.5e5 ? 44 : 26, h = (w * r.img.naturalHeight) / r.img.naturalWidth;
+      g.save(); g.shadowColor = '#000'; g.shadowBlur = 6; g.drawImage(r.img, q.x - w / 2, q.y - h / 2, w, h);
+      if (d < 3e5) { g.fillStyle = '#fff'; g.textAlign = 'center'; g.font = '600 11px sans-serif'; g.fillText(r.name, q.x, q.y + h / 2 + 12); }
+      g.restore();
+    }
+  }
+
   // Scoreboard: the ten best arcade flights, kept on this computer.
   const SCORES = 'oge.scores', readScores = () => { try { return JSON.parse(localStorage.getItem(SCORES)) || []; } catch { return []; } };
   const showScores = () => OGE.showTable('🏆 Mejores puntajes', ['#', 'Piloto', 'Puntos', 'Monedas', 'Fecha'],
     readScores().map((r, i) => [i + 1, r.name, r.score, r.coins, r.date]),
-    { note: T('Se guardan solo en este equipo.') + (caps ? ' ' + T('Capitales:') + ' ' + Object.entries(capProgress()).map(([k, [n, all]]) => `${n === all ? '🏆 ' : ''}${T(k)} ${n}/${all}`).join(' · ') : '') });
+    { note: T('Se guardan solo en este equipo.') + (caps ? ' ' + T('Capitales:') + ' ' + Object.entries(capProgress()).map(([k, [n, all]]) => `${n === all ? '🏆 ' : ''}${T(k)} ${n}/${all}`).join(' · ') : '') + (regs ? ' ' + T('Banderas de regiones:') + ' ' + regs.filter((r) => gotReg.has(r.id)).length + '/' + regs.length + '.' : '') });
   async function saveScore(pts, cns) {
     const v = await OGE.ask({ title: `Puntaje: ${pts} puntos y ${cns} monedas`, ok: 'Guardar', fields: [{ id: 'name', label: 'Tu nombre', value: localStorage.getItem('oge.pilot') || '' }] });
     const name = v && v.name.trim().slice(0, 24);
@@ -451,7 +520,7 @@
     s.agl = s.alt - ground;
     viewer.camera.setView({ destination: C.Cartesian3.fromRadians(s.lon, s.lat, s.alt), orientation: { heading: s.heading, pitch: pe, roll: s.roll + rollOff } });
     if (arcade && on) arcadeStep(dt);
-    if (on) capStep();
+    if (on) { capStep(); regStep(); }
   }
 
   // ---------- HUD ----------
@@ -468,6 +537,7 @@
     if (paused) text(T('PAUSA — Espacio para seguir'), cx, cy - r - 46, 16);
     else if (s.ground) text(T('EN TIERRA'), cx, cy - r - 46, 16);
     else if (s.v < A.vStall * (1 - 0.1 * s.flaps)) text(T('PÉRDIDA — baja la nariz y da gas'), cx, cy - r - 46, 16);
+    if (regs) drawRegs();
     if (caps) drawCaps();
     if (arcade) drawArcade(w, h, text);
     shots = shots.filter((sh) => performance.now() - sh.t < 220);
@@ -600,5 +670,5 @@
     for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => keys.delete(key));
   }
   $('flyBtn').onclick = open;
-  OGE.flight = { start, stop, maneuver, state: () => s, flying: () => on, game: () => ({ score, coins, objs, hp, bombs, incoming, shields }) };
+  OGE.flight = { start, stop, maneuver, state: () => s, flying: () => on, game: () => ({ score, coins, objs, hp, bombs, incoming, shields, regs }) };
 })();
