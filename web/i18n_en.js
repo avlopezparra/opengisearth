@@ -271,6 +271,7 @@
     'F-16 — caza a reacción, rápido y nervioso': 'F-16 — jet fighter, fast and twitchy',
     'Mantén pulsado para doblar a la izquierda (A)': 'Hold to turn left (A)', 'Mantén pulsado para doblar a la derecha (D)': 'Hold to turn right (D)',
     '? Controles (K)': '? Controls (K)',
+    'Banderas de territorios dependientes': 'Flags of dependent territories',
     'Ciudad más poblada': 'Most populous city', 'Segunda ciudad más poblada': 'Second most populous city',
     'de': 'of', 'en': 'in', 'n.º': 'no.', 'en el mundo': 'in the world', 'Densidad': 'Density', 'hab./km²': 'people/km²',
     'Gasto militar': 'Military expenditure', 'PIB per cápita': 'GDP per capita', 'Esperanza de vida': 'Life expectancy', 'años': 'years', 'Banco Mundial': 'World Bank',

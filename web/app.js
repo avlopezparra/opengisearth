@@ -320,7 +320,7 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
     const h = viewer.camera.positionCartographic.height;
     const dir = C.Cartesian3.normalize(viewer.camera.positionWC, new C.Cartesian3());
     if (zoomH !== null && (h < zoomH * 0.88 || h > zoomH * 1.14)) zoomSound(h < zoomH ? 'in' : 'out');
-    else if (zoomDir && C.Cartesian3.angleBetween(dir, zoomDir) > 0.16) zoomSound('spin'); // the globe is being spun fast (more than ~9° per sample)
+    else if (zoomDir && C.Cartesian3.angleBetween(dir, zoomDir) > Math.min(0.16, (0.3 * h) / 6371000)) zoomSound('spin'); // the view is being dragged fast: ~9° per sample from afar, or a third of the eye height up close
     zoomH = h; zoomT = now; zoomDir = dir;
   });
 

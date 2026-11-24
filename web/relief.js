@@ -156,7 +156,7 @@
   let flagsP = null; // Promise<Map<ADM0_A3, { url, lon, lat, rank, name, cont }>>
   const flagData = () => flagsP || (flagsP = (async () => {
     const clean = (v) => String(v ?? '').replace(/\0/g, '').trim();
-    const rows = shp.parseDbf(await buf('50m_cultural/ne_50m_admin_0_countries.dbf')).map((p) => ({ a3: clean(p.ADM0_A3), q: clean(p.WIKIDATAID), lon: +p.LABEL_X, lat: +p.LABEL_Y, rank: +p.LABELRANK || 5, name: clean(p.NAME_ES) || clean(p.NAME), cont: clean(p.CONTINENT) }))
+    const rows = shp.parseDbf(await buf('50m_cultural/ne_50m_admin_0_countries.dbf')).map((p) => ({ dep: !/country/i.test(clean(p.TYPE)), a3: clean(p.ADM0_A3), q: clean(p.WIKIDATAID), lon: +p.LABEL_X, lat: +p.LABEL_Y, rank: +p.LABELRANK || 5, name: clean(p.NAME_ES) || clean(p.NAME), cont: clean(p.CONTINENT) }))
       .filter((r) => /^Q\d+$/.test(r.q) && isFinite(r.lon) && isFinite(r.lat));
     const sparql = `SELECT ?c ?f ?a WHERE { VALUES ?c { ${rows.map((r) => 'wd:' + r.q).join(' ')} } OPTIONAL { ?c wdt:P41 ?f } OPTIONAL { ?c wdt:P94 ?a } }`; // flag and coat of arms
     const wd = await (await fetch('https://query.wikidata.org/sparql?format=json&query=' + encodeURIComponent(sparql))).json();
@@ -181,10 +181,14 @@
     flagBusy = true;
     try {
       const data = await flagData(), bills = viewer.scene.primitives.add(new C.BillboardCollection());
-      for (const f of data.values()) bills.add({ id: { oge: 'country', q: f.q, a3: f.a3, name: f.name }, position: C.Cartesian3.fromDegrees(f.lon, f.lat), image: f.url, scale: 0.4, pixelOffset: new C.Cartesian2(0, -16), disableDepthTestDistance: Number.POSITIVE_INFINITY,
-        distanceDisplayCondition: new C.DistanceDisplayCondition(0, 2.2e7 / Math.max(1, f.rank - 1)) }); // small countries and islands appear when zooming in, like their names
+      for (const [key, f] of data) {
+        if (OGE.malvinasAR && (key === 'FLK' || key === 'SGS')) continue; // part of Argentina from that point of view: no flag of their own
+        // dependencies and other non-sovereign territories are treated as subnational: their flag is optional and their card is a region's
+        bills.add({ id: { oge: f.dep ? 'region' : 'country', q: f.q, a3: f.a3, name: f.name }, position: C.Cartesian3.fromDegrees(f.lon, f.lat), image: f.url, scale: 0.4, pixelOffset: new C.Cartesian2(0, -16), disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          distanceDisplayCondition: new C.DistanceDisplayCondition(0, 2.2e7 / Math.max(1, f.rank - 1)) })._dep = f.dep; // small countries and islands appear when zooming in, like their names
+      }
       const occluder = new C.EllipsoidalOccluder(C.Ellipsoid.WGS84, viewer.camera.positionWC);
-      viewer.scene.preRender.addEventListener(() => { if (!bills.show) return; occluder.cameraPosition = viewer.camera.positionWC; for (let i = 0; i < bills.length; i++) { const b = bills.get(i); b.show = occluder.isPointVisible(b.position); } });
+      viewer.scene.preRender.addEventListener(() => { if (!bills.show) return; occluder.cameraPosition = viewer.camera.positionWC; for (let i = 0; i < bills.length; i++) { const b = bills.get(i); b.show = occluder.isPointVisible(b.position) && (!b._dep || $('layerFlagsDep').checked); } });
       flagLayer = bills; flagLayer.show = cbF.checked;
     } catch (e) { OGE.toast('No se pudieron cargar las banderas: ' + e.message, true); }
     flagBusy = false;
