@@ -215,14 +215,14 @@
   // ---------- Boss types: each capital gets one (by its name). They are drawn procedurally so they can move. ----------
   // hp: shots to beat it · every: ms between volleys · shots: per volley · color of its shots · sway: how far it moves around its post (m)
   const BOSSES = {
-    fortress: { name: 'Fortaleza', hp: 15, every: 1600, shots: 1, color: '#ff2df5', sway: 0 },
-    snake: { name: 'Serpiente', hp: 12, every: 2200, shots: 1, color: '#7CFC00', sway: 2600 },
-    face: { name: 'Cara gigante', hp: 20, every: 2600, shots: 3, color: '#40e0ff', sway: 0 },
-    dragon: { name: 'Dragón', hp: 18, every: 1100, shots: 1, color: '#ff9f0a', sway: 1800 },
-    crystal: { name: 'Coloso de cristal', hp: 16, every: 1800, shots: 2, color: '#9fe8ff', sway: 0, shield: true }, // only hurt while its shield is open
-    hive: { name: 'Colmena', hp: 14, every: 2600, shots: 1, color: '#ffd23a', sway: 900, spawns: true }, // launches escorts; its core is protected while two or more fly
+    fortress: { name: 'Fortaleza', hp: 30, every: 1600, shots: 1, color: '#ff2df5', sway: 0 },
+    snake: { name: 'Serpiente', hp: 18, every: 2200, shots: 1, color: '#7CFC00', sway: 2600 },
+    face: { name: 'Cara gigante', hp: 45, every: 2600, shots: 3, color: '#40e0ff', sway: 0 },
+    dragon: { name: 'Dragón', hp: 40, every: 1100, shots: 1, color: '#ff9f0a', sway: 1800 },
+    crystal: { name: 'Coloso de cristal', hp: 24, every: 1800, shots: 2, color: '#9fe8ff', sway: 0, shield: true }, // only hurt while its shield is open
+    hive: { name: 'Colmena', hp: 20, every: 2600, shots: 1, color: '#ffd23a', sway: 900, spawns: true }, // launches escorts; its core is protected while two or more fly
     hand: { name: 'Mano gigante', hp: 16, every: 2200, shots: 1, color: '#ffcc99', sway: 0, grab: true }, // chases the ship and grabs it: a barrel roll (R) breaks free
-    beacon: { name: 'Faro', hp: 20, every: 1500, shots: 2, color: '#ff5c5c', sway: 0, phases: true }, // at half life it spins and fires all around
+    beacon: { name: 'Faro', hp: 42, every: 1500, shots: 2, color: '#ff5c5c', sway: 0, phases: true }, // at half life it spins and fires all around
   };
   const SOLO = Object.keys(BOSSES).filter((k) => k !== 'hand'); // the hands come with the stone face
   const bossKind = (name) => SOLO[[...name].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7) % SOLO.length];
