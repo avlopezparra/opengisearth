@@ -124,7 +124,8 @@
   let diff = DIFF[localStorage.getItem('oge.diff')] ? localStorage.getItem('oge.diff') : 'normal';
   const pts = (n) => Math.round(n * DIFF[diff].pts); // points earned scale with the difficulty
   let thrT = 0, landing = null; // landing: 'down' while dropping, 'parked' on the ground, 'up' while lifting off
-  const quest = () => localStorage.getItem('oge.quest') !== '0';
+  let calm = false; // free flight chosen from the mode menu: nothing to collect
+  const quest = () => !calm && localStorage.getItem('oge.quest') !== '0';
   function sfx(name) {
     const d = SFX[name];
     try { ac(); d[2].forEach((n, i) => tone(n, audio.currentTime + i * d[1], d[1] * 2.4, d[0], 0.07)); } catch { /* no audio device */ }
@@ -517,7 +518,8 @@
     if (v) localStorage.setItem('oge.flyOpts', JSON.stringify({ ...v, tut: undefined }));
     if (v) { if (DIFF[v.diff]) { diff = v.diff; localStorage.setItem('oge.diff', diff); } localStorage.setItem('oge.quest', v.quest ? '1' : '0'); start(v.plane, v.mouse, v.arcade, v.aim, v.tut); }
   }
-  function start(plane, useMouse, useArcade = true, useAim = false, useTut = false) {
+  function start(plane, useMouse, useArcade = true, useAim = false, useTut = false, useCalm = false) {
+    calm = useCalm;
     A = PLANES[plane];
     landing = null;
     tut = null;
@@ -957,7 +959,7 @@
       }
     } catch (e) { mpMode = 'solo'; return OGE.toast(T('Multijugador') + ': ' + (e.message || e), true); }
     p2 = mpMode === 'local' && wasOn && arcade ? { x: 0.35, y: 0.6, z: 200, hp: 100, score: 0, tilt: 0 } : null; // joins the flight in progress
-    if (!wasOn) $('shipBtn').click();
+    if (!wasOn) quickShip();
   }
 
   // ---------- Controls ----------
@@ -1263,10 +1265,24 @@
   $('flyMore').onclick = () => { const more = $('flyBtns').classList.toggle('more'); localStorage.setItem('oge.flyMore', more ? '1' : ''); }; // remembered
   $('flyBtns').classList.toggle('more', !!localStorage.getItem('oge.flyMore'));
   if (new URLSearchParams(location.search).has('play')) setTimeout(() => { document.body.classList.add('game-only'); $('shipBtn').click(); }, 1500); // the OpenStarshipEarth page opens the game directly
-  $('shipBtn').onclick = () => { // straight into the OpenStarshipEarth arcade, with the options used last time
+  const lastOpts = () => { try { return JSON.parse(localStorage.getItem('oge.flyOpts')) || {}; } catch { return {}; } };
+  function quickShip(mode = 'arcade') { // the OpenStarshipEarth arcade with the options used last time; 'free': no enemies, no goals
+    const last = lastOpts();
+    start('ship', last.mouse ?? true, mode !== 'free', last.aim ?? true, mode !== 'free' && !localStorage.getItem('oge.tutorial'), mode === 'free');
+  }
+  $('shipBtn').onclick = async () => { // first the game mode
     if (on) return stop();
-    let last = {}; try { last = JSON.parse(localStorage.getItem('oge.flyOpts')) || {}; } catch { /* first time */ }
-    start('ship', last.mouse ?? true, true, last.aim ?? true, !localStorage.getItem('oge.tutorial'));
+    const v = await OGE.ask({ title: '🚀 OpenStarshipEarth', ok: 'Jugar',
+      fields: [{ id: 'mode', label: 'Modo de juego', type: 'select', value: localStorage.getItem('oge.shipMode') || 'arcade', options: [
+        ['adventure', '🗺 Aventura: países por etapas, banderas y jefe final'],
+        ['arcade', '🎯 Partida libre con ranking: enemigos, aros, monedas y jefes'],
+        ['race', '🏁 De ciudad a ciudad: llega a la meta en el menor tiempo'],
+        ['free', '🕊 Vuelo libre: sin enemigos ni objetivos, solo las vistas']] },
+        { id: 'diff', label: 'Dificultad (cada una tiene su propio ranking)', type: 'select', value: diff, options: Object.entries(DIFF).map(([k, d]) => [k, d.name]) }] });
+    if (!v) return;
+    localStorage.setItem('oge.shipMode', v.mode);
+    if (DIFF[v.diff]) { diff = v.diff; localStorage.setItem('oge.diff', diff); }
+    if (v.mode === 'adventure') adventure(); else if (v.mode === 'race') raceMode(); else quickShip(v.mode);
   };
   OGE.flight = { start, stop, maneuver, state: () => s, flying: () => on, game: () => ({ score, coins, objs, hp, bombs, incoming, shields, regs, tut: tut && tut.i, p2, remote }) };
 })();
