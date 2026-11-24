@@ -669,7 +669,7 @@
     loadRegs();
     if (A.ship) OGE.minimap.zoom(99); // the starship starts with the minimap zoomed all the way in
     arcade = !!A.ship && !!useArcade;
-    autoOn = !arcade ? [] : ['layerSats', 'layerRegionNames', ...(window.__TAURI__ ? ['layerPlanes'] : [])].filter((id) => $(id) && !$(id).checked); // for this flight only: nearby satellites, region names to find the way, live aircraft (desktop)
+    autoOn = !arcade ? [] : [...(matchMedia('(pointer: coarse)').matches ? [] : ['layerSats']), 'layerRegionNames', ...(window.__TAURI__ ? ['layerPlanes'] : [])].filter((id) => $(id) && !$(id).checked); // for this flight only: nearby satellites, region names to find the way, live aircraft (desktop)
     if (autoOn.includes('layerSats') && $('layerSatsNear')) { $('layerSatsNear').checked = true; $('layerSatsNear').dispatchEvent(new Event('change')); } // only the nearby ones: light
     for (const id of autoOn) { $(id).checked = true; $(id).dispatchEvent(new Event('change')); } // live satellites and aircraft join the arcade
     if (!document.body.classList.contains('noside')) { sideWas = true; OGE.hideSide(true); } // more room for the flight; it comes back afterwards
@@ -1633,7 +1633,7 @@
   $('flyThird').onclick = () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'y' }));
   $('flyMore').onclick = () => { const more = $('flyBtns').classList.toggle('more'); localStorage.setItem('oge.flyMore', more ? '1' : ''); }; // remembered
   $('flyBtns').classList.toggle('more', !!localStorage.getItem('oge.flyMore'));
-  if (new URLSearchParams(location.search).has('play')) setTimeout(() => { document.body.classList.add('game-only'); $('shipBtn').click(); }, 1500); // the OpenStarshipEarth page opens the game directly
+  if (new URLSearchParams(location.search).has('play')) setTimeout(() => { OGE.hideSide(true); $('shipBtn').click(); }, 1500); // the OpenStarshipEarth page opens the game directly
   const lastOpts = () => { try { return JSON.parse(localStorage.getItem('oge.flyOpts')) || {}; } catch { return {}; } };
   function quickShip(mode = 'arcade') { // the OpenStarshipEarth arcade with the options used last time; 'free': no enemies, no goals
     relaunch = () => quickShip(mode);

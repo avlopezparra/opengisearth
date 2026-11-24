@@ -8,6 +8,7 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
   const deg = C.Math.toDegrees;
 
   // The Layers checkboxes remember their state between sessions (restored before each module reads them).
+  if (matchMedia('(pointer: coarse)').matches && !localStorage.getItem('oge.fix.satsPhone')) { localStorage.removeItem('oge.ui.layerSats'); localStorage.setItem('oge.fix.satsPhone', '1'); } // phones: satellites off (left on by earlier versions)
   if (!localStorage.getItem('oge.fix.liveOff')) { localStorage.removeItem('oge.ui.layerSats'); localStorage.removeItem('oge.ui.layerPlanes'); localStorage.setItem('oge.fix.liveOff', '1'); }
   document.querySelectorAll('.layers input[type=checkbox], .layers select').forEach((c) => {
     const key = 'oge.ui.' + c.id, saved = localStorage.getItem(key);
@@ -383,7 +384,9 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
   if (PHONE) document.body.classList.add('noside'); // phones start on the map; the panel opens over it with the ☰ button
   if (PHONE || matchMedia('(pointer: coarse)').matches) { scene.msaaSamples = 1; scene.globe.showGroundAtmosphere = false; } // mobile GPUs: antialiasing costs too much memory, and the ground atmosphere shader can turn the far globe black
   $('sideBtn').onclick = () => hideSide(!document.body.classList.contains('noside'));
-  OGE.hideSide = hideSide; // the flight closes the panel and gives it back afterwards
+  OGE.hideSide = hideSide;
+  $('sideClose').onclick = () => hideSide(true);
+  if (matchMedia('(pointer: coarse)').matches) viewer.canvas.addEventListener('pointerdown', () => { if (!document.body.classList.contains('noside') && matchMedia('(max-width: 1100px)').matches) hideSide(true); }); // phones: touching the map closes the panel // the flight closes the panel and gives it back afterwards
   const sp = $('splitter');
   sp.onpointerdown = (e) => { sp.setPointerCapture(e.pointerId); sp.classList.add('drag'); };
   sp.onpointermove = (e) => { if (sp.classList.contains('drag')) setSide(Math.max(180, Math.min(window.innerWidth - 200, e.clientX))); };
