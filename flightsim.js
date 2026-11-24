@@ -1084,7 +1084,7 @@
       }
     } catch (e) { mpMode = 'solo'; return OGE.toast(T('Multijugador') + ': ' + (e.message || e), true); }
     p2 = mpMode === 'local' && wasOn && arcade ? { x: 0.35, y: 0.6, z: 200, hp: 100, score: 0, tilt: 0 } : null; // joins the flight in progress
-    if (!wasOn) $('shipBtn').click(); // the mode menu: free play, race or adventure, now with the second player
+    if (!wasOn) { mpLaunch = true; $('shipBtn').click(); } // the mode menu: free play, race or adventure, now with the second player
   }
 
   // ---------- Controls ----------
@@ -1470,8 +1470,11 @@
     const last = lastOpts();
     start('ship', last.mouse ?? true, mode !== 'free', true, mode !== 'free' && !localStorage.getItem('oge.tutorial'), mode === 'free');
   }
+  let mpLaunch = false; // the menu was opened by the multiplayer dialog: keep its mode
   $('shipBtn').onclick = async () => { // first the game mode
     if (on) return stop();
+    if (!mpLaunch && mpMode === 'local') mpMode = 'solo'; // a normal game starts alone: the second local player stays only for the multiplayer launch
+    mpLaunch = false;
     const v = await OGE.ask({ title: '🚀 OpenStarshipEarth', ok: 'Jugar', help: 'Hecho por Alejandro Víctor López Parra @avlopezparra (github)',
       fields: [{ id: 'mode', label: 'Modo de juego', type: 'select', value: localStorage.getItem('oge.shipMode') || 'arcade', options: [
         ['adventure', '🗺 Aventura: países por etapas, banderas y jefe final'],
