@@ -32,13 +32,74 @@
       e._tmp = true; // not a user feature: never saved
       setTimeout(() => viewer.entities.remove(e), 450);
     }
+    beep(1100, 180, 0.16);
+    if (!arcade) return;
+    const cam = viewer.camera, to = new C.Cartesian3(); // an enemy inside the aim cone is destroyed
+    let best = null, bestAng = 9;
+    for (const o of objs) {
+      if (o.kind !== 'enemy') continue;
+      C.Cartesian3.subtract(o.p, cam.positionWC, to);
+      const d = C.Cartesian3.magnitude(to), ang = Math.acos(clamp(C.Cartesian3.dot(to, cam.directionWC) / d, -1, 1));
+      if (ang < Math.atan((o.size * 1.5) / d) + rad(1.2) && ang < bestAng) { best = o; bestAng = ang; }
+    }
+    if (best) { objs.splice(objs.indexOf(best), 1); score += 100; booms.push({ p: best.p, t: performance.now() }); beep(300, 60, 0.3); }
+  }
+  function beep(f0, f1, dur) {
     try {
       audio = audio || new AudioContext();
       const o = audio.createOscillator(), v = audio.createGain(), now = audio.currentTime;
-      o.type = 'sawtooth'; o.frequency.setValueAtTime(1100, now); o.frequency.exponentialRampToValueAtTime(180, now + 0.16);
-      v.gain.setValueAtTime(0.06, now); v.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
-      o.connect(v).connect(audio.destination); o.start(now); o.stop(now + 0.17);
-    } catch { /* no audio device: the lasers still work */ }
+      o.type = 'sawtooth'; o.frequency.setValueAtTime(f0, now); o.frequency.exponentialRampToValueAtTime(f1, now + dur);
+      v.gain.setValueAtTime(0.06, now); v.gain.exponentialRampToValueAtTime(0.001, now + dur);
+      o.connect(v).connect(audio.destination); o.start(now); o.stop(now + dur + 0.01);
+    } catch { /* no audio device: the game still works */ }
+  }
+
+  // ---------- Starship arcade: random enemies to shoot, rings to fly through and coins to collect ----------
+  // The objects live in the 3D world and are drawn on the HUD at their projected position and size.
+  let arcade = false, objs = [], booms = [], score = 0, coins = 0;
+  const SIZE = { ring: 1, coin: 0.35, enemy: 0.5 };
+  const reach = () => Math.max(4000, s.v * warp * 7); // they appear about 7 s ahead, whatever the speed
+  function spawn() {
+    const cam = viewer.camera, D = reach() * (0.6 + 0.6 * Math.random()), kind = ['ring', 'coin', 'coin', 'enemy', 'enemy'][Math.floor(Math.random() * 5)];
+    const p = C.Cartesian3.clone(cam.positionWC), add = (v, k) => C.Cartesian3.add(p, C.Cartesian3.multiplyByScalar(v, k, new C.Cartesian3()), p);
+    add(cam.directionWC, D); add(cam.rightWC, (Math.random() - 0.5) * D * 0.5); add(cam.upWC, (Math.random() - 0.5) * D * 0.25);
+    const c = C.Cartographic.fromCartesian(p), floor = (scene.globe.getHeight(c) || 0) + 200;
+    if (c.height < floor) C.Cartesian3.fromRadians(c.longitude, c.latitude, floor, undefined, p); // never underground
+    objs.push({ kind, p, size: D * 0.06 * SIZE[kind] }); // sized for the speed it was created at
+  }
+  function arcadeStep() {
+    const cam = viewer.camera, t = new C.Cartesian3(), far = reach() * 2.5, slack = s.v * warp * 0.03; // slack: distance covered in one frame
+    objs = objs.filter((o) => {
+      C.Cartesian3.subtract(o.p, cam.positionWC, t);
+      const d = C.Cartesian3.magnitude(t);
+      if (d < o.size * (o.kind === 'ring' ? 1 : 1.6) + slack) { // touched: rings and coins score, ramming an enemy costs points
+        if (o.kind === 'enemy') { score = Math.max(0, score - 50); beep(200, 80, 0.25); }
+        else { score += o.kind === 'ring' ? 50 : 10; if (o.kind === 'coin') coins++; beep(o.kind === 'coin' ? 1500 : 800, o.kind === 'coin' ? 2200 : 1300, 0.12); }
+        return false;
+      }
+      return C.Cartesian3.dot(t, cam.directionWC) > -o.size && d < far; // left behind or too far: replaced by a new one
+    });
+    while (objs.length < 7) spawn();
+  }
+  function drawArcade(w, h, text) {
+    const f = h / 2 / Math.tan((viewer.camera.frustum.fovy || rad(60)) / 2), toWin = C.SceneTransforms.worldToWindowCoordinates || C.SceneTransforms.wgs84ToWindowCoordinates, now = performance.now();
+    for (const o of objs) {
+      const q = toWin(scene, o.p);
+      if (!q) continue; // behind the camera
+      const pr = Math.max(4, (o.size / C.Cartesian3.distance(o.p, viewer.camera.positionWC)) * f);
+      g.save(); g.shadowBlur = 8; g.beginPath();
+      if (o.kind === 'ring') { g.strokeStyle = g.shadowColor = '#ffd60a'; g.lineWidth = Math.max(2, pr * 0.12); g.arc(q.x, q.y, pr, 0, 7); g.stroke(); }
+      else if (o.kind === 'coin') { g.fillStyle = g.shadowColor = '#ffcc00'; g.ellipse(q.x, q.y, pr * Math.abs(Math.cos(now / 300)) + 1, pr, 0, 0, 7); g.fill(); } // spinning
+      else { g.fillStyle = g.shadowColor = '#ff453a'; g.moveTo(q.x, q.y - pr); g.lineTo(q.x + pr * 1.3, q.y); g.lineTo(q.x, q.y + pr * 0.5); g.lineTo(q.x - pr * 1.3, q.y); g.closePath(); g.fill(); }
+      g.restore();
+    }
+    booms = booms.filter((b) => now - b.t < 350);
+    for (const b of booms) { // explosion where an enemy was hit
+      const q = toWin(scene, b.p), k = (now - b.t) / 350;
+      if (!q) continue;
+      g.save(); g.strokeStyle = g.shadowColor = '#ff9f0a'; g.shadowBlur = 14; g.lineWidth = 6 * (1 - k) + 1; g.beginPath(); g.arc(q.x, q.y, 10 + 50 * k, 0, 7); g.stroke(); g.restore();
+    }
+    text(`${T('PUNTOS')} ${score}  ·  ${T('MONEDAS')} ${coins}`, 24, 26, 16, 'left');
   }
 
   async function open() {
@@ -46,11 +107,13 @@
     const v = await OGE.ask({ title: 'Simulador de vuelo', ok: 'Iniciar vuelo',
       help: 'Arranca en el aire sobre el punto que estás mirando. Mouse: clic toma o suelta la palanca. Teclado: flechas, RePág/AvPág para el gas, G tren, F flaps, Espacio pausa, Esc salir. Starship: X o clic derecho dispara.',
       fields: [{ id: 'plane', label: 'Avión', type: 'select', options: Object.entries(PLANES).map(([k, p]) => [k, p.name]) },
-        { id: 'mouse', label: 'Controlar con el mouse (como en Earth)', type: 'checkbox', value: true }] });
-    if (v) start(v.plane, v.mouse);
+        { id: 'mouse', label: 'Controlar con el mouse (como en Earth)', type: 'checkbox', value: true },
+        { id: 'arcade', label: 'Starship: modo arcade (enemigos, aros y monedas)', type: 'checkbox', value: true }] });
+    if (v) start(v.plane, v.mouse, v.arcade);
   }
-  function start(plane, useMouse) {
+  function start(plane, useMouse, useArcade = true) {
     A = PLANES[plane];
+    arcade = !!A.ship && !!useArcade; objs = []; booms = []; score = coins = 0;
     const la = OGE.lookAt(), c = la ? la.carto : viewer.camera.positionCartographic; // above the look-at point, not from orbit
     const ground = scene.globe.getHeight(c) || 0;
     s = { lon: c.longitude, lat: c.latitude, alt: ground + A.agl, heading: viewer.camera.heading, pitch: 0, roll: 0, v: A.v0, vs: 0,
@@ -66,6 +129,7 @@
   }
   function stop(msg, error) {
     on = false;
+    if (arcade && !msg && score) msg = `Vuelo terminado: ${score} puntos y ${coins} monedas.`;
     scene.screenSpaceCameraController.enableInputs = true;
     document.body.classList.remove('flying');
     hud.hidden = true;
@@ -128,6 +192,7 @@
     s.heading = C.Math.zeroToTwoPi(s.heading);
     s.agl = s.alt - ground;
     viewer.camera.setView({ destination: C.Cartesian3.fromRadians(s.lon, s.lat, s.alt), orientation: { heading: s.heading, pitch: s.pitch, roll: s.roll } });
+    if (arcade) arcadeStep();
   }
 
   // ---------- HUD ----------
@@ -144,6 +209,7 @@
     if (paused) text(T('PAUSA — Espacio para seguir'), cx, cy - r - 46, 16);
     else if (s.ground) text(T('EN TIERRA'), cx, cy - r - 46, 16);
     else if (s.v < A.vStall * (1 - 0.1 * s.flaps)) text(T('PÉRDIDA — baja la nariz y da gas'), cx, cy - r - 46, 16);
+    if (arcade) drawArcade(w, h, text);
     shots = shots.filter((t0) => performance.now() - t0 < 220);
     for (const t0 of shots) { // two bolts converging on the aim point
       const a = (performance.now() - t0) / 220, b = Math.min(1, a + 0.3);
@@ -254,5 +320,5 @@
     for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => keys.delete(key));
   }
   $('flyBtn').onclick = open;
-  OGE.flight = { start, stop, state: () => s, flying: () => on };
+  OGE.flight = { start, stop, state: () => s, flying: () => on, game: () => ({ score, coins, objs }) };
 })();
