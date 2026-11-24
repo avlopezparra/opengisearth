@@ -616,7 +616,7 @@
     if (arcade && !airports && !airBusy) { airBusy = true; fetch(NE + '10m_cultural/ne_10m_airports.shp').then((r) => r.arrayBuffer()).then((b) => { airports = shp.parseShp(b).filter((g) => g && g.type === 'Point').map((g) => g.coordinates); }).catch(() => {}).finally(() => { airBusy = false; }); } // 25 KB: only the points
     maxHp = 100; usedTowns.clear(); hp = 100; bombs = 2; incoming = []; flash = hit = 0; shields = 0;
     run = { flags: 0, caps: 0, bosses: 0 };
-    p2 = mpMode === 'local' && arcade ? { x: 0.35, y: 0.6, z: 200, hp: 100, score: 0, tilt: 0 } : null; // the second local player starts beside the first
+    p2 = mpMode === 'local' && arcade ? { x: -0.65, y: 0.55, z: 200, hp: 100, score: 0, tilt: 0 } : null; // the second local player starts beside the first
     music(arcade);
     objs = []; booms = []; score = coins = 0;
     const la = OGE.lookAt(), c = la ? la.carto : viewer.camera.positionCartographic; // above the look-at point, not from orbit
@@ -1083,7 +1083,7 @@
         OGE.toast(`${T('Conectado a')} ${addr}`);
       }
     } catch (e) { mpMode = 'solo'; return OGE.toast(T('Multijugador') + ': ' + (e.message || e), true); }
-    p2 = mpMode === 'local' && wasOn && arcade ? { x: 0.35, y: 0.6, z: 200, hp: 100, score: 0, tilt: 0 } : null; // joins the flight in progress
+    p2 = mpMode === 'local' && wasOn && arcade ? { x: -0.65, y: 0.55, z: 200, hp: 100, score: 0, tilt: 0 } : null; // joins the flight in progress
     if (!wasOn) { mpLaunch = true; $('shipBtn').click(); } // the mode menu: free play, race or adventure, now with the second player
   }
 
