@@ -249,7 +249,8 @@
     try {
       const facts = FACTS[id.oge];
       // one branch per fact (a UNION), so that multi-valued facts do not multiply each other; the anthem's recording comes through its own item
-      const sparql = `SELECT ?k ?v ?vLabel WHERE { ${facts.map(([k, , p]) => `{ BIND("${k}" AS ?k) wd:${id.q} ${k === 'cont' ? `p:${p}/ps:${p}` : `wdt:${p}`} ?v }`).join(' UNION ')} UNION { BIND("audio" AS ?k) wd:${id.q} wdt:P85 ?a . ?a wdt:P51 ?v } UNION { BIND("flag" AS ?k) wd:${id.q} wdt:P41 ?v } UNION { BIND("arms" AS ?k) wd:${id.q} wdt:P94 ?v } UNION { BIND("banner" AS ?k) wd:${id.q} wdt:P948 ?v } SERVICE wikibase:label { bd:serviceParam wikibase:language "${OGE_LANG},en". } }`;
+      const sparql = `SELECT ?k ?v ?vLabel WHERE { ${facts.map(([k, , p]) => `{ BIND("${k}" AS ?k) wd:${id.q} ${k === 'cont' ? `p:${p}/ps:${p}` : `wdt:${p}`} ?v }`).join(' UNION ')} UNION { BIND("audio" AS ?k) wd:${id.q} wdt:P85 ?a . ?a wdt:P51 ?v } ${id.oge === 'country' ? ['hos:P35', 'hog:P6'].map((x) => { const [k, p] = x.split(':'); const cur = `wd:${id.q} wdt:${p} ?h . ?h p:P102 ?st . ?st ps:P102 ?pt . FILTER NOT EXISTS { ?st pq:P582 ?end }`; // the leader's current party (no end date)
+          return `UNION { BIND("${k}Party" AS ?k) ${cur} BIND(?pt AS ?v) } UNION { BIND("${k}Pos" AS ?k) ${cur} ?pt wdt:P1387 ?v }`; }).join(' ') : ''} UNION { BIND("flag" AS ?k) wd:${id.q} wdt:P41 ?v } UNION { BIND("arms" AS ?k) wd:${id.q} wdt:P94 ?v } UNION { BIND("banner" AS ?k) wd:${id.q} wdt:P948 ?v } SERVICE wikibase:label { bd:serviceParam wikibase:language "${OGE_LANG},en". } }`;
       const res = await fetch('https://query.wikidata.org/sparql?format=json&query=' + encodeURIComponent(sparql));
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const rows = (await res.json()).results.bindings, num = (v) => Number(v).toLocaleString(OGE_LANG);
@@ -257,7 +258,10 @@
       const table = [];
       for (const [k, label] of facts) {
         const vals = [...new Set(rows.filter((r) => r.k.value === k).map((r) => (fmt[k] ? fmt[k](r.v.value) : r.vLabel.value)))].slice(0, fmt[k] ? 1 : 6);
-        if (vals.length) table.push([T(label), vals.join(', ')]);
+        const lab = (kk) => [...new Set(rows.filter((r) => r.k.value === kk).map((r) => r.vLabel.value))].slice(0, 2);
+        const party = lab(k + 'Party'), pos = lab(k + 'Pos'); // the leader's party and, when Wikidata has it, its political position
+        const extra = party.length ? ` — ${party.join(', ')}${pos.length ? ` (${T('posición política')}: ${pos.join(', ')})` : ''}` : '';
+        if (vals.length) table.push([T(label), vals.join(', ') + extra]);
       }
       if (!table.length) throw new Error('sin datos');
       const rawOf = (k) => { const r = rows.find((x) => x.k.value === k); return r ? +r.v.value : NaN; }, dens = rawOf('pop') / rawOf('area');
@@ -269,7 +273,8 @@
           const me = m.get(key);
           if (me == null) return '';
           const all = [...m.values()], same = [...m].filter(([k]) => contOf(k) === contOf(key)).map(([, v]) => v);
-          return ` — ${T('n.º')} ${all.filter((v) => v > me).length + 1} ${T('de')} ${all.length} ${T('en el mundo')}; ${T('n.º')} ${same.filter((v) => v > me).length + 1} ${T('de')} ${same.length} ${T('en')} ${T(CN[contOf(key)] || contOf(key) || '')}`;
+          return `\u0001${all.filter((v) => v > me).length + 1}/${all.length}/${T('mundo')}\u0001${same.filter((v) => v > me).length + 1}/${same.length}/${T(CN[contOf(key)] || contOf(key) || '')}`; // rank/total/where, drawn as chips
+
         };
         const add = (label, txt) => { const row = table.find((r) => r[0] === T(label)); if (row && txt) row[1] += txt; };
         const wb = async (code) => { // latest value of a World Bank indicator for every country
@@ -313,6 +318,16 @@
         } catch { /* stays without a recording */ }
       }
       if (audio) head.append(Object.assign(document.createElement('audio'), { controls: true, preload: 'none', src: audio.v.value.replace(/^http:/, 'https:'), style: 'width:100%;margin-bottom:6px;display:block', title: T('Himno nacional') }));
+      const chips = (txt) => { // 'value\u0001rank/total/where…' -> the value followed by colored rank chips (green = top quarter, red = bottom quarter)
+        const [value, ...ranks] = String(txt).split('\u0001');
+        if (!ranks.length) return txt;
+        const span = document.createElement('span');
+        span.append(value + ' ');
+        for (const r of ranks) { const [n, total, where] = r.split('/'), q = (n - 1) / Math.max(1, total - 1), color = q <= 0.25 ? '#2e9e3a' : q <= 0.5 ? '#8bbf2a' : q <= 0.75 ? '#e0a020' : '#d9483b';
+          span.append(Object.assign(document.createElement('span'), { textContent: `#${n} / ${total} ${where}`, style: `display:inline-block;background:${color};color:#fff;border-radius:10px;padding:0 8px;margin:1px 4px 1px 0;font-weight:600;font-size:12px;text-shadow:0 1px 1px rgba(0,0,0,.35)` })); }
+        return span;
+      };
+      for (const r of table) r[1] = chips(r[1]);
       OGE.showTable(id.name, [T('Dato'), T('Valor')], table, { note: T('Fuente: Wikidata (CC0).') + (head.childNodes.length ? ' ' + T('Imágenes y sonido: Wikimedia Commons.') : ''), content: head.childNodes.length ? head : undefined });
     } catch (e) { OGE.toast('No se pudieron obtener los datos: ' + e.message, true); }
   }

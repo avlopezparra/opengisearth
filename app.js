@@ -148,7 +148,7 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
     const s = v == null ? '' : String(v);
     return /[",\n;]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
   }).join(',')).join('\r\n');
-  const cell = (v) => (v == null ? '' : typeof v === 'number' && !Number.isInteger(v) ? String(+v.toFixed(6)) : typeof v === 'object' ? JSON.stringify(v) : String(v));
+  const cell = (v) => (v instanceof Node ? v.textContent : v == null ? '' : typeof v === 'number' && !Number.isInteger(v) ? String(+v.toFixed(6)) : typeof v === 'object' ? JSON.stringify(v) : String(v));
   // Table or report. content: optional DOM node (e.g. a chart) shown above the table.
   OGE.showTable = (title, cols, rows, { onRow, note, content } = {}) => {
     const MAX = 1000;
@@ -156,7 +156,7 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
     $('tableNote').textContent = (note || '') + (rows.length > MAX ? ` Se muestran ${MAX} de ${rows.length} filas; el CSV las incluye todas.` : '');
     const t = el('table', {}, el('tr', {}, ...cols.map((c) => el('th', { textContent: c }))));
     rows.slice(0, MAX).forEach((r, i) => {
-      const tr = el('tr', {}, ...r.map((v) => el('td', { textContent: cell(v) })));
+      const tr = el('tr', {}, ...r.map((v) => (v instanceof Node ? el('td', {}, v) : el('td', { textContent: cell(v) })))); // a cell may be ready-made content
       if (onRow) { tr.className = 'click'; tr.onclick = () => onRow(i); }
       t.append(tr);
     });
