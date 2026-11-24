@@ -229,25 +229,47 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
   $('compass').onclick = () => viewer.camera.flyTo({ destination: viewer.camera.positionWC.clone(), orientation: { heading: 0, pitch: viewer.camera.pitch, roll: 0 }, duration: 0.6 });
 
   // ---------- World minimap: where the camera (or the aircraft) is; other modules add their marks through OGE.minimap.extra ----------
-  const mm = $('minimap'), mg = mm.getContext('2d'), mmImg = [0, 1].map((i) => Object.assign(new Image(), { src: `cesium/Assets/Textures/NaturalEarthII/0/${i}/0.jpg` })); // west and east halves
-  OGE.minimap = { extra: null, xy: (lon, lat) => [((lon + 180) / 360) * mm.width, ((90 - lat) / 180) * mm.height] };
-  let mmLast = 0;
+  const mm = $('minimap'), mg = mm.getContext('2d'), mmTiles = new Map(); // Natural Earth II level 2 (8 × 4 tiles of 45°), loaded when first needed
+  const mmTile = (i, j) => { const k = i + '/' + j; if (!mmTiles.has(k)) mmTiles.set(k, Object.assign(new Image(), { src: `cesium/Assets/Textures/NaturalEarthII/2/${i}/${3 - j}.jpg` })); return mmTiles.get(k); }; // TMS rows count from the south
+  const MMZ = [1, 2, 4, 8, 16];
+  let mmZoom = +localStorage.getItem('oge.mmZoom') || 4, mmLon = 0, mmLat = 0, mmLast = 0; // the map is centered on the camera
+  const mmSetZoom = (d) => { mmZoom = MMZ[C.Math.clamp(MMZ.indexOf(mmZoom) + d, 0, MMZ.length - 1)] || 4; localStorage.setItem('oge.mmZoom', mmZoom); mmLast = 0; };
+  const mmDx = (lon) => (((lon - mmLon + 540) % 360) - 180) / 360; // fraction of the world, wrapped around the center
+  OGE.minimap = { extra: null, zoom: mmSetZoom,
+    xy: (lon, lat) => [mm.width / 2 + mmDx(lon) * mm.width * mmZoom, mm.height / 2 - ((lat - mmLat) / 180) * mm.height * mmZoom] };
   scene.postRender.addEventListener(() => {
     const now = performance.now();
-    if (mm.hidden || now - mmLast < 200) return; // five times per second is enough
+    if ($('mmBox').hidden || $('mmBox').classList.contains('min') || now - mmLast < 200) return; // five times per second is enough
     mmLast = now;
-    const W = mm.width, H = mm.height, c = viewer.camera.positionCartographic, [x, y] = OGE.minimap.xy(deg(c.longitude), deg(c.latitude));
-    mg.clearRect(0, 0, W, H);
-    mmImg.forEach((im, i) => { if (im.complete && im.naturalWidth) mg.drawImage(im, (i * W) / 2, 0, W / 2, H); });
+    const W = mm.width, H = mm.height, c = viewer.camera.positionCartographic, tw = (W * mmZoom) / 8, th = (H * mmZoom) / 4;
+    mmLon = deg(c.longitude);
+    mmLat = C.Math.clamp(deg(c.latitude), -90 + 90 / mmZoom, 90 - 90 / mmZoom); // do not scroll past the poles
+    mg.fillStyle = '#0b1a2b'; mg.fillRect(0, 0, W, H);
+    for (let i = 0; i < 8; i++) for (let j = 0; j < 4; j++) {
+      const y = H / 2 - ((90 - 45 * j - mmLat) / 180) * H * mmZoom;
+      for (const x of [W / 2 + mmDx(-180 + 45 * i) * W * mmZoom, W / 2 + (mmDx(-180 + 45 * i) - 1) * W * mmZoom]) { // second copy: a tile cut by the wrap also shows at the other edge
+        if (x > W || x + tw < 0 || y > H || y + th < 0) continue;
+        const im = mmTile(i, j);
+        if (im.complete && im.naturalWidth) mg.drawImage(im, x, y, tw + 0.5, th + 0.5);
+      }
+    }
     if (OGE.minimap.extra) OGE.minimap.extra(mg);
+    const [x, y] = OGE.minimap.xy(deg(c.longitude), deg(c.latitude));
     mg.save(); mg.translate(x, y); mg.rotate(viewer.camera.heading); mg.fillStyle = '#ff3b30'; mg.strokeStyle = '#fff'; mg.lineWidth = 1.5;
     mg.beginPath(); mg.moveTo(0, -8); mg.lineTo(5, 6); mg.lineTo(0, 3); mg.lineTo(-5, 6); mg.closePath(); mg.fill(); mg.stroke(); mg.restore();
   });
-  mm.onclick = (e) => {
-    const b = mm.getBoundingClientRect();
-    viewer.camera.flyTo({ destination: C.Cartesian3.fromDegrees(((e.clientX - b.left) / b.width) * 360 - 180, 90 - ((e.clientY - b.top) / b.height) * 180, Math.max(2e6, viewer.camera.positionCartographic.height)) });
+  mm.onclick = (e) => { // fly to the clicked place
+    const b = mm.getBoundingClientRect(), fx = (e.clientX - b.left) / b.width - 0.5, fy = (e.clientY - b.top) / b.height - 0.5;
+    viewer.camera.flyTo({ destination: C.Cartesian3.fromDegrees(mmLon + (fx * 360) / mmZoom, C.Math.clamp(mmLat - (fy * 180) / mmZoom, -89, 89), Math.max(2e6, viewer.camera.positionCartographic.height)) });
   };
-  const cbMm = $('layerMinimap'), syncMm = () => { mm.hidden = !cbMm.checked; };
+  const mmMin = (v) => { $('mmBox').classList.toggle('min', v); $('mmMin').textContent = v ? '🗺' : '▾'; localStorage.setItem('oge.mmMin', v ? '1' : ''); mmLast = 0; };
+  $('mmMin').onclick = () => mmMin(!$('mmBox').classList.contains('min'));
+  mmMin(!!localStorage.getItem('oge.mmMin'));
+  OGE.minimap.toggle = $('mmMin').onclick;
+  $('mmIn').onclick = () => mmSetZoom(1);
+  $('mmOut').onclick = () => mmSetZoom(-1);
+  mm.addEventListener('wheel', (e) => { e.preventDefault(); mmSetZoom(e.deltaY < 0 ? 1 : -1); }, { passive: false });
+  const cbMm = $('layerMinimap'), syncMm = () => { $('mmBox').hidden = !cbMm.checked; };
   cbMm.addEventListener('change', syncMm);
   syncMm();
 
