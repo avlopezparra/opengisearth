@@ -586,7 +586,7 @@
         else if (o.kind === 'crest') collect(o.cap); // the coat of arms wins the capital
         else if (o.kind === 'shield') { shields = Math.min(3, shields + 1); sfx('shield'); }
         else if (o.kind === 'bomb') { bombs++; sfx('bombGet'); }
-        else if (o.kind === 'itembox') { const kind = o.item || Object.keys(BALLOON)[Math.floor(Math.random() * 4)], same = items.indexOf(kind); if (same < 0 && items.length >= 3) return true; let item = kind; if (same >= 0) { items[same] = kind + '+'; item = kind + '+'; } else items.push(kind); sfx('achieve'); OGE.toast(`${ITEMS[item][0]} ${T(ITEMS[item][1])} — ${T('U para usarlo')}`); }
+        else if (o.kind === 'itembox') { if (!giveItem(o.item || Object.keys(BALLOON)[Math.floor(Math.random() * 4)])) return true; }
         else if (o.kind === 'gate') { if (race && race.gates[race.nextGate] === o) { race.nextGate++; sfx('ring'); beep(990, 120, 0.25); return false; } return true; } // only the next gate counts
         else if (o.kind === 'zip') { if (!boost) { boostCd = 0; startBoost(); sfx('warpUp'); } return true; } // boost rings stay
         else if (o.kind === 'scoin') { if (race) { race.coins = Math.min(10, race.coins + 1); A.vMax = race.vBase * (1 + 0.04 * race.coins); } sfx('coin'); }
@@ -942,6 +942,8 @@
   const subImgs = new Map(), subImg = (f) => { if (!subImgs.has(f)) subImgs.set(f, Object.assign(new Image(), { src: 'https://commons.wikimedia.org/wiki/Special:FilePath/' + encodeURIComponent(f) + '?width=120' })); return subImgs.get(f); };
   let regs = null, regsBusy = false; // [{ id, name, a3, country, cont, p, img }]
   const gotReg = new Set((() => { try { return JSON.parse(localStorage.getItem(REGS)) || []; } catch { return []; } })());
+  let regKey = REGS; // where the flags are kept: the free game's collection, or the adventure's own
+  const syncRegs = () => { const key = adv ? REGS + '.adv' : REGS; if (key === regKey) return; regKey = key; gotReg.clear(); try { for (const x of JSON.parse(localStorage.getItem(key)) || []) gotReg.add(x); } catch { /* an empty collection */ } };
   async function loadRegs() {
     if (OGE.body) regs = regs || (OGE.body === 'moon' ? moonFlags() : []);
     if (regs || regsBusy) return;
@@ -971,18 +973,26 @@
     } catch (e) { OGE.toast('No se pudieron cargar las banderas: ' + e.message, true); }
     regsBusy = false;
   }
-  function regStep() { // flying close to a region's flag collects it
-    if (!regs) return;
+  function giveItem(kind) { // a race item into the first free slot (a second one of the same kind upgrades it); false when the three slots are taken
+    const same = items.indexOf(kind); if (same < 0 && items.length >= 3) return false;
+    let item = kind; if (same >= 0) { items[same] = kind + '+'; item = kind + '+'; } else items.push(kind);
+    sfx('achieve'); OGE.toast(`${ITEMS[item][0]} ${T(ITEMS[item][1])} — ${T('U para usarlo')}`); return true;
+  }
+  function regStep() { // flying close to a region's flag collects it; in a race it hands out an item instead, once
+    if (!regs || (race && !race.flags)) return;
+    syncRegs();
+    const taken = race ? race.used : gotReg;
     const cam = viewer.camera.positionWC, R = Math.max(5000, s.v * warp * 0.06); // you have to fly close: 5 km, or what is covered in a couple of frames at high speed
     for (const r of regs) {
-      if (gotReg.has(r.id)) continue;
+      if (taken.has(r.id)) continue;
       const d = C.Cartesian3.distance(r.p, cam);
       if (!r.onRelief && d < 6e5) { // once its terrain is loaded, the flag floats 2.5 km above the relief (mountains included)
         const h = scene.globe.getHeight(C.Cartographic.fromDegrees(r.lon, r.lat));
         if (h !== undefined) { r.p = C.Cartesian3.fromDegrees(r.lon, r.lat, h * scene.verticalExaggeration + 2500); r.onRelief = true; }
       }
       if (d > R || s.alt > 1e5) continue; // flags are picked up flying past them, not from space
-      gotReg.add(r.id); localStorage.setItem(REGS, JSON.stringify([...gotReg])); run.flags++;
+      if (race) { if (giveItem(Object.keys(BALLOON)[Math.floor(Math.random() * 4)])) race.used.add(r.id); continue; } // a full hand leaves the flag for later
+      gotReg.add(r.id); localStorage.setItem(regKey, JSON.stringify([...gotReg])); run.flags++;
       const all = (fn) => regs.filter(fn).every((x) => gotReg.has(x.id)), mine = regs.filter((x) => x.a3 === r.a3), n = mine.filter((x) => gotReg.has(x.id)).length;
       if (arcade) score += 100;
       sfx(n === mine.length ? 'achieve' : 'flag'); // a completed country (or continent, or the world) is an achievement
@@ -994,7 +1004,7 @@
     const toWin = C.SceneTransforms.worldToWindowCoordinates || C.SceneTransforms.wgs84ToWindowCoordinates, cam = viewer.camera.positionWC;
     capOcc.cameraPosition = cam;
     for (const r of regs) {
-      if (gotReg.has(r.id)) continue;
+      if (race ? race.used.has(r.id) : gotReg.has(r.id)) continue;
       if (adv && adv.a3 === 'ARG' && (r.a3 === 'FLK' || r.a3 === 'SGS')) continue; // for Argentina they are part of Tierra del Fuego: no flag of their own
       if (!r.lifted) { const gh = scene.globe.getHeight(C.Cartographic.fromDegrees(r.lon, r.lat)); if (gh !== undefined) { r.p = C.Cartesian3.fromDegrees(r.lon, r.lat, gh + 2000); r.lifted = true; } } // over the real terrain
       const d = C.Cartesian3.distance(r.p, cam);
@@ -1029,20 +1039,20 @@
   const BALLOON = { missile: '#ff453a', mine: '#bf5af2', boost: '#ffd60a', shield: '#0a84ff' }; // the colour tells what a balloon holds
   function placeBoxes() { // the course along the race path: a row of three balloons every few km, numbered gates, boost rings and speed coins
     objs = objs.filter((o) => !['itembox', 'gate', 'zip', 'scoin'].includes(o.kind));
-    const at = (f, side = 0, up = 2200) => { const [lon, lat, hd] = pathAt(f), x = lon + (side * Math.cos(hd)) / Math.cos(rad(lat)), y = lat - side * Math.sin(hd), gh = scene.globe.getHeight(C.Cartographic.fromDegrees(x, y)); return { lon: x, lat: y, up, lifted: gh !== undefined, p: C.Cartesian3.fromDegrees(x, y, (gh || 0) + up) }; };
+    const at = (f, side = 0, up = 3000) => { const [lon, lat, hd] = pathAt(f), x = lon + (side * Math.cos(hd)) / Math.cos(rad(lat)), y = lat - side * Math.sin(hd), gh = scene.globe.getHeight(C.Cartographic.fromDegrees(x, y)); return { lon: x, lat: y, up, lifted: gh !== undefined, p: C.Cartesian3.fromDegrees(x, y, (gh || 0) + up) }; };
     const ng = Math.max(3, Math.min(25, Math.round(race.pathLen / 10000)));
     race.gates = race.rings === false ? null : [];
-    if (race.gates) for (let i = 1; i <= ng; i++) { const g0 = { kind: 'gate', n: i, f: i / (ng + 1), size: 900, next: 1e15, ...at(i / (ng + 1)) }; race.gates.push(g0); objs.push(g0); } // pass them in order
+    if (race.gates) for (let i = 1; i <= ng; i++) { const g0 = { kind: 'gate', n: i, f: i / (ng + 1), size: 1400, next: 1e15, ...at(i / (ng + 1)) }; race.gates.push(g0); objs.push(g0); } // pass them in order
     race.nextGate = 0; race.missed = 0;
-    for (let i = 0; i < ng; i++) { const f = (i + 0.5) / (ng + 1); objs.push({ kind: 'zip', size: 500, next: 1e15, ...at(f, (i % 2 ? 1 : -1) * 0.004) }); } // boost rings, a little off the line
-    for (let i = 0; i < ng * 4; i++) { const f = (i + 0.25) / (ng * 4 + 1); objs.push({ kind: 'scoin', size: 220, next: 1e15, ...at(f, ((i % 3) - 1) * 0.006) }); } // speed coins
+    for (let i = 0; i < ng; i++) { const f = (i + 0.5) / (ng + 1); objs.push({ kind: 'zip', size: 800, next: 1e15, ...at(f, (i % 2 ? 1 : -1) * 0.004) }); } // boost rings, a little off the line
+    for (let i = 0; i < ng * 4; i++) { const f = (i + 0.25) / (ng * 4 + 1); objs.push({ kind: 'scoin', size: 350, next: 1e15, ...at(f, ((i % 3) - 1) * 0.006) }); } // speed coins
     race.coins = 0; race.vBase = race.vBase || A.vMax;
     const n = Math.max(3, Math.min(40, Math.round(race.pathLen / 8000)));
     for (let i = 1; i < n; i++) {
       const [lon, lat, hd] = pathAt(i / n), side = Math.cos(rad(lat));
       for (const o of [-1, 0, 1]) { // across the route
         const x = lon + (o * 0.012 * Math.cos(hd)) / side, y = lat - o * 0.012 * Math.sin(hd), gh = scene.globe.getHeight(C.Cartographic.fromDegrees(x, y));
-        objs.push({ kind: 'itembox', item: Object.keys(BALLOON)[(i + o + 3) % 4], lon: x, lat: y, up: 2200, lifted: gh !== undefined, p: C.Cartesian3.fromDegrees(x, y, (gh || 0) + 2200), size: 350, next: 1e15 });
+        objs.push({ kind: 'itembox', item: Object.keys(BALLOON)[(i + o + 3) % 4], lon: x, lat: y, up: 3000, lifted: gh !== undefined, p: C.Cartesian3.fromDegrees(x, y, (gh || 0) + 3000), size: 560, next: 1e15 });
       }
     }
   }
@@ -1105,6 +1115,7 @@
         { id: 'lands', label: 'Volar solo sobre estos países (separados por comas; vacío = todos)', type: 'text', value: last.lands || '' },
         { id: 'via', label: 'Metas intermedias: ciudades por las que pasar (separadas por comas)', type: 'text', value: last.via || '' },
         { id: 'rings', label: 'Aros numerados que hay que pasar en orden (desmárcalo para correr sin aros)', type: 'checkbox', value: last.rings ?? true },
+        { id: 'flags', label: 'Banderas que dan un objeto al pasar por ellas (desmárcalo para correr sin banderas)', type: 'checkbox', value: last.flags ?? true },
         { id: 'laps', label: 'Vueltas (2 o más: circuito que vuelve a la salida)', type: 'select', value: String(last.laps ?? 1), options: [1, 2, 3, 4, 5].map((n) => [String(n), n === 1 ? '1 (de una ciudad a otra)' : String(n)]) }] });
     if (!v || !v.from || !v.to) return;
     localStorage.setItem('oge.raceLast', JSON.stringify(v));
@@ -1123,7 +1134,7 @@
     adv = null; advShape = null;
     start('ship', true, true, true, false);
     s.heading = hd;
-    race = { laps, via, key: `${v.from}|${v.to}|${v.maxWarp}|${v.lands}|${v.via || ''}|${laps}${v.route === 'line' ? '|line' : ''}${v.rings === false ? '|norings' : ''}`.toLowerCase(), from: a, to: b, t0: performance.now(), km: raceKmFrom(a, b), cpus: [], maxWarp: Math.min(10, +v.maxWarp || 10), rings: v.rings !== false, others: null };
+    race = { laps, via, key: `${v.from}|${v.to}|${v.maxWarp}|${v.lands}|${v.via || ''}|${laps}${v.route === 'line' ? '|line' : ''}${v.rings === false ? '|norings' : ''}`.toLowerCase(), from: a, to: b, t0: performance.now(), km: raceKmFrom(a, b), cpus: [], maxWarp: Math.min(10, +v.maxWarp || 10), rings: v.rings !== false, flags: v.flags !== false, used: new Set(), others: null };
     if (warp > race.maxWarp) setWarp(race.maxWarp);
     if (v.lands && v.lands.trim()) raceLands(v.lands); // only these countries (the sea and Antarctica stay open)
     if (!p2 && !remote) race.cpus = Array.from({ length: +v.cpus || 0 }, (_, i) => ({ // rivals: each flies the route at its own pace
@@ -1143,7 +1154,7 @@
   const raceKmFrom = (a, b) => C.Cartesian3.distance(C.Cartesian3.fromDegrees(a.lon, a.lat, 0), C.Cartesian3.fromDegrees(b.lon, b.lat, 0)) / 1000;
   const cpuPos = (c) => { // along the race path (roads and ferries), a little to one side, 1.5 km over the ground
     const [lon, lat, hd] = pathAt(c.f), x = lon + (c.side * Math.cos(hd)) / Math.cos(rad(lat)), y = lat - c.side * Math.sin(hd);
-    return C.Cartesian3.fromDegrees(x, y, (scene.globe.getHeight(C.Cartographic.fromDegrees(x, y)) || 0) + 2200);
+    return C.Cartesian3.fromDegrees(x, y, (scene.globe.getHeight(C.Cartographic.fromDegrees(x, y)) || 0) + 3000);
   };
   const myProgress = () => { // the nearest point of the path, checked a few times a second
     const now = performance.now();
@@ -1354,7 +1365,7 @@
     if (!on || paused || p2 || ws || remote) return;
     paused = true; $('table').addEventListener('close', () => { paused = false; last = performance.now(); }, { once: true });
   };
-  function showFlags() { // the region flags collected: the stage's in the adventure, otherwise the totals per country
+  function showFlags() { syncRegs(); // the region flags collected: the stage's in the adventure, otherwise the totals per country
     if (!regs) return OGE.toast(T('Las banderas aún se están cargando.'));
     menuPause();
     if (adv) {
@@ -2119,7 +2130,7 @@
     if (on) mpStep(dt);
     if (tut && on) tutStep();
     if (on && race) raceStep();
-    if (on && quest()) { capStep(); regStep(); advStep(); } // the collection can be switched off to fly just for the views
+    if (on && quest()) { capStep(); regStep(); advStep(); } else if (on && race) regStep(); // a race has its item flags whatever the collection switch says // the collection can be switched off to fly just for the views
     if (on && tps()) chaseCam(dt); else chase = null; // last: the game logic above ran with the camera on the ship itself
   }
 
@@ -2166,7 +2177,7 @@
         g.save(); g.font = '18px sans-serif'; g.textAlign = 'center'; g.fillStyle = g.shadowColor = '#34c759'; g.shadowBlur = 8; g.fillText('🛬', q.x, q.y); g.font = '600 10px sans-serif'; g.fillText('+ VIDA', q.x, q.y + 14); g.restore();
       }
     }
-    if (regs && quest()) drawRegs();
+    if (regs && (race ? race.flags : quest())) drawRegs();
     if (caps && quest()) drawCaps();
     if (arcade) drawArcade(w, h, text);
     if (A.ship && !OGE.body) moonHud(w, h);
@@ -2483,7 +2494,7 @@
   $('flyReset').onclick = async () => { // start the collection again: flags and capitals collected so far are forgotten
     paused = true;
     const v = await OGE.ask({ title: 'Reiniciar la colección', ok: 'Reiniciar', help: 'Se olvidan las banderas de regiones y las capitales conseguidas. Los puntajes no se borran.', fields: [] });
-    if (v) { gotReg.clear(); got.clear(); owed.clear(); localStorage.removeItem(REGS); localStorage.removeItem(CAPS); localStorage.removeItem(OWED); OGE.toast('Colección reiniciada.'); }
+    if (v) { gotReg.clear(); got.clear(); owed.clear(); localStorage.removeItem(regKey); localStorage.removeItem(CAPS); localStorage.removeItem(OWED); OGE.toast('Colección reiniciada.'); }
     paused = false; last = performance.now();
   };
   $('flyHelp').onclick = () => { $('flyKeys').hidden = !$('flyKeys').hidden; $('flyRules').hidden = true; };
