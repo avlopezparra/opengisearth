@@ -311,7 +311,7 @@
     'Nave: estilo y colores': 'Ship: style and colours', 'Aplicar': 'Apply', 'Estilo de nave': 'Ship style', 'Color de las alas': 'Wing colour', 'Color del fuselaje': 'Hull colour',
     'La nave se ve en tercera persona (Y). La insignia de las alas se elige en «Escudos de armas».': 'The ship shows in third person (Y). The wing insignia is chosen in «Coats of arms».',
     'Palanca táctil': 'Touch stick', 'Sensibilidad de la palanca táctil: cuánto responde al mismo arrastre': 'Touch stick sensitivity: how much it answers to the same drag',
-    'Descargar': 'Download', 'Piloto automático': 'Autopilot',
+    'Descargar': 'Download', 'Piloto automático': 'Autopilot', 'Cargando el terreno y las banderas…': 'Loading the terrain and the flags…',
     'Select: opciones y piloto automático': 'Select: options and autopilot', 'Select (Back) abre las opciones: piloto automático, nave, puntajes.': 'Select (Back) opens the options: autopilot, ship, scores.',
     'Azul': 'Blue', 'Rojo': 'Red', 'Verde': 'Green', 'Amarillo': 'Yellow', 'Naranja': 'Orange', 'Morado': 'Purple', 'Blanco': 'White', 'Negro': 'Black', 'Gris': 'Grey', 'Plateado': 'Silver', 'Personalizado (código hex)': 'Custom (hex code)',
     'Alas: código hex (con «Personalizado»)': 'Wings: hex code (with «Custom»)', 'Fuselaje: código hex (con «Personalizado»)': 'Hull: hex code (with «Custom»)', 'Tu nave: código hex (con «Personalizado»)': 'Your ship: hex code (with «Custom»)', 'Jugador 2: código hex (con «Personalizado»)': 'Player 2: hex code (with «Custom»)',
