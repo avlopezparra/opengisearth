@@ -181,18 +181,27 @@
     v.gain.setValueAtTime(vol, t); v.gain.setValueAtTime(vol, t + dur * 0.7); v.gain.exponentialRampToValueAtTime(0.001, t + dur);
     o.connect(v).connect(master); o.start(t); o.stop(t + dur + 0.02);
   }
-  function drum(midi, t) { // drums as a Mega Drive plays them: an FM tone that drops in pitch for the kick and the toms, and the coarse stepped noise of its PSG chip for the snare and the cymbals
-    const hit = (f0, f1, dur, vol, type = 'sine') => { const o = audio.createOscillator(), v = audio.createGain(); o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur * 0.8); v.gain.setValueAtTime(vol, t); v.gain.exponentialRampToValueAtTime(0.001, t + dur); o.connect(v).connect(master); o.start(t); o.stop(t + dur + 0.01); };
+  function drum(midi, t) { // drums as the Mega Drive makes them: two-operator FM (its YM2612 chip) for the body of each hit, with a high modulation that dies away at once for the crack, and the coarse stepped noise of its PSG chip on top for snares and cymbals
+    const fm = (f0, f1, ratio, idx, dur, vol) => { // a carrier whose pitch falls from f0 to f1, bent by a modulator at ratio times its pitch; idx: how hard, at the attack
+      const car = audio.createOscillator(), mod = audio.createOscillator(), depth = audio.createGain(), v = audio.createGain(), end = t + dur;
+      car.frequency.setValueAtTime(f0, t); car.frequency.exponentialRampToValueAtTime(f1, t + dur * 0.6);
+      mod.frequency.setValueAtTime(f0 * ratio, t); mod.frequency.exponentialRampToValueAtTime(f1 * ratio, t + dur * 0.6);
+      depth.gain.setValueAtTime(f0 * idx, t); depth.gain.exponentialRampToValueAtTime(1, t + dur * 0.45);
+      v.gain.setValueAtTime(vol, t); v.gain.exponentialRampToValueAtTime(0.001, end);
+      mod.connect(depth).connect(car.frequency); car.connect(v).connect(master); car.start(t); mod.start(t); car.stop(end + 0.01); mod.stop(end + 0.01);
+    };
     if (!noise) { // PSG noise: one of two levels held for several samples, so it is gritty and a little pitched
-      noise = audio.createBuffer(1, audio.sampleRate * 0.4, audio.sampleRate); const ch = noise.getChannelData(0), hold = Math.max(1, Math.round(audio.sampleRate / 9000)); let lv = 1;
+      noise = audio.createBuffer(1, audio.sampleRate * 0.5, audio.sampleRate); const ch = noise.getChannelData(0), hold = Math.max(1, Math.round(audio.sampleRate / 7000)); let lv = 1;
       for (let i = 0; i < ch.length; i++) { if (i % hold === 0) lv = Math.random() < 0.5 ? -1 : 1; ch[i] = lv; }
     }
     const hiss = (rate, len, vol, hp) => { const src = audio.createBufferSource(), f = audio.createBiquadFilter(), v = audio.createGain(); src.buffer = noise; src.playbackRate.value = rate; f.type = 'highpass'; f.frequency.value = hp; v.gain.setValueAtTime(vol, t); v.gain.exponentialRampToValueAtTime(0.001, t + len); src.connect(f).connect(v).connect(master); src.start(t); src.stop(t + len); };
-    if (midi === 35 || midi === 36) { hit(240, 42, 0.13, 0.3); return hit(900, 200, 0.02, 0.08, 'square'); } // kick: the drop, and a click on top
-    if (midi === 38 || midi === 40) { hit(330, 170, 0.09, 0.12, 'triangle'); return hiss(0.55, 0.16, 0.13, 900); } // snare: a short tom under low noise
-    if (midi >= 41 && midi <= 48 && ![42, 44, 46].includes(midi)) return hit(90 + (midi - 41) * 28, 60 + (midi - 41) * 14, 0.18, 0.2, 'triangle'); // toms
-    const crash = midi === 49 || midi === 57;
-    hiss(crash ? 0.8 : 1.6, crash ? 0.4 : midi === 46 ? 0.18 : 0.045, crash ? 0.07 : 0.05, crash ? 3000 : 6000); // crash, open hat, closed hat
+    if (midi === 35 || midi === 36) return fm(190, 44, 0.5, 7, 0.17, 0.36); // kick: a deep thud with a hard FM click in front
+    if (midi === 38 || midi === 40) { fm(250, 140, 2.37, 10, 0.13, 0.15); return hiss(0.7, 0.13, 0.11, 1100); } // snare: an inharmonic FM crack, PSG noise over it
+    if (midi === 37 || midi === 39) return fm(520, 400, 3.3, 6, 0.05, 0.12); // rim shot, clap: short and bright
+    if (midi >= 41 && midi <= 48 && ![42, 44, 46].includes(midi)) { const f = 80 + (midi - 41) * 26; return fm(f * 1.5, f * 0.8, 1, 4, 0.22, 0.24); } // toms: the classic falling FM tom
+    const crash = midi === 49 || midi === 57 || midi === 52 || midi === 55;
+    if (crash) fm(3100, 2900, 1.41, 9, 0.45, 0.03); // a metallic shimmer under the cymbal
+    hiss(crash ? 0.9 : 1.7, crash ? 0.45 : midi === 46 ? 0.2 : 0.04, crash ? 0.07 : 0.05, crash ? 3500 : 6500); // crash, open hat, closed hat: PSG noise, as on the console
   }
   function march(th) { // the adventure theme rearranged as a space march: the same tune of ours, in the minor, faster, over a galloping bass and a marching snare
     if (th.marched) return; th.marched = true; th.bpm = 148;
@@ -1315,6 +1324,15 @@
     } catch { /* no feed: the game goes on without them */ }
   } // adv: { i, a3 } while a stage runs; advShape: the country's polygons
   const advDone = () => +localStorage.getItem(advKey()) || 0; // stages beaten on this continent
+  async function pickAdventure() { // any stage of any continent's campaign, not only the next one
+    const fm = flagMap || await OGE.flags().catch(() => null), name = (a3) => (fm && fm.get(a3) && fm.get(a3).name) || a3, opts = []; // the countries by name once the flags table is in; by code otherwise
+    for (const k of Object.keys(ROUTES)) { const done = +localStorage.getItem(k === 'Sudamérica' ? 'oge.adventure' : 'oge.adventure.' + k) || 0; ROUTES[k].forEach((a3, i) => opts.push([k + '|' + i, `${T(k)} · ${i + 1}. ${name(a3)}${i < done ? ' — ' + T('superada') : ''}`])); }
+    const v = await OGE.ask({ title: 'Aventura: elegir etapa', ok: 'Jugar', help: 'Cada continente es una campaña. Puedes jugar cualquiera de sus etapas, en el orden que quieras.',
+      fields: [{ id: 'st', label: 'Campaña y etapa', type: 'select', value: advCont + '|' + Math.min(advDone(), route().length - 1), options: opts }] });
+    if (!v) return;
+    const [k, i] = String(v.st).split('|'); if (!ROUTES[k]) return;
+    advCont = k; localStorage.setItem('oge.advCont', k); adventure(+i);
+  }
   async function adventure(stage = advDone()) {
     relaunch = () => adventure(stage);
     mpGo({ mode: 'adventure', cont: advCont, stage });
@@ -1327,7 +1345,8 @@
     for (const pt of parts) {
       if (pt === mainPart) continue;
       const [w, so, e, n] = turf.bbox(pt), m = 0.03;
-      for (const c of [[w - m, so - m], [e + m, so - m], [w - m, n + m], [e + m, n + m]]) for (const x of all) if (x.geometry && A3(x) !== a3 && turf.booleanPointInPolygon(c, x)) around.add(A3(x));
+      const hits = [[w - m, so - m], [e + m, so - m], [w - m, n + m], [e + m, n + m]].map((c) => all.find((x) => x.geometry && A3(x) !== a3 && turf.booleanPointInPolygon(c, x)));
+      if (hits.every(Boolean)) for (const x of hits) around.add(A3(x)); // only a part shut in by land on every side: one the sea reaches (Chile's Tierra del Fuego) is flown to over the water
     }
     advOthers = all.filter((x) => x.geometry && A3(x) !== a3 && A3(x) !== 'ATA' && !around.has(A3(x)) && !(a3 === 'ARG' && ['FLK', 'SGS'].includes(A3(x)))).map((x) => ({ f: x, box: turf.bbox(x) })); // the other countries (Antarctica is open to all)
     if (!f) return OGE.toast('No se encontró el país de la etapa.', true);
@@ -1398,8 +1417,14 @@
     menuPause();
     const mine = caps.filter((c) => got.has(capId(c))).sort((x, y) => x.name.localeCompare(y.name)), box = Object.assign(document.createElement('div'), { style: 'display:flex;flex-wrap:wrap;gap:14px;justify-content:center' });
     const btn = (text, fn) => Object.assign(document.createElement('button'), { type: 'button', textContent: T(text), onclick: fn, style: 'display:block;width:100%;margin-top:4px;font-size:11px' });
-    const wear = (u) => { if (u) localStorage.setItem('oge.insignia', u); else localStorage.removeItem('oge.insignia'); OGE.toast(T(u ? 'Insignia puesta en las alas y los costados de tu nave.' : 'Nave sin insignia.')); };
-    if (mine.length) box.append(Object.assign(btn('Quitar la insignia de la nave', () => wear(null)), { style: 'flex-basis:100%;font-size:12px' }));
+    const where = Object.assign(document.createElement('select'), { style: 'flex-basis:100%;font-size:12px' }); // one insignia for the whole ship by default; each wing can wear its own
+    for (const [v, txt] of [['both', 'Insignia en las dos alas'], ['L', 'Solo en el ala izquierda'], ['R', 'Solo en el ala derecha']]) where.append(new Option(T(txt), v));
+    const wear = (u) => {
+      if (!u) { localStorage.removeItem('oge.insignia'); localStorage.removeItem('oge.insigniaR'); }
+      else { localStorage.setItem(where.value === 'R' ? 'oge.insigniaR' : 'oge.insignia', u); if (where.value === 'both') localStorage.removeItem('oge.insigniaR'); }
+      OGE.toast(T(u ? 'Insignia puesta en las alas y los costados de tu nave.' : 'Nave sin insignia.'));
+    };
+    if (mine.length) box.append(where, Object.assign(btn('Quitar la insignia de la nave', () => wear(null)), { style: 'flex-basis:100%;font-size:12px' }));
     for (const c of mine) {
       const fl = flagMap.get(c.a3), fig = Object.assign(document.createElement('figure'), { style: 'margin:0;width:110px;text-align:center;font-size:12px' });
       if (fl && fl.arms) fig.append(Object.assign(new Image(), { src: fl.arms, alt: '', loading: 'lazy', style: 'max-width:100px;max-height:100px' }));
@@ -1418,12 +1443,20 @@
   const tintOf = (v, id, old) => (v[id] !== 'custom' ? v[id] : hex('#' + String(v[id + 'Hex'] || '').trim().replace(/^#/, ''), old)); // a wrong code keeps the colour it had
   async function shipStyle() { // the pilot's ship: its model, the colour of its wings and of its hull
     const live = !!(p2 || ws || remote), was = paused; if (on && !live) paused = true; // in a multiplayer game the others keep flying: no pause
+    if (!subMap) try { subMap = await (await fetch('data/subflags.json')).json(); subAsked = true; } catch { /* only the national flags, then */ }
+    const flagOpts = [], seen = new Set(), add = (u, label) => { if (u && !seen.has(u)) { seen.add(u); flagOpts.push([u, label]); } }; // every flag collected: the country's, and the region's own where it has one
+    for (const r of regs || []) { if (!gotReg.has(r.id)) continue; add(r.img && r.img.src, r.country); if (subMap && subMap[r.id]) add('https://commons.wikimedia.org/wiki/Special:FilePath/' + encodeURIComponent(subMap[r.id]) + '?width=250', `${r.name} (${r.country})`); }
+    flagOpts.sort((x, y) => x[1].localeCompare(y[1]));
+    for (const k of ['oge.finFlag', 'oge.finFlagR']) add(localStorage.getItem(k), T('La que lleva ahora'));
     const v = await OGE.ask({ title: 'Nave: estilo y colores', ok: 'Aplicar', help: 'La nave se ve en tercera persona (Y). La insignia de las alas se elige en «Escudos de armas».',
       fields: [{ id: 'model', label: 'Estilo de nave', type: 'select', value: SHIPS[localStorage.getItem('oge.shipModel')] ? localStorage.getItem('oge.shipModel') : 'dardo', options: Object.entries(SHIPS).map(([k, m]) => [k, m.name]) },
-        ...tintFields('wing', 'Color de las alas', 'Alas: código hex (con «Personalizado»)', skin(1)), ...tintFields('hull', 'Color del fuselaje', 'Fuselaje: código hex (con «Personalizado»)', hull1())] });
+        ...tintFields('wing', 'Color de las alas', 'Alas: código hex (con «Personalizado»)', skin(1)), ...tintFields('hull', 'Color del fuselaje', 'Fuselaje: código hex (con «Personalizado»)', hull1()),
+        { id: 'fin', label: 'Bandera en las derivas (de tus banderas recolectadas)', type: 'select', value: localStorage.getItem('oge.finFlag') || '', options: [['', 'Sin bandera'], ...flagOpts] },
+        { id: 'finR', label: 'Bandera de la deriva derecha, si quieres otra', type: 'select', value: localStorage.getItem('oge.finFlagR') || '', options: [['', 'La misma que la izquierda'], ...flagOpts] }] });
     if (on && !live) { paused = was; last = performance.now(); }
     if (!v) return;
     if (SHIPS[v.model]) localStorage.setItem('oge.shipModel', v.model);
+    for (const [k, u] of [['oge.finFlag', v.fin], ['oge.finFlagR', v.finR]]) { if (u) localStorage.setItem(k, u); else localStorage.removeItem(k); }
     localStorage.setItem('oge.skin1', tintOf(v, 'wing', skin(1))); localStorage.setItem('oge.hull1', tintOf(v, 'hull', hull1()));
   }
   OGE.shipStyle = shipStyle;
@@ -1561,23 +1594,24 @@
   const insignia = (M, onHull) => { // where an air force paints its roundel: on top of each wing and on each side of the fuselage. These 'i' faces are drawn only when the pilot wears an image
     const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]], cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]], dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2], unit = (a) => { const l = Math.hypot(...a) || 1; return a.map((x) => x / l); };
     const quads = M.F.map(([idx, c], fi) => { if (idx.length !== 4) return null; const P = idx.map((k) => M.V[k]), nn = cross(sub(P[1], P[0]), sub(P[2], P[0])); return { fi, c, P, n: unit(nn), area: Math.hypot(...nn), mid: [0, 1, 2].map((k) => (P[0][k] + P[1][k] + P[2][k] + P[3][k]) / 4) }; }).filter(Boolean);
-    const put = (q, n, up, k, len = 1) => { // len: stretched along its top-to-bottom axis, for a face seen almost edge-on // a square lying on face q, its top towards up, read the right way round from the side n points to; k times the room to the nearest edge
+    const put = (q, n, up, k, len = 1, c = 'i', side = Math.sign(q.mid[0]), wid = 1) => { // c: 'i' insignia, 'j' tail flag; side: -1 left, 1 right; wid: wider than tall (a flag) // len: stretched along its top-to-bottom axis, for a face seen almost edge-on // a square lying on face q, its top towards up, read the right way round from the side n points to; k times the room to the nearest edge
       const a = unit(sub(up, n.map((x) => x * dot(n, up)))), b = cross(n, a);
-      const r = k * Math.min(...q.P.map((p, j) => { const e = unit(sub(q.P[(j + 1) % 4], p)), d = sub(q.mid, p); return Math.hypot(...sub(d, e.map((x) => x * dot(d, e)))); }));
-      const at = (ka, kb) => q.mid.map((x, j) => x + (a[j] * ka * len + b[j] * kb) * r);
-      M.F.push([[at(1, -1), at(1, 1), at(-1, 1), at(-1, -1)].map((p) => M.V.push(p) - 1), 'i', q.fi]); // top left, top right, bottom right, bottom left
+      const r = k * Math.min(...q.P.map((p, j) => { const e = unit(sub(q.P[(j + 1) % q.P.length], p)), d = sub(q.mid, p); return Math.hypot(...sub(d, e.map((x) => x * dot(d, e)))); }));
+      const at = (ka, kb) => q.mid.map((x, j) => x + (a[j] * ka * len + b[j] * kb * wid) * r);
+      M.F.push([[at(1, -1), at(1, 1), at(-1, 1), at(-1, -1)].map((p) => M.V.push(p) - 1), c, q.fi, side]); // top left, top right, bottom right, bottom left
     };
+    // The tail flag ('j' faces): on each fin, that is, the biggest wing or accent plate standing more upright than flat on that side; a single middle fin carries one on each face; a ship without fins wears it on the sides of the hull.
+    const plates = M.F.map(([idx, c], fi) => { const P = idx.map((k) => M.V[k]), nn = cross(sub(P[1], P[0]), sub(P[2], P[0])); return { fi, c, P, n: unit(nn), area: Math.hypot(...nn) / (P.length === 3 ? 2 : 1), mid: [0, 1, 2].map((k) => P.reduce((s, p) => s + p[k], 0) / P.length) }; }).filter((q) => q.P.length <= 4 && 'sw'.includes(q.c) && Math.abs(q.n[0]) > 0.5).sort((x, y) => y.area - x.area);
+    for (const e of [-1, 1]) { const fin = plates.find((q) => q.mid[0] * e > 1) || plates.find((q) => Math.abs(q.mid[0]) <= 1), side = fin || quads.filter((q) => 'hd'.includes(q.c) && Math.abs(q.n[0]) > 0.9 && q.mid[0] * e > 0).sort((x, y) => y.area - x.area)[0]; if (side) put(side, fin && Math.abs(fin.mid[0]) > 1 ? (fin.n[0] * e < 0 ? fin.n.map((x) => -x) : fin.n) : [e, 0, 0], [0, 1, 0], fin ? 0.55 : 1.1, 1, 'j', e, 1.5); } // lying on the fin itself, facing outwards
     if (onHull) { for (const e of [-1, 1]) { const q = quads.filter((q) => q.c === 'h' && q.mid[0] * e > 0 && Math.abs(q.n[1]) > 0.3 && Math.abs(q.n[0]) > 0.3).sort((x, y) => y.area - x.area)[0]; if (q) put(q, q.n[1] < 0 ? q.n.map((x) => -x) : q.n, [0, 0, 1], 1.6, 2.7); } return; } // the biggest plate on each upper side of the hull: a little proud of it and longer towards the nose, because the camera sees that plate almost edge-on
     for (const q of quads.filter((q) => q.c === 's').slice(0, 2)) put(q, q.n[1] < 0 ? q.n.map((x) => -x) : q.n, [0, 0, 1], 0.62); // the wings: the first mirrored pair, the image's top towards the nose
     for (const e of [-1, 1]) { const q = quads.filter((q) => 'hd'.includes(q.c) && Math.abs(q.n[0]) > 0.9 && q.mid[0] * e > 0).sort((x, y) => y.area - x.area)[0]; if (q) put(q, [e, 0, 0], [0, 1, 0], 1.6); } // the biggest plate on each side of the hull (the square stands a little proud of it)
   };
   for (const k in SHIPS) insignia(SHIPS[k].mesh, k === 'halcon');
-  let badge = null;
-  const insigniaImg = () => { // the image the pilot chose (localStorage oge.insignia), only from Wikimedia
-    const u = localStorage.getItem('oge.insignia') || '';
-    if (!badge || badge.u !== u) badge = { u, im: /^https:\/\/[a-z]+\.wikimedia\.org\//.test(u) ? Object.assign(new Image(), { src: u }) : null };
-    return badge.im;
-  };
+  const worn = {}; // the images the pilot wears, by the localStorage key that names each; only from Wikimedia
+  const wornImg = (key) => { const u = localStorage.getItem(key) || ''; if (!worn[key] || worn[key].u !== u) worn[key] = { u, im: /^https:\/\/[a-z]+\.wikimedia\.org\//.test(u) ? Object.assign(new Image(), { src: u }) : null }; return worn[key].im; };
+  const wornCol = () => ({ i: wornImg('oge.insignia'), iR: wornImg('oge.insigniaR'), j: wornImg('oge.finFlag'), jR: wornImg('oge.finFlagR') }); // the insignia and the tail flag; iR and jR: the right side's own, when it differs
+
   async function roundel(q) { // Wikidata, searched as the Making History editor does: the air forces (P31) of the country (P17) that have a logo (P154), the roundel their aircraft wear; the best known one still in service wins
     if (!/^Q\d+$/.test(q || '')) return null;
     const api = (p) => fetch('https://www.wikidata.org/w/api.php?format=json&origin=*&' + new URLSearchParams(p)).then((r) => r.json());
@@ -1721,22 +1755,23 @@
     const L = C.Cartesian3.normalize(new C.Cartesian3(cam.upWC.x * 0.75 - cam.directionWC.x * 0.6 - cam.rightWC.x * 0.25, cam.upWC.y * 0.75 - cam.directionWC.y * 0.6 - cam.rightWC.y * 0.25, cam.upWC.z * 0.75 - cam.directionWC.z * 0.6 - cam.rightWC.z * 0.25), new C.Cartesian3());
     const a = new C.Cartesian3(), b = new C.Cartesian3(), n = new C.Cartesian3(), v = new C.Cartesian3(), hv = new C.Cartesian3(), faces = [];
     const dist = []; let fi = -1;
-    for (const [idx, c, par] of M.F) {
+    for (const [idx, c, par, side] of M.F) {
       fi++;
-      if (c === 'i' && !(COL.i && COL.i.complete && COL.i.naturalWidth)) continue; // the insignia: only when one is worn and its image has arrived
+      const im = c === 'i' || c === 'j' ? [side > 0 && COL[c + 'R'], COL[c]].find((x) => x && x.complete && x.naturalWidth) : null; // the insignia or the tail flag of that side, once its image has arrived
+      if ((c === 'i' || c === 'j') && !im) continue;
       if (idx.some((k) => !S[k])) continue; // a corner behind the camera
       C.Cartesian3.cross(C.Cartesian3.subtract(W[idx[1]], W[idx[0]], a), C.Cartesian3.subtract(W[idx[2]], W[idx[0]], b), n);
       if (C.Cartesian3.magnitudeSquared(n) < 1e-12) continue;
       C.Cartesian3.normalize(n, n);
       const mid = idx.reduce((mm, k) => C.Cartesian3.add(mm, W[k], mm), new C.Cartesian3()); C.Cartesian3.multiplyByScalar(mid, 1 / idx.length, mid);
       C.Cartesian3.normalize(C.Cartesian3.subtract(cp, mid, v), v); C.Cartesian3.normalize(C.Cartesian3.add(L, v, hv), hv);
-      faces.push({ idx, c, lum: (real ? 0.3 : 0.45) + (real ? 0.7 : 0.55) * Math.abs(C.Cartesian3.dot(n, L)), sp: Math.abs(C.Cartesian3.dot(n, hv)) ** 40, d: (dist[fi] = par != null && dist[par] != null ? dist[par] : C.Cartesian3.distance(cp, mid)), o: fi });
+      faces.push({ idx, c, im, lum: (real ? 0.3 : 0.45) + (real ? 0.7 : 0.55) * Math.abs(C.Cartesian3.dot(n, L)), sp: Math.abs(C.Cartesian3.dot(n, hv)) ** 40, d: (dist[fi] = par != null && dist[par] != null ? dist[par] : C.Cartesian3.distance(cp, mid)), o: fi });
     }
     faces.sort((x, y) => y.d - x.d || x.o - y.o); // far to near; a detail right after the face it lies on
     g.save(); g.lineJoin = 'round'; g.lineWidth = 0.8;
     for (const f of faces) {
-      if (f.c === 'i') { // painted on: the image stretched over its square
-        if (!white) { const o = S[f.idx[0]], u = S[f.idx[1]], v = S[f.idx[3]], im = COL.i, k = Math.max(im.naturalWidth, im.naturalHeight), iw = im.naturalWidth / k, ih = im.naturalHeight / k; g.save(); g.transform(u.x - o.x, u.y - o.y, v.x - o.x, v.y - o.y, o.x, o.y); g.drawImage(im, (1 - iw) / 2, (1 - ih) / 2, iw, ih); g.restore(); }
+      if (f.im) { // painted on: the image stretched over its square
+        if (!white) { const o = S[f.idx[0]], u = S[f.idx[1]], v = S[f.idx[3]], im = f.im, k = Math.max(im.naturalWidth, im.naturalHeight), iw = im.naturalWidth / k, ih = im.naturalHeight / k; g.save(); g.transform(u.x - o.x, u.y - o.y, v.x - o.x, v.y - o.y, o.x, o.y); g.drawImage(im, (1 - iw) / 2, (1 - ih) / 2, iw, ih); g.restore(); }
         continue;
       }
       let y0 = Infinity, y1 = -Infinity;
@@ -1796,7 +1831,7 @@
   function drawShip3D(w, h) {
     const ax = shipAxes(), toWin = C.SceneTransforms.worldToWindowCoordinates || C.SceneTransforms.wgs84ToWindowCoordinates, cam = viewer.camera, md = shipModel();
     const px = (h / 2 / Math.tan((cam.frustum.fovy || rad(60)) / 2)) / Math.max(60, chase ? chase.d : 380); // pixels per metre at the ship
-    drawMesh(md.mesh, ax, { ...shipCol(skin(1), hull1()), i: insigniaImg() }, performance.now() - hit < 200, 1, null, true);
+    drawMesh(md.mesh, ax, { ...shipCol(skin(1), hull1()), ...wornCol() }, performance.now() - hit < 200, 1, null, true);
     const tail = toWin(scene, shipPoint(ax, 0, 1, md.tail));
     const drive = landing === 'parked', lv = drive ? GWARPS.indexOf(gWarp) * 2 : Math.max(0, [...WARPS, ...HYPER].indexOf(warp)), gas = drive ? Math.min(1, Math.abs(s.taxi || 0) / 300) : s.throttle; // the ground turbo has fewer levels: every other colour
     if (tail && (drive ? gas > 0.02 : !landing)) { const fr = px * (9 + 12 * gas + 3.5 * lv + (boost ? 8 : 0)) * (drive ? 0.6 : 1) * (0.9 + 0.1 * Math.sin(performance.now() / (40 - 2 * lv))); glow(g, tail.x, tail.y, fr, FLAME[lv]); if (lv > 2) glow(g, tail.x, tail.y, fr * (0.25 + 0.04 * lv), '#ffffff'); } // the engine flame: bigger with the gas, and bigger, hotter and with a white core as the turbo rises
@@ -1820,7 +1855,7 @@
   function shipBack(x, y, R, color, roll = 0, hurtT = 0, model, P) { // a starship flying ahead, in its model and colour: R pixels from the middle to a wing tip, at the world point P or 200 m into the screen at x, y
     if (!P) { const ray = viewer.camera.getPickRay(new C.Cartesian2(x, y)); if (!ray) return; P = C.Cartesian3.add(ray.origin, C.Cartesian3.multiplyByScalar(ray.direction, 200, new C.Cartesian3()), new C.Cartesian3()); }
     const md = shipModel(model), ax = backAxes(P, roll), sc = meshScale(P, R, hud.clientHeight);
-    drawMesh(md.mesh, ax, { ...shipCol(color, model ? null : hull1()), i: model ? null : insigniaImg() }, performance.now() - hurtT < 200, sc, null, true); // only the pilot's own ship wears the insignia
+    drawMesh(md.mesh, ax, { ...shipCol(color, model ? null : hull1()), ...(model ? {} : wornCol()) }, performance.now() - hurtT < 200, sc, null, true); // only the pilot's own ship wears the insignia
     const t = (C.SceneTransforms.worldToWindowCoordinates || C.SceneTransforms.wgs84ToWindowCoordinates)(scene, shipPoint(ax, 0, sc, md.tail * sc));
     if (t) glow(g, t.x, t.y, R * 0.3, '#7fd4ff'); // its engine
   }
@@ -2504,7 +2539,7 @@
   // OpenStarshipEarth: drop straight down to the ground and lift off again
   $('flyLand').onclick = () => { if (!on || !A.ship) return OGE.toast('Aterrizar y despegar son de la OpenStarshipEarth.'); landing = landing ? null : 'down'; sfx(landing ? 'land' : 'liftoff'); };
   $('flyLift').onclick = () => { if (!on || !A.ship) return; landing = 'up'; sfx('liftoff'); };
-  $('advBtn').onclick = () => { if (on) stop(); adventure(); };
+  $('advBtn').onclick = () => { if (on) stop(); pickAdventure(); };
   $('raceBtn').onclick = () => { if (on) stop(); raceMode(); };
   $('flyReset').onclick = async () => { // start the collection again: flags and capitals collected so far are forgotten
     paused = true;
