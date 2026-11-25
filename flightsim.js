@@ -64,7 +64,7 @@
     const cam = viewer.camera, to = new C.Cartesian3(); // an enemy inside the aim cone is destroyed
     let best = null, bestAng = 9, bossHit = null, bossAng = 9;
     for (const o of objs) {
-      if (o.kind !== 'enemy' && o.kind !== 'boss' && o.kind !== 'airliner' && o.kind !== 'aa' && o.kind !== 'octo') continue;
+      if (o.kind !== 'enemy' && o.kind !== 'boss' && o.kind !== 'airliner' && o.kind !== 'aa' && o.kind !== 'octo' && o.kind !== 'ship') continue;
       C.Cartesian3.subtract(o.p, cam.positionWC, to);
       const d = C.Cartesian3.magnitude(to), ang = Math.acos(clamp(C.Cartesian3.dot(to, ray.direction) / d, -1, 1));
       if (o.kind === 'boss') { if (ang < Math.atan(o.size / d) + rad(0.4) && ang < bossAng) { bossHit = o; bossAng = ang; } } // a boss only counts when the laser really meets it
@@ -79,6 +79,8 @@
       if (Math.acos(clamp(C.Cartesian3.dot(to, ray.direction) / d, -1, 1)) < rad(1.5)) { OGE.satHidden.add(sat.name); hp = Math.min(maxHp, hp + 25); sfx('heart'); booms.push({ p: sat.p, t: performance.now() }); OGE.toast(`🛰 ${sat.name}: +25 ${T('de vida')}`); return; }
     }
     if (best && best.kind === 'boss') hitBoss(best, power);
+    else if (best && best.kind === 'ship' && (best.hp -= power) > 0) { booms.push({ p: best.p, t: performance.now() }); sfx('bossHit'); }
+    else if (best && best.kind === 'ship') { objs.splice(objs.indexOf(best), 1); if (best.mmsi) sunk.add(best.mmsi); gain(pts(250)); hp = Math.min(maxHp, hp + 15); booms.push({ p: best.p, t: performance.now() }); sfx('down'); sfx('heart'); OGE.toast(T('Barco hundido: +15 de vida')); }
     else if (best && best.kind === 'octo' && (best.hp -= power) > 0) { booms.push({ p: best.p, t: performance.now() }); sfx('bossHit'); }
     else if (best && best.kind === 'octo') { objs.splice(objs.indexOf(best), 1); gain(pts(150)); booms.push({ p: best.p, t: performance.now() }); sfx('down'); }
     else if (best && best.kind === 'aa' && (best.hp -= power) > 0) { booms.push({ p: best.p, t: performance.now() }); sfx('bossHit'); }
@@ -228,13 +230,32 @@
     car.frequency.value = f; mod.frequency.value = f * 3.5; depth.gain.setValueAtTime(f * 2, t); depth.gain.exponentialRampToValueAtTime(1, t + 0.4); v.gain.setValueAtTime(0.06, t); v.gain.exponentialRampToValueAtTime(0.0005, t + 0.6);
     mod.connect(depth).connect(car.frequency); car.connect(v).connect(bus()); car.start(t); mod.start(t); car.stop(t + 0.65); mod.stop(t + 0.65);
   }
-  function blast() { // a boss going down: a long rumble closing in, a falling boom and a string of smaller blasts
+  function blast(k = 1) { // a boss going down: a long rumble closing in, a falling boom and a string of smaller blasts (k < 1: just the rumble, for thunder)
     const t = audio.currentTime; if (!noise) drum(42, t); // the hi-hat makes the noise buffer
     const src = audio.createBufferSource(), f = audio.createBiquadFilter(), v = audio.createGain(), o = audio.createOscillator(), ov = audio.createGain();
-    src.buffer = noise; src.loop = true; f.type = 'lowpass'; f.frequency.setValueAtTime(2400, t); f.frequency.exponentialRampToValueAtTime(70, t + 1.6); v.gain.setValueAtTime(0.5, t); v.gain.exponentialRampToValueAtTime(0.001, t + 1.8);
+    src.buffer = noise; src.loop = true; f.type = 'lowpass'; f.frequency.setValueAtTime(2400, t); f.frequency.exponentialRampToValueAtTime(70, t + 1.6); v.gain.setValueAtTime(0.5 * k, t); v.gain.exponentialRampToValueAtTime(0.001, t + 1.8);
     src.connect(f).connect(v).connect(master); src.start(t); src.stop(t + 1.9);
-    o.frequency.setValueAtTime(110, t); o.frequency.exponentialRampToValueAtTime(28, t + 1.2); ov.gain.setValueAtTime(0.4, t); ov.gain.exponentialRampToValueAtTime(0.001, t + 1.4); o.connect(ov).connect(master); o.start(t); o.stop(t + 1.5);
-    for (let i = 1; i < 6; i++) drum(38, t + i * 0.17 + Math.random() * 0.08);
+    o.frequency.setValueAtTime(110, t); o.frequency.exponentialRampToValueAtTime(28, t + 1.2); ov.gain.setValueAtTime(0.4 * k, t); ov.gain.exponentialRampToValueAtTime(0.001, t + 1.4); o.connect(ov).connect(master); o.start(t); o.stop(t + 1.5);
+    if (k >= 1) for (let i = 1; i < 6; i++) drum(38, t + i * 0.17 + Math.random() * 0.08);
+  }
+  OGE.onLightning = () => { // a bolt of the storm overhead: thunder, and now and then it strikes an enemy nearby or the ship
+    if (!on || !arcade || paused) return;
+    try { ac(); blast(0.5); } catch { /* no audio device */ }
+    if (Math.random() > 0.35) return;
+    const cam = viewer.camera.positionWC, foes = objs.filter((o) => ['enemy', 'octo', 'aa', 'ship'].includes(o.kind) && C.Cartesian3.distance(o.p, cam) < 2e4);
+    if (foes.length && Math.random() < 0.6) { const o = foes[Math.floor(Math.random() * foes.length)]; objs.splice(objs.indexOf(o), 1); booms.push({ p: o.p, t: performance.now() }); sfx('down'); OGE.toast(T('Un rayo destruyó a un enemigo')); }
+    else if (!(man && man.type === 'roll')) { hurt(10); OGE.toast(T('Un rayo alcanzó la nave: −10')); }
+  };
+  let aisT = 0; const sunk = new Set(); // live ships: when to ask again, and the ones already sunk in this session
+  function aisStep() { // real vessels as warships, where an open AIS feed exists without a key: Finnish waters (Digitraffic, Fintraffic, CC BY 4.0)
+    const la = deg(s.lat), lo = deg(s.lon);
+    if (performance.now() < aisT || tut || race || la < 58.5 || la > 66.5 || lo < 17 || lo > 31) return;
+    aisT = performance.now() + 60000;
+    fetch(`https://meri.digitraffic.fi/api/ais/v1/locations?latitude=${la.toFixed(2)}&longitude=${lo.toFixed(2)}&radius=60`).then((r) => r.json()).then((j) => {
+      const t0 = performance.now(), far = (f) => Math.hypot((f.geometry.coordinates[0] - lo) * Math.cos(s.lat), f.geometry.coordinates[1] - la), near = j.features.filter((f) => f.properties.sog > 0.5 && !sunk.has(f.mmsi)).sort((x, y) => far(x) - far(y)).slice(0, 6); // the six nearest that are under way
+      objs = objs.filter((o) => !(o.kind === 'ship' && o.mmsi)); // the fresh positions replace the old ones
+      for (const f of near) { const [x, y] = f.geometry.coordinates; objs.push({ kind: 'ship', mmsi: f.mmsi, p: C.Cartesian3.fromDegrees(x, y, 15), lon0: rad(x), lat0: rad(y), cog: rad(f.properties.cog), sog: f.properties.sog, t0, size: 320, hp: 4, next: t0 + 2000 }); }
+    }).catch(() => { /* no live ships: the generated ones remain */ });
   }
   let hum = null; // the engine: two detuned oscillators through a filter that opens with the gas and the turbo
   function engineHum(level, turbo = 0) { // level 0 silences it
@@ -389,7 +410,8 @@
     add(cam.directionWC, D); add(cam.rightWC, (Math.random() - 0.5) * D * 0.5); add(cam.upWC, (Math.random() - 0.5) * D * 0.25);
     const big = kind === 'ring' && Math.random() < 0.25;
     lift(p, kind, D * 0.06 * SIZE[kind] * (big ? 2.5 : 1));
-    { const cg = C.Cartographic.fromCartesian(p), sea = scene.globe.getHeight(new C.Cartographic(cg.longitude, cg.latitude)); if (!tut && sea !== undefined && sea < 1.5 && Math.random() < 0.3 && objs.filter((o) => o.kind === 'octo').length < 4) { objs.push({ kind: 'octo', p: C.Cartesian3.fromRadians(cg.longitude, cg.latitude, 30), size: 260, hp: 2, next: performance.now() + 1500 + Math.random() * 2500 }); return; } } // sea creatures, only over the water
+    { const cg = C.Cartographic.fromCartesian(p), sea = scene.globe.getHeight(new C.Cartographic(cg.longitude, cg.latitude)); if (!tut && sea !== undefined && sea < 1.5 && Math.random() < 0.15 && objs.filter((o) => o.kind === 'ship').length < 3) { objs.push({ kind: 'ship', p: C.Cartesian3.fromRadians(cg.longitude, cg.latitude, 15), cog: Math.random() * 6.28, size: 320, hp: 4, next: performance.now() + 2000 }); return; } // a warship, only over the water
+      if (!tut && sea !== undefined && sea < 1.5 && Math.random() < 0.3 && objs.filter((o) => o.kind === 'octo').length < 4) { objs.push({ kind: 'octo', p: C.Cartesian3.fromRadians(cg.longitude, cg.latitude, 30), size: 260, hp: 2, next: performance.now() + 1500 + Math.random() * 2500 }); return; } } // sea creatures, only over the water
     objs.push({ kind, big, p, size: D * 0.06 * SIZE[kind] * (big ? 2.5 : 1), look: Math.floor(Math.random() * ENEMY.length), next: performance.now() + 3000 + Math.random() * 4000 }); // sized for the speed it was created at; next: when an enemy fires
   }
   function hurt(n) {
@@ -514,7 +536,7 @@
       }
       if (o.kind === 'mine' && performance.now() > o.until) return false; // mines go off after a while
       if (o.lon != null && !o.lifted && ['itembox', 'gate', 'zip', 'scoin'].includes(o.kind)) { const gh = scene.globe.getHeight(C.Cartographic.fromDegrees(o.lon, o.lat)); if (gh !== undefined) { o.p = C.Cartesian3.fromDegrees(o.lon, o.lat, gh + (o.up || 1200)); o.lifted = true; } } // over the terrain once it is known
-      const fixed = ['crest', 'life', 'airliner', 'itembox', 'mine', 'aa', 'gate', 'zip', 'scoin', 'octo'].includes(o.kind); // these wait where they are instead of being left behind
+      const fixed = ['crest', 'life', 'airliner', 'itembox', 'mine', 'aa', 'gate', 'zip', 'scoin', 'octo', 'ship'].includes(o.kind); // these wait where they are instead of being left behind
       if (o.kind === 'ring') {
         const along = C.Cartesian3.dot(t, cam.directionWC), side = Math.sqrt(Math.max(0, d * d - along * along)), was = o.along; o.along = along;
         if (was > 0 && along <= 0 && side < o.size * 1.15) { // crossed its plane this frame
@@ -543,7 +565,7 @@
         }
         return false;
       }
-      if (fixed) return ['itembox', 'mine', 'gate', 'zip', 'scoin'].includes(o.kind) || (o.kind === 'aa' || o.kind === 'octo' ? d < 6e4 : d < 4e5); // the race's boxes stay along the whole route
+      if (fixed) return ['itembox', 'mine', 'gate', 'zip', 'scoin'].includes(o.kind) || (o.kind === 'aa' || o.kind === 'octo' || o.kind === 'ship' ? d < 6e4 : d < 4e5); // the race's boxes stay along the whole route
       const gone = C.Cartesian3.dot(t, cam.directionWC) < -o.size; // left behind
       if (gone && o.kind === 'ring' && on) hurt(5); // a ring that was not flown through costs life
       return !gone && d < far;
@@ -551,29 +573,31 @@
     if (!on) return; // destroyed
     for (const o of objs) { // enemies fire at where the ship will be if it keeps flying straight
       const boss = o.kind === 'boss';
-      if ((o.kind !== 'enemy' && o.kind !== 'airliner' && o.kind !== 'aa' && o.kind !== 'octo' && !boss) || now < o.next) continue;
+      if ((o.kind !== 'enemy' && o.kind !== 'airliner' && o.kind !== 'aa' && o.kind !== 'octo' && o.kind !== 'ship' && !boss) || now < o.next) continue;
       if (o.kind === 'octo' && C.Cartesian3.distance(o.p, cam.positionWC) > 1.2e4) { o.next = now + 1500; continue; }
+      if (o.kind === 'ship' && C.Cartesian3.distance(o.p, cam.positionWC) > 1.4e4) { o.next = now + 1500; continue; } // its guns reach further than the octopus's ink
       if (o.kind === 'aa' && C.Cartesian3.distance(o.p, cam.positionWC) > 1e4) { o.next = now + 1500; continue; } // anti-aircraft: only within 10 km
-      o.next = now + DIFF[diff].fire * (boss ? (BOSSES[o.type].every / (o.stage || 1)) * (0.8 + Math.random() * 0.4) : 4000 + Math.random() * 4000);
+      o.next = now + DIFF[diff].fire * (boss ? (BOSSES[o.type].every / (o.stage || 1)) * (0.8 + Math.random() * 0.4) : o.kind === 'ship' ? 1600 + Math.random() * 1400 : 4000 + Math.random() * 4000); // a warship fires about three times as often
       const d = C.Cartesian3.distance(o.p, cam.positionWC), speed = (eff * 0.5 + 600) * DIFF[diff].shot, tt = d / (speed + eff);
       if (boss ? d > Math.max(reach() * 1.3, 6e4) : d > reach() * 1.3 || C.Cartesian3.dot(C.Cartesian3.subtract(o.p, cam.positionWC, t), cam.directionWC) < 0) continue;
       const target = C.Cartesian3.add(p2 && !p2.out && p2.p && Math.random() < 0.5 ? p2.p : cam.positionWC, C.Cartesian3.multiplyByScalar(cam.directionWC, eff * tt, new C.Cartesian3()), new C.Cartesian3()); // half the shots go for player 2
       const panels = boss && o.type === 'face' && (o.volley = (o.volley || 0) + 1) % 2 === 1; // the stone face spits panels one volley, fires lasers the next
       const n = boss ? (o.rage ? 8 : panels ? 7 : BOSSES[o.type].shots) : 1; // a volley fans out sideways (a raging beacon fires eight)
-      if (boss || o.kind === 'aa' || o.kind === 'octo') o.spat = now;
+      if (boss || o.kind === 'aa' || o.kind === 'octo' || o.kind === 'ship') o.spat = now;
       for (let i = 0; i < n; i++) {
         const spread = o.rage ? 0.18 : panels ? 0.09 : 0.05, aim = C.Cartesian3.add(target, C.Cartesian3.multiplyByScalar(o.rage && i % 2 ? cam.upWC : cam.rightWC, (i - (n - 1) / 2) * d * spread, new C.Cartesian3()), new C.Cartesian3());
-        incoming.push({ p: C.Cartesian3.clone(o.p), vel: C.Cartesian3.multiplyByScalar(C.Cartesian3.subtract(aim, o.p, t), 1 / tt, new C.Cartesian3()), t: now, color: boss ? BOSSES[o.type].color : o.kind === 'octo' ? '#2b1640' : '#ff2df5', ink: o.kind === 'octo', panel: panels, fire: boss && o.type === 'dragon', spin: Math.random() * 6 });
+        incoming.push({ p: C.Cartesian3.clone(o.p), vel: C.Cartesian3.multiplyByScalar(C.Cartesian3.subtract(aim, o.p, t), 1 / tt, new C.Cartesian3()), t: now, color: boss ? BOSSES[o.type].color : o.kind === 'octo' ? '#2b1640' : o.kind === 'ship' ? '#ffb300' : '#ff2df5', dmg: o.kind === 'ship' ? 14 : 8, ink: o.kind === 'octo', panel: panels, fire: boss && o.type === 'dragon', spin: Math.random() * 6 });
       }
     }
     incoming = incoming.filter((b) => {
       if (b.fire) { const sp = C.Cartesian3.magnitude(b.vel), to = C.Cartesian3.normalize(C.Cartesian3.subtract(cam.positionWC, b.p, new C.Cartesian3()), new C.Cartesian3()), cur = C.Cartesian3.normalize(b.vel, new C.Cartesian3()); C.Cartesian3.lerp(cur, to, Math.min(1, 2.2 * dt), cur); C.Cartesian3.multiplyByScalar(C.Cartesian3.normalize(cur, cur), sp, b.vel); } // fireballs turn towards the ship
       C.Cartesian3.add(b.p, C.Cartesian3.multiplyByScalar(b.vel, dt, t), b.p);
-      if (C.Cartesian3.distance(b.p, cam.positionWC) < 40 + slack * 1.5) { if (!rolling) hurt(8); return false; }
+      if (C.Cartesian3.distance(b.p, cam.positionWC) < 40 + slack * 1.5) { if (!rolling) hurt(b.dmg || 8); return false; }
       return now - b.t < 8000;
     });
     if (on && !tut && $('layerPlanes').checked && performance.now() > (liveT || 0)) liveEnemies(); // real aircraft nearby join as tougher enemies
-    while (on && !tut && objs.filter((o) => !['boss', 'crest', 'life', 'octo', 'aa'].includes(o.kind)).length < 10) spawn();
+    aisStep();
+    while (on && !tut && objs.filter((o) => !['boss', 'crest', 'life', 'octo', 'aa', 'ship'].includes(o.kind)).length < 10) spawn();
   }
   function drawArcade(w, h, text) {
     const f = h / 2 / Math.tan((viewer.camera.frustum.fovy || rad(60)) / 2), toWin = C.SceneTransforms.worldToWindowCoordinates || C.SceneTransforms.wgs84ToWindowCoordinates, now = performance.now();
@@ -590,6 +614,12 @@
       else if (o.kind === 'itembox' && o.item) { const R = Math.max(8, pr), c = BALLOON[o.item], bob = Math.sin(now / 400 + o.lon * 100) * R * 0.15; g.save(); g.strokeStyle = '#ddd'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(q.x, q.y + R + bob); g.quadraticCurveTo(q.x + R * 0.3, q.y + R * 1.6, q.x, q.y + R * 2.2); g.stroke(); const gr = g.createRadialGradient(q.x - R * 0.35, q.y - R * 0.4 + bob, R * 0.1, q.x, q.y + bob, R); gr.addColorStop(0, '#fff'); gr.addColorStop(0.25, c); gr.addColorStop(1, '#222'); g.fillStyle = gr; g.shadowColor = c; g.shadowBlur = 12; g.beginPath(); g.ellipse(q.x, q.y + bob, R * 0.85, R, 0, 0, 7); g.fill(); g.restore(); } // a balloon in the colour of its item
       else if (o.kind === 'itembox') { const R = Math.max(8, pr), t = now / 400; g.save(); g.translate(q.x, q.y); g.rotate(t); const gr = g.createLinearGradient(-R, -R, R, R); ['#ff453a', '#ffd60a', '#34c759', '#0a84ff', '#bf5af2'].forEach((c, i) => gr.addColorStop(i / 4, c)); g.fillStyle = gr; g.globalAlpha = 0.85; g.fillRect(-R, -R, R * 2, R * 2); g.globalAlpha = 1; g.strokeStyle = '#fff'; g.lineWidth = 2; g.strokeRect(-R, -R, R * 2, R * 2); g.rotate(-t); g.fillStyle = '#fff'; g.font = `700 ${Math.round(R * 1.3)}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('?', 0, 2); g.restore(); }
       else if (o.kind === 'mine') { const R = Math.max(6, pr); g.fillStyle = '#222'; g.strokeStyle = '#888'; g.lineWidth = 2; g.beginPath(); g.arc(q.x, q.y, R, 0, 7); g.fill(); g.stroke(); g.fillStyle = g.shadowColor = (now / 300) % 2 < 1 ? '#ff453a' : '#600'; g.shadowBlur = 10; g.beginPath(); g.arc(q.x, q.y, R * 0.3, 0, 7); g.fill(); }
+      else if (o.kind === 'ship') { // a grey warship on the water, pointing where it sails
+        if (o.sog) { const dd = (o.sog * 0.5144 * (now - o.t0)) / 1000 / 6371000; o.p = C.Cartesian3.fromRadians(o.lon0 + (dd * Math.sin(o.cog)) / Math.cos(o.lat0), o.lat0 + dd * Math.cos(o.cog), 15); } // a live one keeps its course and speed between reports
+        const R = Math.max(12, pr * 1.6); drawMesh(WARSHIP, axesAt(o.p, o.cog || 0, 0, 0), { h: '#b8c0cc', s: '#8a93a2', d: '#59616f', e: '#7a2f28' }, now - (o.hitT || 0) < 90, meshScale(o.p, R, h), null, true);
+        if (now - (o.spat || 0) < 250) glow(g, q.x, q.y - R * 0.3, R * 0.5, '#ffd60a'); // its guns firing
+        if (o.mmsi) { g.shadowBlur = 0; g.fillStyle = '#cfe8ff'; g.textAlign = 'center'; g.font = '600 11px sans-serif'; g.fillText('AIS ' + o.mmsi, q.x, q.y + R + 12); }
+      }
       else if (o.kind === 'octo') { const R = Math.max(10, pr * 1.5), t = now / 300; g.save(); g.translate(q.x, q.y); g.shadowColor = '#2fd3c4'; g.shadowBlur = 10;
         g.strokeStyle = '#1f8a80'; g.lineCap = 'round'; for (let k = 0; k < 6; k++) { const ax = (k - 2.5) * R * 0.3; g.lineWidth = R * 0.2; g.beginPath(); g.moveTo(ax, R * 0.3); g.bezierCurveTo(ax + Math.sin(t + k) * R * 0.4, R * 0.9, ax - Math.sin(t + k) * R * 0.3, R * 1.2, ax + Math.sin(t * 1.3 + k) * R * 0.35, R * 1.5); g.stroke(); } // arms waving in the water
         const gr = g.createRadialGradient(-R * 0.3, -R * 0.4, R * 0.1, 0, 0, R); gr.addColorStop(0, '#9ff5ea'); gr.addColorStop(0.5, '#2fb8a8'); gr.addColorStop(1, '#155e58'); g.fillStyle = gr; g.beginPath(); g.ellipse(0, -R * 0.1, R * 0.85, R * 0.75, 0, 0, 7); g.fill();
@@ -727,6 +757,7 @@
     autoOn = !arcade ? [] : ['layerSats', ...(window.__TAURI__ ? ['layerPlanes'] : [])].filter((id) => $(id) && !$(id).checked); // for this flight only: nearby satellites, region names to find the way, live aircraft (desktop)
     if (autoOn.includes('layerSats') && $('layerSatsNear')) { $('layerSatsNear').checked = true; $('layerSatsNear').dispatchEvent(new Event('change')); } // only the nearby ones: light
     for (const id of autoOn) { $(id).checked = true; $(id).dispatchEvent(new Event('change')); }
+    OGE.fxForce = !!arcade; // rain, snow and storms of the place show in the game
     autoOff = !arcade ? [] : ['layerRegionNames', 'layerFlags', 'layerFlagsDep'].filter((id) => $(id) && $(id).checked); // the atlas labels and flags confuse in the game: off for the flight
     for (const id of autoOff) { $(id).checked = false; $(id).dispatchEvent(new Event('change')); } // live satellites and aircraft join the arcade
     if (!document.body.classList.contains('noside')) { sideWas = true; OGE.hideSide(true); } // more room for the flight; it comes back afterwards
@@ -1293,7 +1324,7 @@
     if (sideWas) { sideWas = false; OGE.hideSide(false); }
     for (const id of autoOn) { $(id).checked = false; $(id).dispatchEvent(new Event('change')); } autoOn = [];
     for (const id of autoOff) { $(id).checked = true; $(id).dispatchEvent(new Event('change')); } autoOff = [];
-    engineHum(0); scene.globe.maximumScreenSpaceError = 2;
+    engineHum(0); scene.globe.maximumScreenSpaceError = 2; OGE.fxForce = false;
     on = false; if (race && race.vBase) A.vMax = race.vBase; race = null; if (msg && adv) { adv = null; advShape = null; } // a crash ends the stage tut = null;
     music(false);
     if (arcade && !msg && score) msg = `Vuelo terminado: ${score} puntos y ${coins} monedas.`;
@@ -1393,6 +1424,9 @@
     m.poly(c[0], [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]); m.poly(c[2], [x0, y0, z0], [x0, y1, z0], [x1, y1, z0], [x1, y0, z0]); m.poly(c[1], [x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0]);
     m.poly(c[1], [x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [x1, y0, z1]); m.poly(c[0], [x0, y1, z0], [x0, y1, z1], [x1, y1, z1], [x1, y1, z0]); m.poly(c[2], [x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1]);
   };
+  const WARSHIP = meshOf((m) => { m.hull(62, [[34, 9, 7, 6], [-40, 12, 7, 6], [-58, 9, 7, 5]], 6, 'e'); // the hull, bow forward
+    boxM(m, -6, 7, -26, 6, 19, 4); boxM(m, -3, 19, -18, 3, 28, -10, 'ddd'); boxM(m, -0.8, 19, -4, 0.8, 38, -2, 'ddd'); // the bridge, the funnel, the mast
+    boxM(m, -4, 7, 16, 4, 11, 27, 'sdd'); boxM(m, -1, 8.5, 27, 1, 10.5, 46, 'ddd'); boxM(m, -4, 7, -46, 4, 11, -36, 'sdd'); boxM(m, -1, 8.5, -58, 1, 10.5, -46, 'ddd'); }); // a turret and its gun, fore and aft
   const BOMB = meshOf((m) => { lathe(m, [[30, 5], [24, 19], [9, 30], [-9, 30], [-24, 19], [-30, 5]], 8, 'hs'); lathe(m, [[40, 7, 'w'], [29, 7, 'w']], 6, 'w'); m.poly('e', [-3, 40, 0], [3, 40, 0], [7, 51, 0], [0, 46, 0], [-7, 51, 0]); }); // the bomb pickup: a ball, its neck and a spark
   const HIVE = meshOf((m) => { // seven hexagonal cells; the middle one is the core
     const hex = (cx, cy, r, z) => Array.from({ length: 6 }, (_, j) => [cx + r * Math.cos((j * Math.PI) / 3 + Math.PI / 6), cy + r * Math.sin((j * Math.PI) / 3 + Math.PI / 6), z]);
