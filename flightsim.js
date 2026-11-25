@@ -1141,12 +1141,28 @@
     'Norteamérica': ['MEX', 'USA', 'CAN'], 'Centroamérica': ['GTM', 'BLZ', 'SLV', 'HND', 'NIC', 'CRI', 'PAN'], 'Caribe': ['CUB', 'JAM', 'HTI', 'DOM', 'BHS', 'TTO'],
     'Europa': ['ISL', 'GBR', 'IRL', 'PRT', 'ESP', 'FRA', 'ITA', 'CHE', 'DEU', 'POL', 'UKR', 'GRC', 'NOR', 'SWE'], 'Magreb': ['MAR', 'DZA', 'TUN', 'LBY', 'EGY'],
     'Sahel': ['MRT', 'MLI', 'NER', 'TCD', 'SDN'], 'África subsahariana': ['SEN', 'NGA', 'ETH', 'KEN', 'COD', 'AGO', 'ZAF', 'MDG'],
-    'Medio Oriente': ['TUR', 'SYR', 'JOR', 'IRQ', 'IRN', 'SAU', 'ARE'], 'Asia': ['KAZ', 'UZB', 'IND', 'CHN', 'MNG', 'KOR', 'JPN', 'IDN'], 'Oceanía': ['AUS', 'NZL', 'PNG'] };
+    'Medio Oriente': ['TUR', 'SYR', 'JOR', 'IRQ', 'IRN', 'SAU', 'ARE'], 'Asia': ['KAZ', 'UZB', 'IND', 'CHN', 'MNG', 'KOR', 'JPN', 'IDN'], 'Oceanía': ['AUS', 'NZL', 'PNG'],
+    'Ultramar': ['GRL', 'FRO', 'BMU', 'PRI', 'ABW', 'CUW', 'CYM', 'NCL', 'PYF', 'GUM'] }; // territories of other countries, a campaign of their own
   let advCont = ROUTES[localStorage.getItem('oge.advCont')] ? localStorage.getItem('oge.advCont') : 'Sudamérica';
   const route = () => ROUTES[advCont], advKey = () => (advCont === 'Sudamérica' ? 'oge.adventure' : 'oge.adventure.' + advCont);
   // Places some stages ask you to reach before the boss (within ~30 km): Chile's islands and its Antarctic territory
-  const STAGE_GOALS = { CHL: [['Isla de Pascua', -109.35, -27.12], ['Antártica Chilena (Villa Las Estrellas)', -58.97, -62.2]],
-    ARG: [['Fortín Sargento Cabral (Base Esperanza)', -56.99, -63.40], ['Cementerio de Darwin (Malvinas)', -58.97, -51.81]] };
+  // Places some stages ask you to reach before the boss (within ~30 km): islands, exclaves and far territories that are part of the country
+  const STAGE_GOALS = {
+    CHL: [['Isla de Pascua', -109.35, -27.12], ['Antártica Chilena (Villa Las Estrellas)', -58.97, -62.2]],
+    ARG: [['Fortín Sargento Cabral (Base Esperanza)', -56.99, -63.40], ['Cementerio de Darwin (Malvinas)', -58.97, -51.81]],
+    USA: [['Alaska (Anchorage)', -149.90, 61.22], ['Hawái (Honolulu)', -157.86, 21.31]],
+    ESP: [['Islas Canarias (Las Palmas)', -15.43, 28.12], ['Ceuta', -5.32, 35.89], ['Melilla', -2.94, 35.29], ['Islas Baleares (Palma)', 2.65, 39.57]],
+    NOR: [['Svalbard (Longyearbyen)', 15.63, 78.22]],
+    AUS: [['Tasmania (Hobart)', 147.33, -42.88], ['Isla Norfolk', 167.95, -29.04]],
+    NZL: [['Isla Sur (Christchurch)', 172.64, -43.53], ['Islas Chatham', -176.55, -43.95]],
+    PRT: [['Azores (Ponta Delgada)', -25.67, 37.74], ['Madeira (Funchal)', -16.91, 32.65]],
+    ITA: [['Sicilia (Palermo)', 13.36, 38.12], ['Cerdeña (Cagliari)', 9.11, 39.22]],
+    GRC: [['Creta (Heraklion)', 25.13, 35.34]], FRA: [['Córcega (Ajaccio)', 8.74, 41.92]], GBR: [['Irlanda del Norte (Belfast)', -5.93, 54.60]],
+    ECU: [['Islas Galápagos', -90.31, -0.74]], COL: [['San Andrés', -81.70, 12.58]], BRA: [['Fernando de Noronha', -32.42, -3.85]],
+    MEX: [['Baja California Sur (La Paz)', -110.31, 24.14]], CAN: [['Nunavut (Iqaluit)', -68.52, 63.75]],
+    JPN: [['Hokkaido (Sapporo)', 141.35, 43.06], ['Okinawa (Naha)', 127.68, 26.21]], IND: [['Islas Andamán (Port Blair)', 92.73, 11.62]], CHN: [['Hainan (Haikou)', 110.35, 20.02]],
+    IDN: [['Papúa (Jayapura)', 140.70, -2.53]], DNK: [['Bornholm', 14.87, 55.10]], EQG: [['Bioko (Malabo)', 8.78, 3.75]],
+  };
   let advOthers = null, advAllow = null; // [{ f, box }] the countries the adventure stage forbids
   let adv = null, advShape = null, graceT = 0, liveT = 0;
   async function liveEnemies() {
@@ -1204,9 +1220,10 @@
     const goalsLeft = adv.goals.filter((gl) => !gl.done).length; adv.goalsLeft = goalsLeft;
     if (left === 0 && goalsLeft === 0 && !adv.boss) { // every flag and every place: the capital's boss shows up
       const cap = caps && caps.find((x) => x.a3 === adv.a3);
-      if (cap) { got.delete(capId(cap)); adv.boss = true; adv.cap = cap; OGE.toast(`${T('¡Todas las banderas! El jefe de')} ${cap.name} ${T('te espera.')}`); sfx('achieve'); }
+      if (!cap) { adv.boss = true; adv.cap = null; } // no capital with a boss (some territories): the stage is done
+      else if (cap) { got.delete(capId(cap)); adv.boss = true; adv.cap = cap; OGE.toast(`${T('¡Todas las banderas! El jefe de')} ${cap.name} ${T('te espera.')}`); sfx('achieve'); }
     }
-    if (adv.boss && adv.cap && got.has(capId(adv.cap))) { // its capital won: stage cleared
+    if (adv.boss && (!adv.cap || got.has(capId(adv.cap)))) { // its capital won (or none to win): stage cleared
       localStorage.setItem(advKey(), String(Math.max(advDone(), adv.i + 1))); localStorage.removeItem('oge.advGoals.' + adv.a3);
       const next = adv.i + 1;
       OGE.toast(next < route().length ? `${T('¡Etapa superada!')} ${T('Siguiente')}: ${route()[next]}.` : `${T('¡Completaste la aventura de')} ${T(advCont)}!`);
