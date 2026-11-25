@@ -413,6 +413,7 @@
     if (shields) { shields--; broke = hit = performance.now(); return sfx('shieldBreak'); } // the shield takes the hit and breaks
     n *= DIFF[diff].hurt;
     hp -= n; hit = performance.now(); beep(200, 80, 0.25);
+    if (race && race.coins) { race.coins = Math.max(0, race.coins - 2); A.vMax = race.vBase * (1 + 0.04 * race.coins); } // a hit costs speed coins
     if (hp <= 0) {
       mpSend({ t: 'dead' });
       [520, 390, 290, 200, 110].forEach((f, i) => setTimeout(() => beep(f, f * 0.55, 0.35), i * 190)); // falling notes: the ship is lost
@@ -522,8 +523,8 @@
         return d < 4e5;
       }
       if (o.kind === 'mine' && performance.now() > o.until) return false; // mines go off after a while
-      if (o.kind === 'itembox' && !o.lifted) { const gh = scene.globe.getHeight(C.Cartographic.fromDegrees(o.lon, o.lat)); if (gh !== undefined) { o.p = C.Cartesian3.fromDegrees(o.lon, o.lat, gh + 1200); o.lifted = true; } } // over the terrain once it is known
-      const fixed = o.kind === 'crest' || o.kind === 'life' || o.kind === 'airliner' || o.kind === 'itembox' || o.kind === 'mine' || o.kind === 'aa'; // these wait where they are instead of being left behind
+      if (o.lon != null && !o.lifted && ['itembox', 'gate', 'zip', 'scoin'].includes(o.kind)) { const gh = scene.globe.getHeight(C.Cartographic.fromDegrees(o.lon, o.lat)); if (gh !== undefined) { o.p = C.Cartesian3.fromDegrees(o.lon, o.lat, gh + (o.up || 1200)); o.lifted = true; } } // over the terrain once it is known
+      const fixed = ['crest', 'life', 'airliner', 'itembox', 'mine', 'aa', 'gate', 'zip', 'scoin'].includes(o.kind); // these wait where they are instead of being left behind
       if (o.kind === 'ring') {
         const along = C.Cartesian3.dot(t, cam.directionWC), side = Math.sqrt(Math.max(0, d * d - along * along)), was = o.along; o.along = along;
         if (was > 0 && along <= 0 && side < o.size * 1.15) { // crossed its plane this frame
@@ -540,7 +541,10 @@
         else if (o.kind === 'crest') collect(o.cap); // the coat of arms wins the capital
         else if (o.kind === 'shield') { shields = Math.min(3, shields + 1); sfx('shield'); }
         else if (o.kind === 'bomb') { bombs++; sfx('bombGet'); }
-        else if (o.kind === 'itembox') { if (items.length >= 3) return true; const item = Object.keys(ITEMS)[Math.floor(Math.random() * 4)]; items.push(item); sfx('achieve'); OGE.toast(`${ITEMS[item][0]} ${T(ITEMS[item][1])} — ${T('U para usarlo')}`); }
+        else if (o.kind === 'itembox') { const kind = o.item || Object.keys(BALLOON)[Math.floor(Math.random() * 4)], same = items.indexOf(kind); if (same < 0 && items.length >= 3) return true; let item = kind; if (same >= 0) { items[same] = kind + '+'; item = kind + '+'; } else items.push(kind); sfx('achieve'); OGE.toast(`${ITEMS[item][0]} ${T(ITEMS[item][1])} — ${T('U para usarlo')}`); }
+        else if (o.kind === 'gate') { if (race && race.gates[race.nextGate] === o) { race.nextGate++; sfx('ring'); beep(990, 120, 0.25); return false; } return true; } // only the next gate counts
+        else if (o.kind === 'zip') { if (!boost) { boostCd = 0; startBoost(); sfx('warpUp'); } return true; } // boost rings stay
+        else if (o.kind === 'scoin') { if (race) { race.coins = Math.min(10, race.coins + 1); A.vMax = race.vBase * (1 + 0.04 * race.coins); } sfx('coin'); }
         else if (o.kind === 'mine') { if (o.own) return true; hurt(25); booms.push({ p: o.p, t: performance.now() }); }
         else {
           score += pts(10);
@@ -549,7 +553,7 @@
         }
         return false;
       }
-      if (fixed) return o.kind === 'itembox' || o.kind === 'mine' || (o.kind === 'aa' ? d < 6e4 : d < 4e5); // the race's boxes stay along the whole route
+      if (fixed) return ['itembox', 'mine', 'gate', 'zip', 'scoin'].includes(o.kind) || (o.kind === 'aa' ? d < 6e4 : d < 4e5); // the race's boxes stay along the whole route
       const gone = C.Cartesian3.dot(t, cam.directionWC) < -o.size; // left behind
       if (gone && o.kind === 'ring' && on) hurt(5); // a ring that was not flown through costs life
       return !gone && d < far;
@@ -584,12 +588,16 @@
     const f = h / 2 / Math.tan((viewer.camera.frustum.fovy || rad(60)) / 2), toWin = C.SceneTransforms.worldToWindowCoordinates || C.SceneTransforms.wgs84ToWindowCoordinates, now = performance.now();
     const occ = new C.EllipsoidalOccluder(C.Ellipsoid.WGS84, viewer.camera.positionWC), camP = viewer.camera.positionWC;
     for (const o of objs) {
-      if (!occ.isPointVisible(o.p) || ((o.kind === 'itembox' || o.kind === 'mine') && C.Cartesian3.distance(o.p, camP) > 6e4)) continue; // beyond the horizon, or race items too far to matter
+      if (!occ.isPointVisible(o.p) || (['itembox', 'mine', 'gate', 'zip', 'scoin'].includes(o.kind) && C.Cartesian3.distance(o.p, camP) > 6e4)) continue; // beyond the horizon, or race items too far to matter
       const q = toWin(scene, o.p);
       if (!q) continue; // behind the camera
       const pr = Math.max(4, (o.size / C.Cartesian3.distance(o.p, viewer.camera.positionWC)) * f);
       g.save(); g.shadowBlur = 8; g.beginPath();
-      if (o.kind === 'itembox') { const R = Math.max(8, pr), t = now / 400; g.save(); g.translate(q.x, q.y); g.rotate(t); const gr = g.createLinearGradient(-R, -R, R, R); ['#ff453a', '#ffd60a', '#34c759', '#0a84ff', '#bf5af2'].forEach((c, i) => gr.addColorStop(i / 4, c)); g.fillStyle = gr; g.globalAlpha = 0.85; g.fillRect(-R, -R, R * 2, R * 2); g.globalAlpha = 1; g.strokeStyle = '#fff'; g.lineWidth = 2; g.strokeRect(-R, -R, R * 2, R * 2); g.rotate(-t); g.fillStyle = '#fff'; g.font = `700 ${Math.round(R * 1.3)}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('?', 0, 2); g.restore(); }
+      if (o.kind === 'gate') { const nx = race && race.gates[race.nextGate] === o, R = Math.max(10, pr); g.save(); g.lineWidth = Math.max(3, R * 0.14); g.strokeStyle = g.shadowColor = nx ? '#34c759' : 'rgba(52,199,89,.35)'; g.shadowBlur = nx ? 16 : 0; g.beginPath(); g.arc(q.x, q.y, R, 0, 7); g.stroke(); g.fillStyle = '#fff'; g.textAlign = 'center'; g.font = `800 ${Math.round(Math.max(12, R * 0.45))}px sans-serif`; g.fillText(String(o.n), q.x, q.y - R - 6); g.restore(); }
+      else if (o.kind === 'zip') { const R = Math.max(8, pr), t = now / 150; g.save(); g.lineWidth = Math.max(3, R * 0.18); g.strokeStyle = g.shadowColor = `hsl(${(t * 40) % 360},100%,60%)`; g.shadowBlur = 18; g.beginPath(); g.arc(q.x, q.y, R, 0, 7); g.stroke(); g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = `800 ${Math.round(R * 0.8)}px sans-serif`; g.fillText('»', q.x, q.y); g.restore(); }
+      else if (o.kind === 'scoin') { const R = Math.max(5, pr), turn = Math.abs(Math.cos(now / 250)); g.save(); g.fillStyle = g.shadowColor = '#d7d7e0'; g.shadowBlur = 10; g.beginPath(); g.ellipse(q.x, q.y, R * turn + 1, R, 0, 0, 7); g.fill(); g.fillStyle = '#9aa0b0'; g.beginPath(); g.ellipse(q.x, q.y, (R * turn + 1) * 0.6, R * 0.6, 0, 0, 7); g.fill(); g.restore(); }
+      else if (o.kind === 'itembox' && o.item) { const R = Math.max(8, pr), c = BALLOON[o.item], bob = Math.sin(now / 400 + o.lon * 100) * R * 0.15; g.save(); g.strokeStyle = '#ddd'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(q.x, q.y + R + bob); g.quadraticCurveTo(q.x + R * 0.3, q.y + R * 1.6, q.x, q.y + R * 2.2); g.stroke(); const gr = g.createRadialGradient(q.x - R * 0.35, q.y - R * 0.4 + bob, R * 0.1, q.x, q.y + bob, R); gr.addColorStop(0, '#fff'); gr.addColorStop(0.25, c); gr.addColorStop(1, '#222'); g.fillStyle = gr; g.shadowColor = c; g.shadowBlur = 12; g.beginPath(); g.ellipse(q.x, q.y + bob, R * 0.85, R, 0, 0, 7); g.fill(); g.restore(); } // a balloon in the colour of its item
+      else if (o.kind === 'itembox') { const R = Math.max(8, pr), t = now / 400; g.save(); g.translate(q.x, q.y); g.rotate(t); const gr = g.createLinearGradient(-R, -R, R, R); ['#ff453a', '#ffd60a', '#34c759', '#0a84ff', '#bf5af2'].forEach((c, i) => gr.addColorStop(i / 4, c)); g.fillStyle = gr; g.globalAlpha = 0.85; g.fillRect(-R, -R, R * 2, R * 2); g.globalAlpha = 1; g.strokeStyle = '#fff'; g.lineWidth = 2; g.strokeRect(-R, -R, R * 2, R * 2); g.rotate(-t); g.fillStyle = '#fff'; g.font = `700 ${Math.round(R * 1.3)}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('?', 0, 2); g.restore(); }
       else if (o.kind === 'mine') { const R = Math.max(6, pr); g.fillStyle = '#222'; g.strokeStyle = '#888'; g.lineWidth = 2; g.beginPath(); g.arc(q.x, q.y, R, 0, 7); g.fill(); g.stroke(); g.fillStyle = g.shadowColor = (now / 300) % 2 < 1 ? '#ff453a' : '#600'; g.shadowBlur = 10; g.beginPath(); g.arc(q.x, q.y, R * 0.3, 0, 7); g.fill(); }
       else if (o.kind === 'aa') { // an anti-aircraft gun: a squat base, a turret and twin barrels raised towards the ship
         const R = Math.max(10, pr * 1.4); g.save(); g.translate(q.x, q.y); g.shadowColor = '#ff453a'; g.shadowBlur = 8;
@@ -925,22 +933,31 @@
   // ---------- Race: fly from one chosen city to another; the goal shows on the screen and on the minimap, the best time per route is kept ----------
   let race = null; // { key, from, to: { name, lon, lat, p }, t0 }
   let items = []; // the race items held (up to 3): 'missile' | 'mine' | 'boost' | 'shield'; U uses the first
-  const ITEMS = { missile: ['🚀', 'Misil'], mine: ['⚫', 'Mina'], boost: ['⚡', 'Turbo'], shield: ['🛡', 'Escudo'] };
-  function placeBoxes() { // a row of three boxes every few kilometres along the race path
-    objs = objs.filter((o) => o.kind !== 'itembox');
+  const ITEMS = { missile: ['🚀', 'Misil'], mine: ['⚫', 'Mina'], boost: ['⚡', 'Turbo'], shield: ['🛡', 'Escudo'], 'missile+': ['🚀', 'Misil x3'], 'mine+': ['⚫', 'Minas x3'], 'boost+': ['⚡', 'Turbo largo'], 'shield+': ['🛡', 'Escudo doble'] };
+  const BALLOON = { missile: '#ff453a', mine: '#bf5af2', boost: '#ffd60a', shield: '#0a84ff' }; // the colour tells what a balloon holds
+  function placeBoxes() { // the course along the race path: a row of three balloons every few km, numbered gates, boost rings and speed coins
+    objs = objs.filter((o) => !['itembox', 'gate', 'zip', 'scoin'].includes(o.kind));
+    const at = (f, side = 0, up = 1500) => { const [lon, lat, hd] = pathAt(f), x = lon + (side * Math.cos(hd)) / Math.cos(rad(lat)), y = lat - side * Math.sin(hd), gh = scene.globe.getHeight(C.Cartographic.fromDegrees(x, y)); return { lon: x, lat: y, up, lifted: gh !== undefined, p: C.Cartesian3.fromDegrees(x, y, (gh || 0) + up) }; };
+    const ng = Math.max(3, Math.min(25, Math.round(race.pathLen / 10000)));
+    race.gates = [];
+    for (let i = 1; i <= ng; i++) { const g0 = { kind: 'gate', n: i, f: i / (ng + 1), size: 900, next: 1e15, ...at(i / (ng + 1)) }; race.gates.push(g0); objs.push(g0); } // pass them in order
+    race.nextGate = 0; race.missed = 0;
+    for (let i = 0; i < ng; i++) { const f = (i + 0.5) / (ng + 1); objs.push({ kind: 'zip', size: 500, next: 1e15, ...at(f, (i % 2 ? 1 : -1) * 0.004) }); } // boost rings, a little off the line
+    for (let i = 0; i < ng * 4; i++) { const f = (i + 0.25) / (ng * 4 + 1); objs.push({ kind: 'scoin', size: 220, next: 1e15, ...at(f, ((i % 3) - 1) * 0.006) }); } // speed coins
+    race.coins = 0; race.vBase = race.vBase || A.vMax;
     const n = Math.max(3, Math.min(40, Math.round(race.pathLen / 8000)));
     for (let i = 1; i < n; i++) {
       const [lon, lat, hd] = pathAt(i / n), side = Math.cos(rad(lat));
       for (const o of [-1, 0, 1]) { // across the route
         const x = lon + (o * 0.012 * Math.cos(hd)) / side, y = lat - o * 0.012 * Math.sin(hd), gh = scene.globe.getHeight(C.Cartographic.fromDegrees(x, y));
-        objs.push({ kind: 'itembox', lon: x, lat: y, lifted: gh !== undefined, p: C.Cartesian3.fromDegrees(x, y, (gh || 0) + 1200), size: 350, next: 1e15 });
+        objs.push({ kind: 'itembox', item: Object.keys(BALLOON)[(i + o + 3) % 4], lon: x, lat: y, up: 1200, lifted: gh !== undefined, p: C.Cartesian3.fromDegrees(x, y, (gh || 0) + 1200), size: 350, next: 1e15 });
       }
     }
   }
   function setPath(pts) { // [[lon, lat]...] with cumulative lengths in metres
     const cum = [0];
     for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + C.Cartesian3.distance(C.Cartesian3.fromDegrees(pts[i - 1][0], pts[i - 1][1]), C.Cartesian3.fromDegrees(pts[i][0], pts[i][1])));
-    Object.assign(race, { path: pts, cum, pathLen: cum[cum.length - 1] || 1, myT: 0 });
+    Object.assign(race, { path: pts, cum, pathLen: cum[cum.length - 1] || 1, myT: 0, myIdx: 0 });
   }
   function pathAt(f) { // position and heading (radians from north) at a fraction of the path
     const P = race.path, cum = race.cum, d = Math.min(1, Math.max(0, f)) * race.pathLen;
@@ -948,16 +965,17 @@
     const a = P[i - 1], b = P[i], k = (d - cum[i - 1]) / ((cum[i] - cum[i - 1]) || 1);
     return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, Math.atan2((b[0] - a[0]) * Math.cos(rad(a[1])), b[1] - a[1])];
   }
-  async function roadPath(a, b) { // OSRM (OpenStreetMap routing): roads and ferries between the two cities; none: the straight line stays
+  async function roadPath(stops) { // OSRM (OpenStreetMap routing): roads and ferries through every stop; none: the straight lines stay
     try {
-      const j = await (await fetch(`https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=simplified&geometries=geojson`)).json();
+      const j = await (await fetch(`https://router.project-osrm.org/route/v1/driving/${stops.map((p) => `${p.lon},${p.lat}`).join(';')}?overview=simplified&geometries=geojson`)).json();
       const pts = j.routes && j.routes[0] && j.routes[0].geometry.coordinates;
       return pts && pts.length > 1 ? pts : null;
     } catch { return null; }
   }
   function useItem() {
     if (!items.length) return;
-    const it = items.shift();
+    let it = items.shift();
+    if (it.endsWith('+')) { it = it.slice(0, -1); if (it === 'boost') { startBoost(); setTimeout(() => { boost = null; boostCd = 0; startBoost(); }, 2600); return; } if (it === 'shield') { shields = Math.min(3, shields + 2); return sfx('shield'); } items.unshift(it, it); } // upgraded: three missiles or mines (one now, two kept), a long boost, a double shield
     if (it === 'boost') startBoost();
     else if (it === 'shield') { shields = Math.min(3, shields + 1); sfx('shield'); }
     else if (it === 'mine') { // dropped right here: whoever flies into it gets hurt (not the one who dropped it)
@@ -991,28 +1009,34 @@
       fields: [{ id: 'from', label: 'Salida', type: 'text', value: last.from || 'Santiago de Chile' }, { id: 'to', label: 'Meta', type: 'text', value: last.to || 'Valparaíso' },
         { id: 'cpus', label: 'Rivales de la CPU (si no hay otros jugadores)', type: 'select', value: String(last.cpus ?? 5), options: Array.from({ length: 13 }, (_, i) => [String(i), i ? String(i) : 'Ninguno']) },
         { id: 'maxWarp', label: 'Turbo máximo', type: 'select', value: String(last.maxWarp ?? 2), options: WARPS.map((x) => [String(x), x === 100 ? '×100 (sin límite)' : '×' + x]) },
-        { id: 'lands', label: 'Volar solo sobre estos países (separados por comas; vacío = todos)', type: 'text', value: last.lands || '' }] });
+        { id: 'lands', label: 'Volar solo sobre estos países (separados por comas; vacío = todos)', type: 'text', value: last.lands || '' },
+        { id: 'via', label: 'Metas intermedias: ciudades por las que pasar (separadas por comas)', type: 'text', value: last.via || '' },
+        { id: 'laps', label: 'Vueltas (2 o más: circuito que vuelve a la salida)', type: 'select', value: String(last.laps ?? 1), options: [1, 2, 3, 4, 5].map((n) => [String(n), n === 1 ? '1 (de una ciudad a otra)' : String(n)]) }] });
     if (!v || !v.from || !v.to) return;
     localStorage.setItem('oge.raceLast', JSON.stringify(v));
     let a, b;
-    try { [a, b] = await Promise.all([geocode(v.from), geocode(v.to)]); } catch (e) { return OGE.toast(e.message, true); }
-    raceGo(v, a, b);
+    let via = [];
+    try { [a, b, ...via] = await Promise.all([geocode(v.from), geocode(v.to), ...String(v.via || '').split(',').map((x) => x.trim()).filter(Boolean).map(geocode)]); } catch (e) { return OGE.toast(e.message, true); }
+    raceGo(v, a, b, via);
   }
-  function raceGo(v, a, b) {
-    relaunch = () => raceGo(v, a, b);
+  function raceGo(v, a, b, via = []) {
+    relaunch = () => raceGo(v, a, b, via);
+    const laps = Math.max(1, +v.laps || 1); if (laps > 1) b = { ...a }; // a circuit ends where it starts
     b.p = C.Cartesian3.fromDegrees(b.lon, b.lat, 1500);
     const hd = bearing(a, b);
     viewer.camera.setView({ destination: C.Cartesian3.fromDegrees(a.lon, a.lat, 3000), orientation: { heading: hd, pitch: rad(-10), roll: 0 } });
     adv = null; advShape = null;
     start('ship', true, true, true, false);
     s.heading = hd;
-    race = { key: `${v.from}|${v.to}|${v.maxWarp}|${v.lands}`.toLowerCase(), from: a, to: b, t0: performance.now(), km: raceKmFrom(a, b), cpus: [], maxWarp: +v.maxWarp || 100, others: null };
+    race = { laps, via, key: `${v.from}|${v.to}|${v.maxWarp}|${v.lands}|${v.via || ''}|${laps}`.toLowerCase(), from: a, to: b, t0: performance.now(), km: raceKmFrom(a, b), cpus: [], maxWarp: +v.maxWarp || 100, others: null };
     if (warp > race.maxWarp) setWarp(race.maxWarp);
     if (v.lands && v.lands.trim()) raceLands(v.lands); // only these countries (the sea and Antarctica stay open)
     if (!p2 && !remote) race.cpus = Array.from({ length: +v.cpus || 0 }, (_, i) => ({ // rivals: each flies the route at its own pace
       name: CPU_NAMES[i], color: CPU_COLORS[i], f: 0, side: ((i % 2 ? 1 : -1) * (1 + Math.floor(i / 2))) * 0.004, speed: (1200 + Math.random() * 2600) * Math.min(1, race.maxWarp / 5 + 0.2), stunT: 0, itemT: performance.now() + 8000 + Math.random() * 10000 }));
-    items = []; setPath([[a.lon, a.lat], [b.lon, b.lat]]); placeBoxes();
-    const me = race; roadPath(a, b).then((pts) => { if (pts && race === me) { setPath(pts); placeBoxes(); OGE.toast(`${T('Ruta por carreteras y ferris')}: ${Math.round(race.pathLen / 1000)} km`); } }); // the rivals follow the roads, in the air
+    const stops = laps > 1 ? [a, ...via, a] : [a, ...via, b], lap1 = stops.map((p) => [p.lon, p.lat]);
+    const repeat = (pts) => { let out = pts.slice(); for (let i = 1; i < laps; i++) out = out.concat(pts.slice(1)); return out; }; // the same loop once per lap
+    items = []; setPath(repeat(lap1.length > 1 ? lap1 : [[a.lon, a.lat], [b.lon, b.lat]])); placeBoxes();
+    const me = race; roadPath(stops).then((pts) => { if (pts && race === me) { setPath(repeat(pts)); placeBoxes(); OGE.toast(`${T('Ruta por carreteras y ferris')}: ${Math.round(race.pathLen / 1000)} km`); } }); // the rivals follow the roads, in the air
     race.go = performance.now() + 3000; race.boostOk = false; graceT = race.go + 3000; stopped = true; // the countdown holds everyone at the start
     const best = +localStorage.getItem('oge.race.' + race.key) || 0;
     OGE.toast(`🏁 ${a.name} → ${b.name}: ${Math.round(raceKm())} km.` + (best ? ` ${T('Mejor tiempo')}: ${fmtT(best)}.` : ''));
@@ -1027,9 +1051,9 @@
   const myProgress = () => { // the nearest point of the path, checked a few times a second
     const now = performance.now();
     if (race.myT && now - race.myT < 300) return race.my;
-    const lo = deg(s.lon), la = deg(s.lat), P = race.path, cl = Math.cos(s.lat) ** 2; let best = 0, bd = Infinity;
-    for (let i = 0; i < P.length; i++) { const d = (P[i][0] - lo) ** 2 * cl + (P[i][1] - la) ** 2; if (d < bd) { bd = d; best = i; } }
-    race.myT = now; race.my = race.cum[best] / race.pathLen; return race.my;
+    const lo = deg(s.lon), la = deg(s.lat), P = race.path, cl = Math.cos(s.lat) ** 2, from = Math.max(0, (race.myIdx || 0) - 5), to = Math.min(P.length, from + Math.max(60, Math.ceil(P.length / (race.laps || 1) / 2))); let best = race.myIdx || 0, bd = Infinity;
+    for (let i = from; i < to; i++) { const d = (P[i][0] - lo) ** 2 * cl + (P[i][1] - la) ** 2; if (d < bd) { bd = d; best = i; } }
+    race.myT = now; race.myIdx = best; race.my = race.cum[best] / race.pathLen; return race.my;
   };
   async function raceLands(list) { // the countries named (by name or ISO code) are allowed; any other one turns the ship back, as in the adventure
     try {
@@ -1074,6 +1098,9 @@
     }
     if (race.cpus.length) cpuStep(1 / 60);
     if (race.others) borderStep(race, race.others);
+    const ng = race.gates && race.gates[race.nextGate];
+    if (ng && myProgress() > ng.f + 0.04) { race.nextGate++; race.missed++; race.t0 -= 5000; objs = objs.filter((o) => o !== ng); OGE.toast(`${T('Te saltaste el aro')} ${ng.n}: +5 s`); sfx('shieldBreak'); } // a skipped gate: 5 s penalty
+    if (race.gates && race.nextGate < race.gates.length) return; // the gates first (laps and intermediate goals)
     if (raceKm() > Math.max(3, (s.v * warp * 0.06) / 1000)) return; // within 3 km, or a couple of frames at high speed
     const ms = performance.now() - race.t0, key = 'oge.race.' + race.key, best = +localStorage.getItem(key) || 0, rec = !best || ms < best;
     if (rec) localStorage.setItem(key, String(Math.round(ms)));
@@ -1103,6 +1130,7 @@
       const R = clamp(2.4e5 / d, 8, 40); shipBack(q.x, q.y, R, c.color, Math.sin(performance.now() / 700 + c.side * 900) * 0.2, c.stunT > performance.now() ? performance.now() : 0);
       g.save(); g.fillStyle = c.color; g.textAlign = 'center'; g.font = '600 11px sans-serif'; g.fillText(c.name, q.x, q.y + R + 12); g.restore();
     }
+    if (race.gates) text((race.laps > 1 ? `${T('Vuelta')} ${Math.min(race.laps, 1 + Math.floor((race.nextGate * race.laps) / race.gates.length))}/${race.laps} · ` : '') + `${T('Aro')} ${Math.min(race.nextGate + 1, race.gates.length)}/${race.gates.length}` + (race.missed ? ` · ${T('saltados')}: ${race.missed}` : '') + ` · ${T('Monedas de velocidad')}: ${race.coins || 0}/10`, 24, 196, 14, 'left');
     text(`${T('OBJETOS')} (U): ` + [0, 1, 2].map((i) => (items[i] ? `[${ITEMS[items[i]][0]} ${T(ITEMS[items[i]][1])}]` : '[ ]')).join(' '), 24, 176, 14, 'left'); // three slots, the first is used next
   }
 
@@ -1223,7 +1251,7 @@
     if (sideWas) { sideWas = false; OGE.hideSide(false); }
     for (const id of autoOn) { $(id).checked = false; $(id).dispatchEvent(new Event('change')); } autoOn = [];
     for (const id of autoOff) { $(id).checked = true; $(id).dispatchEvent(new Event('change')); } autoOff = [];
-    on = false; race = null; if (msg && adv) { adv = null; advShape = null; } // a crash ends the stage tut = null;
+    on = false; if (race && race.vBase) A.vMax = race.vBase; race = null; if (msg && adv) { adv = null; advShape = null; } // a crash ends the stage tut = null;
     music(false);
     if (arcade && !msg && score) msg = `Vuelo terminado: ${score} puntos y ${coins} monedas.`;
     if (arcade && (score || coins)) saveScore(score, coins);
