@@ -66,6 +66,7 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
     hot: osm('https://a.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', '© OpenStreetMap · estilo Humanitario (HOT)', 19),
   });
   const viewer = new C.Viewer('globe', {
+    orderIndependentTranslucency: false, // on some graphics cards its buffers lose precision far from the camera: translucent text and plates turned into a rectangle of dots
     baseLayer: new C.ImageryLayer(BODY && BODIES[BODY].url ? new C.UrlTemplateImageryProvider({ url: BODIES[BODY].url, maximumLevel: BODIES[BODY].max, tilingScheme: new C.GeographicTilingScheme(), credit: BODIES[BODY].credit }) : (IMAGERY[$('baseImagery').value] || IMAGERY.s2)()),
     baseLayerPicker: false, geocoder: false, sceneModePicker: false,
     timeline: false, animation: false, fullscreenButton: false,
