@@ -161,7 +161,7 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
 
   // ---------- Generic parameter dialog (replaces prompt/confirm) ----------
   // fields: [{id, label, type: number|text|select|checkbox|textarea|color|range, value, options, min, max, step, hint}]
-  OGE.ask = ({ title, help, fields = [], ok = 'Aceptar' }) => new Promise((resolve) => {
+  OGE.ask = ({ title, help, fields = [], ok = 'Aceptar', extra }) => new Promise((resolve) => { // extra: an element of the caller's own, under the buttons
     const dlg = $('ask'), form = dlg.firstElementChild, get = {};
     form.replaceChildren(el('h2', { textContent: title }));
     if (help) form.append(el('p', { className: 'small', textContent: help }));
@@ -194,6 +194,7 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
     }
     const cancel = el('button', { type: 'button', textContent: 'Cancelar' });
     form.append(el('div', { className: 'row end' }, cancel, el('button', { textContent: ok })));
+    if (extra) form.append(extra);
     // Resolved on the submit or cancel itself (not on the "close" event, which the browser delays if the window is not visible).
     let settled = false;
     const finish = (okd) => {

@@ -273,6 +273,8 @@
   const pts = (n) => Math.round(n * DIFF[diff].pts); // points earned scale with the difficulty
   let third = localStorage.getItem('oge.third') !== '0'; // third-person camera: behind and above the ship (Y switches)
   let stopped = false, airports = null, airBusy = false, refuelMsg = false; // stopped: Q toggles a hover; airports: [[lon, lat]] (Natural Earth) where landing heals
+  // On a phone, the dialog of a lost ship carries a link to support the project: it opens in the phone's own browser (in the Android app too, where any outside link does)
+  const donateLink = () => (matchMedia('(pointer: coarse)').matches ? Object.assign(document.createElement('a'), { className: 'btn donate', href: 'https://paypal.me/alopcl', target: '_blank', rel: 'noopener', textContent: T('Donar'), style: 'display:block;text-align:center;margin-top:10px' }) : null);
   let relaunch = null, lostAsk = false; // relaunch: starts the last game again (same mode, stage or race); lostAsk: the "try again?" dialog is up
   let thrT = 0, boost = null, boostCd = 0, eHeld = false, landing = null; // boost: the ship's single burst on E { t0, base } // landing: 'down' while dropping, 'parked' on the ground, 'up' while lifting off
   let calm = false; // free flight chosen from the mode menu: nothing to collect
@@ -509,7 +511,7 @@
       const msg = `Nave destruida: ${score} puntos y ${coins} monedas.`;
       if (!race && mpMode === 'solo' && !p2) { // alone and not racing: the flight waits, paused, and trying again goes on from here, with no new start and no map to load again
         if (lostAsk) return; lostAsk = true; paused = true; // the ranking comes only if the pilot gives up: stop() saves the score then
-        const ask = () => { if (document.querySelector('dialog[open]')) return setTimeout(ask, 300); OGE.ask({ title: T('Nave destruida'), ok: T('Reintentar'), help: `${score} ${T('puntos')} · ${coins} ${T('monedas')}. ${T('¿Lo intentas otra vez?')}` }).then((v) => { lostAsk = false; if (!on) return;
+        const ask = () => { if (document.querySelector('dialog[open]')) return setTimeout(ask, 300); OGE.ask({ title: T('Nave destruida'), ok: T('Reintentar'), help: `${score} ${T('puntos')} · ${coins} ${T('monedas')}. ${T('¿Lo intentas otra vez?')}`, extra: donateLink() }).then((v) => { lostAsk = false; if (!on) return;
           if (!v) return stop(msg, true);
           score = coins = 0;
           hp = maxHp; shields = 0; bombs = 2; incoming = []; objs = objs.filter((o) => o.kind !== 'enemy'); graceT = performance.now() + 5000; paused = false; last = performance.now(); }); };
