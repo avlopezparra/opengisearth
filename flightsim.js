@@ -929,12 +929,12 @@
     }
     for (const r of regs || []) { // region flags, only those inside the map window: small squares, yellow to collect and green once collected
       const [x, y] = OGE.minimap.xy(r.lon, r.lat);
-      if (x > 0 && x < 240 && y > 0 && y < 120) { mg.fillStyle = gotReg.has(r.id) ? '#34c759' : '#ffd60a'; mg.fillRect(x - 1.5, y - 1.5, 3, 3); }
+      if (x > 0 && x < 240 && y > 0 && y < 120) { mg.fillStyle = gotReg.has(r.id) ? '#34c759' : '#ffd60a'; mg.fillRect(x - 1, y - 1, 2, 2); } // plain dots: nothing heavier than a filled square per flag
     }
     for (const c of caps || []) { // capitals: bigger ringed dots, yellow to collect and green once collected
       const [x, y] = OGE.minimap.xy(c.lon, c.lat);
       if (x < -4 || x > 244 || y < -4 || y > 124) continue;
-      mg.fillStyle = got.has(capId(c)) ? '#34c759' : '#ffd60a'; mg.strokeStyle = '#10141c'; mg.lineWidth = 1; mg.beginPath(); mg.arc(x, y, 3.2, 0, 7); mg.fill(); mg.stroke();
+      mg.fillStyle = got.has(capId(c)) ? '#34c759' : '#ffd60a'; mg.fillRect(x - 2.5, y - 2.5, 5, 5); // a bigger dot than a flag's
     }
   };
 
