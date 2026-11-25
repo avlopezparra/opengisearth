@@ -1905,7 +1905,7 @@
   // Back controls · Start pause · L3 turn back · R3 camera · D-pad ↑ climb · ↓ land · ← race item · → take off
   // XInput pad, standard layout. Buttons that stand for a key: A turbo burst · B turn back · X barrel roll · Y loop · LB race item · RB bomb · RT fire with auto-aim (held: charge)
   // Start pause · L3 stop · d-pad up take off, down land, left / right turbo. By hand below: LT fire where it points, Back the options menu, R3 lock-on or free aim, the right stick.
-  const PAD = ['e', 'f', 'r', 'x', 'u', 'v', null, 'b', null, 'enter', 'q', null, 'c', 'z', 'g', ' '];
+  const PAD = ['e', 'f', 'r', 'x', 'u', 'v', null, 'b', null, 'enter', 'q', null, 'c', 'z', 'shift', ' ']; // 'shift' stands for the left Shift: turbo down
   const padPrev = [], pad = { x: 0, y: 0, on: false, free: false, flick: false, menu: false, navT: 0, el: null };
   let padLock = null; // the enemy the right stick picked: the auto-aim fires at it
   const LOCKABLE = ['enemy', 'boss', 'airliner', 'aa', 'octo', 'ship'];
@@ -2295,7 +2295,6 @@
     else if (k === 'q' && A && A.ship && landing !== 'parked' && !e.repeat) { stopped = !stopped; if (!stopped) { s.v = Math.max(s.v, A.v0 || 300); s.throttle = Math.max(s.throttle, 0.5); } } // Q: stop and hover; Q again: fly on
     else if (k === 'b' && A && A.ship) { if (!e.repeat) trigger(true); } // B fires, aiming by itself at the nearest enemy; held, it charges
     else if (k === 'v' && A.ship) bomb(); // V drops a bomb
-    else if (k === 'g') nextWarp(-1);
     else if (k === '+' || k === '=' || k === '-') OGE.minimap.zoom(k === '-' ? -1 : 1);
     else if (k === 'm') OGE.minimap.toggle();
     else if (k === 'n') nextTurn();
