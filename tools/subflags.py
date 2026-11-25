@@ -93,6 +93,7 @@ def groups(regs, table):
 
     The region's Wikidata item is the parent (P131, or P8138 for statistical regions) that most of its units share."""
     member, by_group = {}, {}
+    for k in [k for k in table if ':' in k]: del table[k]  # the regions are worked out again
     for r in regs:
         if r['a2'] in GROUPED and r['region']:
             member[r['code']] = r['region']; by_group.setdefault(r['code'].split('-')[0] + ':' + r['region'], []).append(r)
@@ -114,7 +115,8 @@ def groups(regs, table):
         for r in rs:
             for p in parents.get(r['q'], ()):
                 if spread[p] == 1 and p in emblem: votes[p] = votes.get(p, 0) + 1
-        if votes: table[g] = emblem[max(votes, key=votes.get)]; found += 1
+        top = max(votes, key=votes.get) if votes else None
+        if top and votes[top] * 2 >= len(rs): table[g] = emblem[top]; found += 1  # at least half of its units name it as their parent: otherwise it is one town's emblem, not the region's
         elif len(rs) == 1 and rs[0]['code'] in table: table[g] = table[rs[0]['code']]; found += 1  # a region of a single unit: that unit's own emblem
     print(f'{found}/{len(by_group)} larger regions with an emblem; without:', ', '.join(sorted(g for g in by_group if g not in table))[:400])
     return member
