@@ -459,7 +459,7 @@
     'OBJETOS': 'ITEMS',
     'No puedes entrar en otro país en esta etapa': 'You cannot enter another country in this stage',
     'obtenida': 'won',
-    '¡La mano va a atacar! Prepara un tonel (R).': 'The hand is about to strike! Get ready to roll (R).',
+    '¡La mano va a atacar! Dispara a su punto débil o prepara un tonel (R).': 'The hand is about to attack! Shoot its weak point or get a barrel roll ready (R).', '¡Punto débil! La mano se retira.': 'Weak point! The hand backs off.',
     'Mando conectado': 'Gamepad connected',
     'parar': 'stop',
     'bajar': 'down',
