@@ -1,42 +1,55 @@
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1600 600" width="1600" height="600">
-  <!-- OpenStarshipEarth banner: deep space, the Earth's limb, a squadron of ships and a bold retro title -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 600" width="1600" height="600">
+  <!-- OpenStarshipEarth banner: the squadron and a golden ring over the Earth's limb, with a glossy title -->
   <defs>
-    <radialGradient id="space" cx="0.7" cy="0.3" r="0.9"><stop offset="0" stop-color="#28306e"/><stop offset="0.55" stop-color="#0c1033"/><stop offset="1" stop-color="#03040f"/></radialGradient>
-    <linearGradient id="earth" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6fd8ff"/><stop offset="0.2" stop-color="#1f7fd6"/><stop offset="1" stop-color="#071f4d"/></linearGradient>
-    <linearGradient id="title" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff59a"/><stop offset="0.45" stop-color="#ffc21a"/><stop offset="1" stop-color="#ff6a00"/></linearGradient>
-    <linearGradient id="hull" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#8794ad"/></linearGradient>
-    <linearGradient id="wing" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#1e6fe0"/><stop offset="1" stop-color="#7fd4ff"/></linearGradient>
-    <radialGradient id="flame" cx="0.5" cy="0.2" r="0.8"><stop offset="0" stop-color="#fff6c0"/><stop offset="0.4" stop-color="#ffb300"/><stop offset="1" stop-color="#ff3d00" stop-opacity="0"/></radialGradient>
-    <radialGradient id="neb" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#b05cff" stop-opacity="0.45"/><stop offset="1" stop-color="#b05cff" stop-opacity="0"/></radialGradient>
-    <g id="ship">
-      <ellipse cx="0" cy="120" rx="24" ry="70" fill="url(#flame)"/>
-      <path d="M -20 -40 L -180 80 L -162 98 L -24 54 Z" fill="url(#wing)" stroke="#0b1a3a" stroke-width="6" stroke-linejoin="round"/>
-      <path d="M 20 -40 L 180 80 L 162 98 L 24 54 Z" fill="url(#wing)" stroke="#0b1a3a" stroke-width="6" stroke-linejoin="round"/>
-      <path d="M -180 80 L -192 12 L -162 72 Z" fill="#ffd60a" stroke="#0b1a3a" stroke-width="5"/>
-      <path d="M 180 80 L 192 12 L 162 72 Z" fill="#ffd60a" stroke="#0b1a3a" stroke-width="5"/>
-      <path d="M 0 -168 L 38 42 L 18 60 L -18 60 L -38 42 Z" fill="url(#hull)" stroke="#0b1a3a" stroke-width="6" stroke-linejoin="round"/>
-      <ellipse cx="0" cy="-54" rx="14" ry="38" fill="#7fe6ff" stroke="#0b1a3a" stroke-width="5"/>
+    <radialGradient id="space" cx="0.5" cy="0.25" r="0.95"><stop offset="0" stop-color="#3a53c8"/><stop offset="0.45" stop-color="#15226e"/><stop offset="1" stop-color="#040618"/></radialGradient>
+    <linearGradient id="earth" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#b8f2ff"/><stop offset="0.025" stop-color="#3fb2f2"/><stop offset="0.09" stop-color="#1667c8"/><stop offset="0.22" stop-color="#0a2f78"/><stop offset="1" stop-color="#062257"/></linearGradient>
+    <radialGradient id="atmo" cx="0.5" cy="0.5" r="0.5"><stop offset="0.9" stop-color="#8fe6ff" stop-opacity="0.75"/><stop offset="1" stop-color="#8fe6ff" stop-opacity="0"/></radialGradient>
+    <linearGradient id="land" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9af07a"/><stop offset="1" stop-color="#1f9a4a"/></linearGradient>
+    <linearGradient id="hullL" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#c9d6ea"/></linearGradient>
+    <linearGradient id="hullR" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c3cfe4"/><stop offset="1" stop-color="#6f7d9c"/></linearGradient>
+    <linearGradient id="wingA" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8fe0ff"/><stop offset="1" stop-color="#2f8df0"/></linearGradient>
+    <linearGradient id="wingB" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a7be6"/><stop offset="1" stop-color="#123f9c"/></linearGradient>
+    <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f2feff"/><stop offset="0.5" stop-color="#4fd6ff"/><stop offset="1" stop-color="#0a5fa8"/></linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff7b0"/><stop offset="0.5" stop-color="#ffcf1a"/><stop offset="1" stop-color="#e07a00"/></linearGradient>
+    <radialGradient id="flame" cx="0.5" cy="0.15" r="0.85"><stop offset="0" stop-color="#ffffff"/><stop offset="0.25" stop-color="#bff3ff"/><stop offset="0.6" stop-color="#3fb2ff"/><stop offset="1" stop-color="#2a5cff" stop-opacity="0"/></radialGradient>
+    <radialGradient id="flare" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#ffffff"/><stop offset="0.25" stop-color="#d8f6ff" stop-opacity="0.8"/><stop offset="1" stop-color="#8fd8ff" stop-opacity="0"/></radialGradient>
+    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0.55"/><stop offset="1" stop-color="#fff" stop-opacity="0.04"/></linearGradient>
+    <linearGradient id="title" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="0.48" stop-color="#c8f4ff"/><stop offset="0.52" stop-color="#5ccaff"/><stop offset="1" stop-color="#1c6fe6"/></linearGradient>
+    <filter id="soft" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="14"/></filter>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="14" stdDeviation="14" flood-color="#020516" flood-opacity="0.6"/></filter>
+    <filter id="tglow" x="-10%" y="-30%" width="120%" height="160%"><feDropShadow dx="0" dy="0" stdDeviation="9" flood-color="#39c3ff" flood-opacity="0.75"/></filter>
+    <g id="ship" stroke-linejoin="round">
+      <ellipse cx="0" cy="210" rx="46" ry="150" fill="url(#flame)"/>
+      <path d="M -40 30 L -104 168 L -44 112 Z" fill="url(#wingB)" stroke="#0a1a44" stroke-width="5"/><path d="M 40 30 L 104 168 L 44 112 Z" fill="#0e3688" stroke="#0a1a44" stroke-width="5"/>
+      <path d="M -30 -64 L -306 122 L -150 104 L -36 36 Z" fill="url(#wingA)" stroke="#0a1a44" stroke-width="5"/><path d="M -36 36 L -150 104 L -306 122 L -274 154 L -42 98 Z" fill="url(#wingB)" stroke="#0a1a44" stroke-width="5"/>
+      <path d="M 30 -64 L 306 122 L 150 104 L 36 36 Z" fill="url(#wingB)" stroke="#0a1a44" stroke-width="5"/><path d="M 36 36 L 150 104 L 306 122 L 274 154 L 42 98 Z" fill="#0e3688" stroke="#0a1a44" stroke-width="5"/>
+      <path d="M -306 122 L -330 6 L -276 116 Z" fill="url(#gold)" stroke="#0a1a44" stroke-width="5"/><path d="M 306 122 L 330 6 L 276 116 Z" fill="#e89a00" stroke="#0a1a44" stroke-width="5"/>
+      <path d="M 0 -296 L -62 58 L -32 106 L 0 114 Z" fill="url(#hullL)" stroke="#0a1a44" stroke-width="5"/><path d="M 0 -296 L 62 58 L 32 106 L 0 114 Z" fill="url(#hullR)" stroke="#0a1a44" stroke-width="5"/>
+      <path d="M 0 -296 L -20 -180 L 0 -170 Z" fill="#ffffff" opacity="0.9"/>
+      <path d="M 0 -176 L -26 -74 L 0 -30 L 26 -74 Z" fill="url(#glass)" stroke="#0a1a44" stroke-width="5"/><path d="M -3 -160 L -19 -80 L -5 -56 Z" fill="#ffffff" opacity="0.75"/>
+      <path d="M -24 106 L 24 106 L 16 126 L -16 126 Z" fill="#26324f" stroke="#0a1a44" stroke-width="4"/><ellipse cx="0" cy="124" rx="15" ry="7" fill="#dff8ff"/>
     </g>
-    <filter id="glow" x="-20%" y="-40%" width="140%" height="180%"><feDropShadow dx="0" dy="0" stdDeviation="10" flood-color="#ff8a00" flood-opacity="0.6"/></filter>
+    <g id="ring"><ellipse cx="0" cy="0" rx="270" ry="250" fill="none" stroke="#7a3d00" stroke-width="46"/><ellipse cx="0" cy="0" rx="270" ry="250" fill="none" stroke="url(#gold)" stroke-width="36"/><path d="M -236 -108 A 262 242 0 0 1 60 -240" fill="none" stroke="#fffbe0" stroke-width="9" stroke-linecap="round" opacity="0.85"/></g>
+    <radialGradient id="neb" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#6ee7ff" stop-opacity="0.4"/><stop offset="1" stop-color="#6ee7ff" stop-opacity="0"/></radialGradient>
   </defs>
   <rect width="1600" height="600" fill="url(#space)"/>
-  <ellipse cx="1180" cy="200" rx="360" ry="140" fill="url(#neb)"/>
-  <g fill="#fff">
-    <circle cx="80" cy="60" r="2"/><circle cx="240" cy="140" r="1.5"/><circle cx="420" cy="40" r="2.5"/><circle cx="610" cy="120" r="1.5"/><circle cx="760" cy="60" r="2"/><circle cx="930" cy="30" r="1.5"/>
-    <circle cx="1080" cy="110" r="2.5"/><circle cx="1260" cy="50" r="1.5"/><circle cx="1420" cy="140" r="2"/><circle cx="1540" cy="60" r="1.5"/><circle cx="1500" cy="300" r="2"/><circle cx="1350" cy="380" r="1.5"/>
-    <circle cx="150" cy="330" r="1.5"/><circle cx="60" cy="230" r="2"/><circle cx="700" cy="300" r="1.5"/><circle cx="1000" cy="260" r="1.5"/>
+  <ellipse cx="1200" cy="210" rx="420" ry="170" fill="url(#neb)"/>
+  <g fill="#fff"><circle cx="80" cy="60" r="2"/><circle cx="240" cy="140" r="1.5"/><circle cx="420" cy="40" r="2.5"/><circle cx="610" cy="120" r="1.5"/><circle cx="760" cy="60" r="2"/><circle cx="930" cy="30" r="1.5"/><circle cx="1080" cy="110" r="2.5"/><circle cx="1260" cy="50" r="1.5"/><circle cx="1420" cy="140" r="2"/><circle cx="1540" cy="60" r="1.5"/><circle cx="1500" cy="300" r="2"/><circle cx="1350" cy="380" r="1.5"/><circle cx="150" cy="330" r="1.5"/><circle cx="60" cy="230" r="2"/><circle cx="700" cy="300" r="1.5"/><circle cx="1000" cy="260" r="1.5"/></g>
+  <circle cx="800" cy="2080" r="1620" fill="url(#atmo)"/>
+  <circle cx="800" cy="2090" r="1560" fill="url(#earth)"/>
+  <path d="M0 566 C 200 524 380 544 560 520 C 760 494 900 524 1100 504 C 1300 486 1460 508 1600 524 L 1600 600 L 0 600 Z" fill="url(#land)" opacity="0.8"/>
+  <g fill="#fff" opacity="0.6"><ellipse cx="330" cy="552" rx="120" ry="9"/><ellipse cx="980" cy="538" rx="150" ry="9"/><ellipse cx="1440" cy="560" rx="110" ry="8"/></g>
+  <use href="#ring" transform="translate(1262 318) rotate(52) scale(0.62)"/>
+  <circle cx="1262" cy="300" r="250" fill="url(#flare)" opacity="0.3"/>
+  <use href="#ship" filter="url(#shadow)" transform="translate(1270 300) rotate(52) scale(0.74)"/>
+  <use href="#ship" transform="translate(1470 170) rotate(52) scale(0.34)"/>
+  <use href="#ship" transform="translate(1040 150) rotate(52) scale(0.28)"/>
+  <circle cx="1120" cy="70" r="90" fill="url(#flare)" opacity="0.8"/>
+  <g filter="url(#tglow)" font-family="'Segoe UI', 'Arial Black', Arial, sans-serif" font-style="italic" font-weight="900" letter-spacing="-3">
+    <text x="64" y="240" font-size="128" fill="none" stroke="#071a5c" stroke-width="22" stroke-linejoin="round">OpenStarship</text>
+    <text x="64" y="240" font-size="128" fill="url(#title)" stroke="#ffffff" stroke-width="2.5" stroke-linejoin="round">OpenStarship</text>
+    <text x="72" y="372" font-size="128" fill="none" stroke="#071a5c" stroke-width="22" stroke-linejoin="round">Earth</text>
+    <text x="72" y="372" font-size="128" fill="url(#gold)" stroke="#fff7c0" stroke-width="2.5" stroke-linejoin="round">Earth</text>
   </g>
-  <circle cx="800" cy="2050" r="1560" fill="#7fd4ff" opacity="0.35"/>
-  <circle cx="800" cy="2070" r="1540" fill="url(#earth)"/>
-  <path d="M0 560 C 200 520 380 540 560 515 C 760 490 900 520 1100 500 C 1300 482 1460 505 1600 520 L 1600 600 L 0 600 Z" fill="#3fbf5a" opacity="0.6"/>
-  <use xlink:href="#ship" href="#ship" transform="translate(1250 320) rotate(55) scale(1.05)"/>
-  <use xlink:href="#ship" href="#ship" transform="translate(1440 190) rotate(55) scale(0.6)"/>
-  <use xlink:href="#ship" href="#ship" transform="translate(1060 170) rotate(55) scale(0.5)"/>
-  <g filter="url(#glow)" font-family="Impact, 'Arial Black', 'Segoe UI', sans-serif" font-style="italic" font-weight="900">
-    <text x="70" y="250" font-size="150" fill="#0b1a6b" stroke="#0b1a6b" stroke-width="26" stroke-linejoin="round" transform="skewX(-10)">OpenStarship</text>
-    <text x="70" y="250" font-size="150" fill="url(#title)" stroke="#d81b1b" stroke-width="6" stroke-linejoin="round" transform="skewX(-10)">OpenStarship</text>
-    <text x="150" y="380" font-size="120" fill="#0b1a6b" stroke="#0b1a6b" stroke-width="24" stroke-linejoin="round" transform="skewX(-10)">EARTH</text>
-    <text x="150" y="380" font-size="120" fill="url(#title)" stroke="#d81b1b" stroke-width="6" stroke-linejoin="round" transform="skewX(-10)">EARTH</text>
-  </g>
-  <text x="84" y="450" font-family="'Segoe UI', Arial, sans-serif" font-size="30" font-weight="700" fill="#e8f4ff">Arcade flight over the real Earth · adventure · city races · bosses</text>
+  <text x="74" y="436" font-family="'Segoe UI', Arial, sans-serif" font-size="29" font-weight="600" fill="#e8f6ff">Arcade flight over the real Earth · adventure · city races · bosses</text>
 </svg>
