@@ -1045,7 +1045,8 @@
     if (!others || now - (st.checkT || 0) < 150) return;
     st.checkT = now;
     const here = [C.Math.toDegrees(s.lon), C.Math.toDegrees(s.lat)], inside = others.find((o) => here[0] >= o.box[0] && here[0] <= o.box[2] && here[1] >= o.box[1] && here[1] <= o.box[3] && turf.booleanPointInPolygon(here, o.f));
-    if (!inside) { st.safe = [s.lon, s.lat]; return; }
+    const inZone = (zs) => zs && zs.some((o) => here[0] >= o.box[0] && here[0] <= o.box[2] && here[1] >= o.box[1] && here[1] <= o.box[3] && turf.booleanPointInPolygon(here, o.f));
+    if (!inside || inZone(st.allow)) { st.safe = [s.lon, s.lat]; return; } // free, or one of the country's own disputed areas
     if (st.safe) { s.lon = st.safe[0]; s.lat = st.safe[1]; }
     s.heading = C.Math.zeroToTwoPi(s.heading + Math.PI); boost = null;
     if (now - (st.warned || 0) > 2500) { st.warned = now; OGE.toast(`${T('No puedes entrar en otro país en esta etapa')}: ${String(inside.f.properties.NAME_ES || inside.f.properties.NAME).replace(/\0/g, '').trim()}`); sfx('shieldBreak'); }
@@ -1108,13 +1109,17 @@
   // ---------- Adventure: a campaign of country stages. Inside a stage the ship cannot leave the country; once all its region flags
   // are collected, the boss of its capital appears; beating it unlocks the next country. Progress is kept on this computer. ----------
   // The adventure, by continent: each one has its own route and progress (the first South American stage keeps the old progress)
-  const ROUTES = { 'Sudamérica': ['CHL', 'ARG', 'URY', 'PRY', 'BOL', 'PER', 'ECU', 'COL', 'VEN', 'BRA'], 'Norte y Centroamérica': ['MEX', 'GTM', 'CRI', 'PAN', 'CUB', 'USA', 'CAN'],
-    'Europa': ['ISL', 'GBR', 'IRL', 'PRT', 'ESP', 'FRA', 'ITA', 'DEU', 'POL', 'GRC'], 'África': ['EGY', 'MAR', 'NGA', 'KEN', 'ZAF', 'MDG'], 'Asia': ['IND', 'CHN', 'JPN', 'IDN', 'TUR'], 'Oceanía': ['AUS', 'NZL'] };
+  const ROUTES = { 'Sudamérica': ['CHL', 'ARG', 'URY', 'PRY', 'BOL', 'PER', 'ECU', 'COL', 'VEN', 'GUY', 'SUR', 'BRA'],
+    'Norteamérica': ['MEX', 'USA', 'CAN'], 'Centroamérica': ['GTM', 'BLZ', 'SLV', 'HND', 'NIC', 'CRI', 'PAN'], 'Caribe': ['CUB', 'JAM', 'HTI', 'DOM', 'BHS', 'TTO'],
+    'Europa': ['ISL', 'GBR', 'IRL', 'PRT', 'ESP', 'FRA', 'ITA', 'CHE', 'DEU', 'POL', 'UKR', 'GRC', 'NOR', 'SWE'], 'Magreb': ['MAR', 'DZA', 'TUN', 'LBY', 'EGY'],
+    'Sahel': ['MRT', 'MLI', 'NER', 'TCD', 'SDN'], 'África subsahariana': ['SEN', 'NGA', 'ETH', 'KEN', 'COD', 'AGO', 'ZAF', 'MDG'],
+    'Medio Oriente': ['TUR', 'SYR', 'JOR', 'IRQ', 'IRN', 'SAU', 'ARE'], 'Asia': ['KAZ', 'UZB', 'IND', 'CHN', 'MNG', 'KOR', 'JPN', 'IDN'], 'Oceanía': ['AUS', 'NZL', 'PNG'] };
   let advCont = ROUTES[localStorage.getItem('oge.advCont')] ? localStorage.getItem('oge.advCont') : 'Sudamérica';
   const route = () => ROUTES[advCont], advKey = () => (advCont === 'Sudamérica' ? 'oge.adventure' : 'oge.adventure.' + advCont);
   // Places some stages ask you to reach before the boss (within ~30 km): Chile's islands and its Antarctic territory
-  const STAGE_GOALS = { CHL: [['Isla de Pascua', -109.35, -27.12], ['Antártica Chilena (Villa Las Estrellas)', -58.97, -62.2]] };
-  let advOthers = null; // [{ f, box }] the countries the adventure stage forbids
+  const STAGE_GOALS = { CHL: [['Isla de Pascua', -109.35, -27.12], ['Antártica Chilena (Villa Las Estrellas)', -58.97, -62.2]],
+    ARG: [['Fortín Sargento Cabral (Base Esperanza)', -56.99, -63.40], ['Cementerio de Darwin (Malvinas)', -58.97, -51.81]] };
+  let advOthers = null, advAllow = null; // [{ f, box }] the countries the adventure stage forbids
   let adv = null, advShape = null, graceT = 0, liveT = 0;
   async function liveEnemies() {
     liveT = performance.now() + 15000; // asked every 15 s
@@ -1134,9 +1139,22 @@
     const [s2, d2] = await Promise.all([fetch(NE + '50m_cultural/ne_50m_admin_0_countries.shp').then((r) => r.arrayBuffer()), fetch(NE + '50m_cultural/ne_50m_admin_0_countries.dbf').then((r) => r.arrayBuffer())]);
     const all = shp.combine([shp.parseShp(s2), shp.parseDbf(d2)]).features, A3 = (x) => String(x.properties.ADM0_A3).replace(/\0/g, '').trim();
     const f = all.find((x) => A3(x) === a3);
-    advOthers = all.filter((x) => x.geometry && A3(x) !== a3 && A3(x) !== 'ATA' && !(a3 === 'ARG' && ['FLK', 'SGS'].includes(A3(x)))).map((x) => ({ f: x, box: turf.bbox(x) })); // the other countries (Antarctica is open to all)
+    const parts = f.geometry.type === 'MultiPolygon' ? f.geometry.coordinates.map((c) => ({ type: 'Polygon', coordinates: c })) : [f.geometry];
+    const mainPart = parts.reduce((a, b) => (turf.area(b) > turf.area(a) ? b : a)), around = new Set(); // exclaves: the country that surrounds each one may be crossed
+    for (const pt of parts) {
+      if (pt === mainPart) continue;
+      const [w, so, e, n] = turf.bbox(pt), m = 0.03;
+      for (const c of [[w - m, so - m], [e + m, so - m], [w - m, n + m], [e + m, n + m]]) for (const x of all) if (x.geometry && A3(x) !== a3 && turf.booleanPointInPolygon(c, x)) around.add(A3(x));
+    }
+    advOthers = all.filter((x) => x.geometry && A3(x) !== a3 && A3(x) !== 'ATA' && !around.has(A3(x)) && !(a3 === 'ARG' && ['FLK', 'SGS'].includes(A3(x)))).map((x) => ({ f: x, box: turf.bbox(x) })); // the other countries (Antarctica is open to all)
     if (!f) return OGE.toast('No se encontró el país de la etapa.', true);
     advShape = f;
+    advAllow = null; // the stage country's claimed or disputed areas (Crimea for Ukraine…): open to it
+    fetch(NE + '10m_cultural/ne_10m_admin_0_disputed_areas.shp').then((r) => r.arrayBuffer()).then(async (b) => {
+      const dbf = await (await fetch(NE + '10m_cultural/ne_10m_admin_0_disputed_areas.dbf')).arrayBuffer(), cl = (v) => String(v ?? '').replace(/\0/g, '').trim();
+      const nm = [cl(f.properties.NAME), cl(f.properties.ADMIN), cl(f.properties.NAME_LONG)].filter(Boolean);
+      advAllow = shp.combine([shp.parseShp(b), shp.parseDbf(dbf)]).features.filter((d) => d.geometry && (cl(d.properties.ADM0_A3) === a3 || nm.some((n) => cl(d.properties.NOTE_BRK).includes(n)))).map((d) => ({ f: d, box: turf.bbox(d) }));
+    }).catch(() => {});
     const name = String(f.properties.NAME_ES || f.properties.NAME).replace(/\0/g, '').trim(), cp = caps && caps.find((x) => x.a3 === a3);
     const c = cp ? [cp.lon, cp.lat] : [+f.properties.LABEL_X, +f.properties.LABEL_Y]; // the stage starts over its capital
     viewer.camera.setView({ destination: C.Cartesian3.fromDegrees(c[0], c[1], 40000), orientation: { heading: 0, pitch: -Math.PI / 2, roll: 0 } });
@@ -1150,7 +1168,7 @@
   function advStep() {
     if (!adv) return;
     const here = [C.Math.toDegrees(s.lon), C.Math.toDegrees(s.lat)];
-    borderStep(adv, advOthers); // the sea, its islands (Easter Island…) and Antarctica are free: only the other countries are off limits
+    adv.allow = advAllow; borderStep(adv, advOthers); // the sea, its islands (Easter Island…) and Antarctica are free: only the other countries are off limits
     if (!regs) return; // the flags of the stage are still loading
     const mine = regs.filter((r) => r.a3 === adv.a3), left = mine.filter((r) => !gotReg.has(r.id)).length;
     adv.left = left;
