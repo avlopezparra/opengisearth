@@ -301,6 +301,12 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
   // ---------- Compass: the needle follows the camera heading; a click turns the view north-up ----------
   scene.postRender.addEventListener(() => { $('compass').firstElementChild.style.transform = `rotate(${-viewer.camera.heading}rad)`; });
   $('compass').onclick = () => viewer.camera.flyTo({ destination: viewer.camera.positionWC.clone(), orientation: { heading: 0, pitch: viewer.camera.pitch, roll: 0 }, duration: 0.6 });
+  // Zoomed far out, the view levels onto the globe as Google Earth does: with the camera still tilted the Earth slid off the window
+  scene.preRender.addEventListener(() => {
+    const c = viewer.camera, h = c.positionCartographic ? c.positionCartographic.height : 0;
+    if (BODY === 'sky' || document.body.classList.contains('flying') || h < 3e6 || c.pitch < -1.56) return;
+    c.setView({ destination: c.positionWC, orientation: { heading: c.heading, pitch: c.pitch + (-Math.PI / 2 - c.pitch) * Math.min(1, (h - 3e6) / 7e6) * 0.15, roll: 0 } }); // the further out, the firmer; from 10,000 km up it looks straight down within a second
+  });
   // GPS: the location service of the browser itself; the position stays on this device
   let gpsDot = null;
   $('gpsBtn').hidden = !!BODY || !navigator.geolocation;

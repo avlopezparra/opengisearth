@@ -642,6 +642,38 @@
     if (cbP.checked) { refreshPlanes(); planeTimer = setInterval(refreshPlanes, window.__TAURI__ ? 10000 : 60000); } else OGE.hint(''); // the web feed allows few requests: once a minute
   });
 
+  // ---------- Live ships: only the ones near the view. The one open AIS feed that asks for no key is Finland's Digitraffic (Fintraffic, CC BY 4.0): the Baltic around Finland ----------
+  const cbV = $('layerShips');
+  let ships = null, shipTimer = null;
+  const shipIcon = (() => { // a hull seen from above, bow up (north)
+    const cv = Object.assign(document.createElement('canvas'), { width: 32, height: 32 }), g = cv.getContext('2d');
+    g.fillStyle = '#ff9f0a'; g.strokeStyle = '#3a2400'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(16, 2); g.lineTo(23, 12); g.lineTo(22, 29); g.lineTo(10, 29); g.lineTo(9, 12); g.closePath(); g.fill(); g.stroke();
+    g.fillStyle = '#fff'; g.fillRect(12, 16, 8, 8);
+    return cv;
+  })();
+  async function refreshShips() {
+    if (!cbV.checked) return;
+    const la = OGE.lookAt && OGE.lookAt(), at = la ? la.carto : viewer.camera.positionCartographic, lon = C.Math.toDegrees(at.longitude), lat = C.Math.toDegrees(at.latitude);
+    if (lat < 58 || lat > 67 || lon < 16 || lon > 32) { ships.removeAll(); return OGE.hint(T('Barcos en vivo: los datos abiertos cubren las aguas de Finlandia (Digitraffic). Lleva la vista al Báltico.')); }
+    try {
+      const km = Math.round(C.Math.clamp(viewer.camera.positionCartographic.height / 2000, 20, 100)); // the closer the view, the smaller the circle asked for
+      const j = await (await fetch(`https://meri.digitraffic.fi/api/ais/v1/locations?latitude=${lat.toFixed(2)}&longitude=${lon.toFixed(2)}&radius=${km}`)).json();
+      const list = (j.features || []).filter((f) => f.geometry && Date.now() - f.properties.timestampExternal < 3600e3).slice(0, 400); // heard within the last hour
+      ships.removeAll();
+      for (const f of list) { const p = f.properties, hd = p.heading != null && p.heading < 360 ? p.heading : p.cog || 0;
+        ships.add({ position: C.Cartesian3.fromDegrees(f.geometry.coordinates[0], f.geometry.coordinates[1], 5), image: shipIcon, scale: 0.5, rotation: -C.Math.toRadians(hd), alignedAxis: C.Cartesian3.ZERO,
+          disableDepthTestDistance: Number.POSITIVE_INFINITY, distanceDisplayCondition: new C.DistanceDisplayCondition(0, 1.5e6), id: { oge: 'ship', mmsi: f.mmsi, sog: p.sog } }); }
+      OGE.hint(`${list.length} ${T('barcos en vivo cerca de la vista')} (Digitraffic, CC BY 4.0).`);
+    } catch (e) { OGE.toast('No se pudieron cargar los barcos en vivo: ' + e.message, true); }
+  }
+  if (cbV.checked) setTimeout(() => cbV.dispatchEvent(new Event('change')), 0);
+  cbV.addEventListener('change', () => {
+    if (!ships) ships = viewer.scene.primitives.add(new C.BillboardCollection());
+    ships.show = cbV.checked;
+    clearInterval(shipTimer);
+    if (cbV.checked) { refreshShips(); shipTimer = setInterval(refreshShips, 60000); } else OGE.hint('');
+  });
+
   // ---------- Live satellites: orbital elements from CelesTrak, positions computed here every second (SGP4, satellite.js) ----------
   let sats = null, satTimer = null, satRecs = null;
   const cbS = $('layerSats');

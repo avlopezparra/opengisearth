@@ -11,7 +11,7 @@
   // vStall/vMax in m/s; thrust: acceleration at full throttle (m/s²); roll/pitch/yaw: maximum angular rates; agl and v0: start
   const PLANES = {
     sr22: { name: 'SR22 — avioneta de hélice, lenta y dócil', vStall: 31, vMax: 95, thrust: 3.2, roll: rad(45), pitch: rad(22), yaw: rad(20), agl: 600, v0: 70 },
-    f16: { name: 'F-16 — caza a reacción, rápido y nervioso', vStall: 72, vMax: 420, thrust: 22, roll: rad(130), pitch: rad(38), yaw: rad(18), agl: 1500, v0: 220 },
+    f16: { name: 'F-16 — caza a reacción, rápido y nervioso', gun: true, vStall: 72, vMax: 420, thrust: 22, roll: rad(130), pitch: rad(38), yaw: rad(18), agl: 1500, v0: 220 },
     // ship: no stall and no gravity (it hovers and climbs to space), bounces off the ground instead of crashing, and fires
     ship: { name: 'OpenStarshipEarth — nave muy rápida con láseres; flota y sube al espacio', ship: true, vStall: 0, vMax: 8000, thrust: 400, roll: rad(220), pitch: rad(75), yaw: rad(35), agl: 3000, v0: 600 },
   };
@@ -43,6 +43,7 @@
   const CHARGE_MS = 700;
   function fire(who = 1, auto = false, power = 1) { // power > 1: a charged shot // auto: aim by itself at the enemy nearest the middle of the view (B key, touch button, pad) // who: 1, or 2 for the local second player (it fires through its own reticle)
     const t = performance.now(), mine = shots.filter((sh) => sh.who === who);
+    if (on && A.gun) return; // the F-16 fires its own cannon (gunStep)
     if (on && !A.ship) return OGE.toast('Disparar y las maniobras son solo de la OpenStarshipEarth.');
     if (!on || paused || (mine.length && t - mine[mine.length - 1].t < 110) || (who === 2 && (!p2 || p2.out || p2.sx == null))) return;
     let ax = who === 2 ? p2.sx : aimMouse ? mouse.x : hud.clientWidth / 2, ay = who === 2 ? p2.sy - p2.R * 1.6 : aimMouse ? mouse.y : hud.clientHeight / 2; // where the lasers go
@@ -103,6 +104,27 @@
     else if (best) { objs.splice(objs.indexOf(best), 1); gain(pts(100)); booms.push({ p: best.p, t: performance.now() }); sfx('down'); }
     if (power > 1 && best) { const c = best.p, t1 = performance.now(); objs = objs.filter((o) => { if (o.kind !== 'enemy' || o === best || C.Cartesian3.distance(o.p, c) > 1500) return true; gain(pts(100)); booms.push({ p: o.p, t: t1 }); return false; }); } // the blast takes the craft around its target too
     credit = 1;
+  }
+  // F-16 cannon: a 20 mm rotary gun like the real one: 511 rounds at 100 a second (five seconds of fire in all), rounds that leave at 1050 m/s over the aircraft's own speed and drop with gravity.
+  // One round in five is a tracer, the only ones drawn. No reload in the air. shortcut: there is nothing to hit yet; add targets if someone asks for them.
+  let rounds = [], ammo = 0, gunHeld = false, gunAcc = 0, gunSnd = 0, gunDust = 0;
+  function gunStep(dt, firing) {
+    const now = performance.now();
+    if (firing && ammo > 0) {
+      gunAcc += dt * 100; const n = Math.min(ammo, Math.floor(gunAcc)); gunAcc -= n; ammo -= n;
+      if (n) { const ax = axesAt(C.Cartesian3.fromRadians(s.lon, s.lat, s.alt), s.heading, s.pitch, s.roll); rounds.push({ p: shipPoint(ax, 1, -1, 8), v: C.Cartesian3.multiplyByScalar(ax.F, s.v + 1050, new C.Cartesian3()), t: now }); } // a tracer for this frame's rounds
+      if (n && now > gunSnd) { gunSnd = now + 55; beep(170, 110, 0.05); }
+    }
+    rounds = rounds.filter((b) => {
+      const up = C.Cartesian3.normalize(b.p, new C.Cartesian3());
+      b.v.x -= up.x * G * dt; b.v.y -= up.y * G * dt; b.v.z -= up.z * G * dt; // it falls as it flies
+      b.p = new C.Cartesian3(b.p.x + b.v.x * dt, b.p.y + b.v.y * dt, b.p.z + b.v.z * dt);
+      if (now - b.t > 3500) return false;
+      const cg = C.Cartographic.fromCartesian(b.p);
+      if (cg.height > (scene.globe.getHeight(cg) || 0)) return true;
+      if (now > gunDust) { gunDust = now + 120; const e = viewer.entities.add({ position: b.p, point: { pixelSize: 7, color: C.Color.fromCssColorString('#d8c9a8'), disableDepthTestDistance: Number.POSITIVE_INFINITY } }); e._tmp = true; setTimeout(() => viewer.entities.remove(e), 350); } // dust where it hits the ground
+      return false;
+    });
   }
   function beep(f0, f1, dur) {
     try {
@@ -755,6 +777,7 @@
     A = PLANES[plane];
     landing = null;
     tut = null;
+    ammo = A.gun ? 511 : 0;
     aimMouse = !!A.ship && !!useAim; mouse.x = hud.clientWidth / 2; mouse.y = hud.clientHeight / 2;
     requestAnimationFrame(() => { mouse.x = hud.clientWidth / 2; mouse.y = hud.clientHeight / 2; }); // once the HUD has its size: the aim starts centred
     if (matchMedia('(pointer: coarse)').matches) { // touch devices: full screen and landscape
@@ -786,7 +809,7 @@
     s = { lon: c.longitude, lat: c.latitude, alt: ground + A.agl, heading: viewer.camera.heading, pitch: 0, roll: 0, v: A.v0, vs: 0,
       throttle: 0.7, flaps: 0, gear: false, brake: false, ail: 0, elev: 0, rud: 0, trim: 0, ground: false, agl: A.agl };
     setWarp(1);
-    auto = nav = padLock = null; pad.free = pad.menu = pad.held = false; loading = performance.now() + 6000; on = true; paused = false; mouseCtl = !!useMouse && !aimMouse; stick.x = stick.y = 0; keys.clear(); last = performance.now();
+    auto = nav = padLock = null; pad.free = pad.menu = pad.held = false; rounds = []; gunHeld = false; loading = performance.now() + 6000; on = true; paused = false; mouseCtl = !!useMouse && !aimMouse; stick.x = stick.y = 0; keys.clear(); last = performance.now();
     if (OGE.activate) OGE.activate(null);
     if (OGE.setEdit) OGE.setEdit(false);
     scene.screenSpaceCameraController.enableInputs = false;
@@ -932,22 +955,24 @@
     regsBusy = true;
     try {
       const get = (p) => fetch(NE + p).then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); });
-      const [ps, pd, flags] = await Promise.all([get('10m_cultural/ne_10m_admin_1_label_points.shp'), get('10m_cultural/ne_10m_admin_1_label_points.dbf'), OGE.flags()]);
+      const [ps, pd, flags, grp] = await Promise.all([get('10m_cultural/ne_10m_admin_1_label_points.shp'), get('10m_cultural/ne_10m_admin_1_label_points.dbf'), OGE.flags(), fetch('data/subregions.json').then((r) => r.json()).catch(() => ({}))]); // grp: units that belong to a larger region (Spanish provinces to their autonomous community)
       const clean = (v) => String(v ?? '').replace(/\0/g, '').trim(), cand = new Map(), imgs = new Map(), out = [];
       for (const f of shp.combine([shp.parseShp(ps), shp.parseDbf(pd)]).features) { // a point for every part of a region (each island too)
         const p = f.properties, id = clean(p.adm1_code), fl = flags.get(clean(p.sr_adm0_a3));
         if (!f.geometry || !id || !fl) continue;
-        if (!cand.has(id)) cand.set(id, { p, fl, pts: [] });
-        cand.get(id).pts.push(f.geometry.coordinates);
+        const big = grp[id], key = big ? fl.a3 + ':' + big : id; // the flag stands for the largest subdivision: one per region, not one per province inside it
+        if (!cand.has(key)) cand.set(key, { p, fl, pts: [], name: big || clean(p.name), ids: new Set() });
+        cand.get(key).pts.push(f.geometry.coordinates); cand.get(key).ids.add(id);
       }
       let lands = null; // country outlines: a flag must stand on land, not offshore
       try { const [s2, d2] = await Promise.all([get('50m_cultural/ne_50m_admin_0_countries.shp'), get('50m_cultural/ne_50m_admin_0_countries.dbf')]); lands = new Map(shp.combine([shp.parseShp(s2), shp.parseDbf(d2)]).features.filter((x) => x.geometry).map((x) => [clean(x.properties.ADM0_A3), x])); } catch { /* without outlines: the nearest point */ }
-      for (const [id, { p, fl, pts }] of cand) {
+      for (const [id, { p, fl, pts, name, ids }] of cand) {
+        if (!ids.has(id) && [...ids].some((x) => gotReg.has(x))) gotReg.add(id); // a province collected before the regions were grouped counts for its region
         const land = lands && lands.get(fl.a3), onLand = land ? pts.filter((c) => turf.booleanPointInPolygon(c, land)) : [];
         const pool = onLand.length ? onLand : pts, [lon, lat] = pool.reduce((a, c) => (Math.hypot(c[0] - fl.lon, c[1] - fl.lat) < Math.hypot(a[0] - fl.lon, a[1] - fl.lat) ? c : a));
         if (!imgs.has(fl.url)) imgs.set(fl.url, Object.assign(new Image(), { src: fl.url }));
         const gh = scene.globe.getHeight(C.Cartographic.fromDegrees(lon, lat));
-        out.push({ id, lon, lat, lifted: gh !== undefined, iso: clean(p.iso_a2), name: clean(p.name), a3: fl.a3, country: fl.name, cont: CONT[fl.cont] || 'Islas oceánicas', p: C.Cartesian3.fromDegrees(lon, lat, (gh || 0) + 2000), img: imgs.get(fl.url) });
+        out.push({ id, lon, lat, lifted: gh !== undefined, iso: clean(p.iso_a2), name, a3: fl.a3, country: fl.name, cont: CONT[fl.cont] || 'Islas oceánicas', p: C.Cartesian3.fromDegrees(lon, lat, (gh || 0) + 2000), img: imgs.get(fl.url) });
       }
       regs = out;
     } catch (e) { OGE.toast('No se pudieron cargar las banderas: ' + e.message, true); }
@@ -2010,6 +2035,7 @@
     if (A && A.ship) engineHum(paused ? 0 : landing === 'parked' ? 0.2 + Math.min(0.8, Math.abs(s.taxi || 0) / 700) : stopped ? 0.15 : 0.45 + 0.55 * s.throttle, Math.log2(Math.max(1, landing === 'parked' ? gWarp : warp)) / 2 + (boost ? 1.5 : 0));
     scene.globe.maximumScreenSpaceError = warp >= 16 ? 5 : warp >= 4 ? 3 : 2; // fast: fewer, coarser tiles first
     controls(dt); warpLabel(); if (auto && landing) endAuto();
+    if (A.gun) gunStep(dt, !s.ground && (keys.has('b') || gunHeld)); // in the air: on the ground B is the brakes
     let pe = s.pitch, rollOff = 0; // effective pitch and extra roll while a maneuver runs
     if (man) {
       const k = (performance.now() - man.t0) / man.dur;
@@ -2226,6 +2252,10 @@
     text(T('GAS ') + Math.round(s.throttle * 100) + '%', x0 + 24, y0 - 92, 12, 'left');
     text(T('FLAPS ') + s.flaps + '/2', x0 + 24, y0 - 74, 12, 'left');
     text(T('TREN ') + T(s.gear ? 'ABAJO' : 'ARRIBA'), x0 + 24, y0 - 56, 12, 'left');
+    if (A.gun) { text(`${T('CAÑÓN')} ${ammo}`, x0 + 24, y0 - 72, 12, 'left'); // rounds left, and the tracers on their way
+      const toW = C.SceneTransforms.worldToWindowCoordinates || C.SceneTransforms.wgs84ToWindowCoordinates; g.save(); g.strokeStyle = '#ffe9a0'; g.shadowColor = '#ff9f0a'; g.shadowBlur = 6; g.lineWidth = 2; g.lineCap = 'round';
+      for (const b of rounds) { if (C.Cartesian3.dot(C.Cartesian3.subtract(b.p, viewer.camera.positionWC, new C.Cartesian3()), viewer.camera.directionWC) <= 0) continue; const q = toW(scene, b.p), q0 = toW(scene, new C.Cartesian3(b.p.x - b.v.x * 0.02, b.p.y - b.v.y * 0.02, b.p.z - b.v.z * 0.02)); if (q && q0) line(q0.x, q0.y, q.x, q.y); }
+      g.restore(); }
     if (s.brake) text(T('FRENOS'), x0 + 24, y0 - 38, 12, 'left');
     if (Math.abs(s.trim) > 0.01) text(T('COMP ') + (s.trim > 0 ? '+' : '') + s.trim.toFixed(2), x0 + 24, y0 - 20, 12, 'left');
 
@@ -2281,6 +2311,8 @@
   });
   hud.addEventListener('click', () => { if (race && A && A.ship && items.length) return useItem(); if (aimMouse) return; mouseCtl = !mouseCtl; stick.x = stick.y = 0; });
   hud.addEventListener('contextmenu', (e) => e.preventDefault());
+  hud.addEventListener('mousedown', (e) => { if (e.button === 2 && on && A.gun) gunHeld = true; }); // the cannon fires while the right button is held
+  window.addEventListener('mouseup', () => { gunHeld = false; });
   hud.addEventListener('mousedown', (e) => { if (e.button === 2 || (e.button === 0 && aimMouse && !(race && A && A.ship && items.length))) trigger(false); }); // the right button always fires, the left one when the mouse aims (with a race item in hand it uses the item); held, they charge
   window.addEventListener('mouseup', letGo);
   document.addEventListener('keydown', (e) => {
