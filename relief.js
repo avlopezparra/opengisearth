@@ -250,7 +250,7 @@
       for (const p of Object.values(js.query.pages)) if (p.imageinfo) thumb.set(p.title.replace(/^File:/, ''), p.imageinfo[0].thumburl);
     }
     const out = new Map();
-    for (const r of rows) { const url = thumb.get(file.get(r.q)), crest = thumb.get(arms.get(r.q)); if (url) out.set(r.a3, { ...r, url, arms: crest ? crest.replace(/\/\d+px-/, '/160px-') : null }); } // a bigger thumbnail for the coat of arms
+    for (const r of rows) { const url = thumb.get(file.get(r.q)), crest = thumb.get(arms.get(r.q)); if (url) out.set(r.a3, { ...r, url, arms: crest ? crest.replace(/\/\d+px-/, '/250px-') : null }); } // a bigger thumbnail for the coat of arms (Wikimedia only serves its standard widths: 160 px is refused)
     if (OGE.malvinasAR && out.has('ARG') && out.has('FLK')) { const ar = out.get('ARG'), fk = out.get('FLK'); out.set('FLK', { ...fk, url: ar.url, a3: 'ARG', name: ar.name, cont: ar.cont }); } // Argentina's flag over the Malvinas from that point of view
     return out;
   })().catch((e) => { flagsP = null; throw e; }));
@@ -448,7 +448,7 @@
     if ((OGE.drawing && OGE.drawing()) || document.body.classList.contains('flying')) return; // not while drawing or flying
     const hit = viewer.scene.pick(ev.position), id = hit && hit.id;
     if (id && id.oge === 'sat') { const s = id.s; OGE.chime(); return OGE.showTable(`🛰 ${s.name}`, [T('Dato'), T('Valor')], [[T('Grupo'), s.group], [T('Altitud'), Math.round(s.alt / 1000).toLocaleString(OGE_LANG) + ' km'], [T('Latitud'), s.lat.toFixed(2) + '°'], [T('Longitud'), s.lon.toFixed(2) + '°'], ['NORAD', s.rec.satnum]], { note: T('Fuente: CelesTrak; posición calculada con SGP4.') }); }
-    if (id && id.oge === 'plane') { const p = id.a; OGE.chime(); return OGE.showTable(`✈ ${(p.flight || p.r || p.hex || '').trim()}`, [T('Dato'), T('Valor')], [[T('Vuelo'), (p.flight || '').trim()], [T('Matrícula'), p.r], [T('Modelo'), p.desc || p.t], [T('Operador'), p.ownOp], [T('Altitud'), typeof p.alt_baro === 'number' ? `${Math.round(p.alt_baro * 0.3048).toLocaleString(OGE_LANG)} m (${p.alt_baro} ft)` : p.alt_baro], [T('Velocidad'), p.gs != null ? `${Math.round(p.gs * 1.852)} km/h` : ''], [T('Rumbo'), p.track != null ? Math.round(p.track) + '°' : ''], [T('Origen y destino'), ''], ['ICAO 24', p.hex]].filter((x) => x[1]), { note: T('Fuente: adsb.fi (datos abiertos ADS-B).') }); }
+    if (id && id.oge === 'plane') { const p = id.a; OGE.chime(); return OGE.showTable(`✈ ${(p.flight || p.r || p.hex || '').trim()}`, [T('Dato'), T('Valor')], [[T('Vuelo'), (p.flight || '').trim()], [T('Matrícula'), p.r], [T('Modelo'), p.desc || p.t], [T('Operador'), p.ownOp], [T('Altitud'), typeof p.alt_baro === 'number' ? `${Math.round(p.alt_baro * 0.3048).toLocaleString(OGE_LANG)} m (${p.alt_baro} ft)` : p.alt_baro], [T('Velocidad'), p.gs != null ? `${Math.round(p.gs * 1.852)} km/h` : ''], [T('Rumbo'), p.track != null ? Math.round(p.track) + '°' : ''], [T('Origen y destino'), ''], ['ICAO 24', p.hex]].filter((x) => x[1]), { note: window.__TAURI__ ? T('Fuente: adsb.fi (datos abiertos ADS-B).') : T('Datos: AvioADSB (CC BY-NC 4.0), avioadsb.org') }); }
     if (id && FACTS[id.oge] && /^Q\d+$/.test(id.q || '')) return wikiInfo(id);
     // nothing picked: with a regional layer on, the municipality (or else the province) under the click, with OpenStreetMap's data and its Wikidata id
     const town = id && id.oge === 'place' && !id.q ? hit.primitive.position : null; // a 10m town: asked to OSM at its position
@@ -557,7 +557,7 @@
       for (const p of shp.parseDbf(await buf('10m_cultural/ne_10m_admin_1_states_provinces.dbf'))) {
         const lon = +p.longitude, lat = +p.latitude, name = clean(OGE_LANG === 'en' ? p.name : p.name_es) || clean(p.name);
         if (!isFinite(lon) || !isFinite(lat) || !name) continue;
-        bills.add({ position: C.Cartesian3.fromDegrees(lon, lat), text: name, font: 'italic 600 13px sans-serif', fillColor: C.Color.fromCssColorString('#ffe9a8'), outlineColor: C.Color.BLACK, outlineWidth: 3, style: C.LabelStyle.FILL_AND_OUTLINE, disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        bills.add({ position: C.Cartesian3.fromDegrees(lon, lat), text: name, font: 'italic 600 13px sans-serif', fillColor: C.Color.fromCssColorString('#ffe9a8'), style: C.LabelStyle.FILL, showBackground: true, backgroundColor: C.Color.fromCssColorString('rgba(10,30,60,0.55)'), backgroundPadding: new C.Cartesian2(5, 3), disableDepthTestDistance: Number.POSITIVE_INFINITY,
           distanceDisplayCondition: new C.DistanceDisplayCondition(0, (+p.min_label || 5) <= 4 ? 4e6 : 2e6), id: { oge: 'region', q: clean(p.wikidataid), name } });
       }
       const occluder = new C.EllipsoidalOccluder(C.Ellipsoid.WGS84, viewer.camera.positionWC);
@@ -583,8 +583,8 @@
         const p = f.properties, name = clean(OGE_LANG === 'en' ? p.name_en : p.name_es) || clean(p.name);
         if (!f.geometry || !name) continue;
         const c = turf.pointOnFeature(f).geometry.coordinates, rank = +p.scalerank || 3, ocean = /ocean/i.test(clean(p.featurecla));
-        labels.add({ position: C.Cartesian3.fromDegrees(c[0], c[1]), text: name, font: `italic ${ocean ? 700 : 600} ${ocean ? 16 : 13}px serif`, fillColor: C.Color.fromCssColorString('#bfe9ff'), outlineColor: C.Color.fromCssColorString('#06324f'), outlineWidth: 3,
-          style: C.LabelStyle.FILL_AND_OUTLINE, disableDepthTestDistance: Number.POSITIVE_INFINITY, distanceDisplayCondition: new C.DistanceDisplayCondition(0, ocean ? 4e7 : rank <= 2 ? 1.2e7 : rank <= 4 ? 5e6 : 2e6), id: { oge: 'region', q: clean(p.wikidataid), name } });
+        labels.add({ position: C.Cartesian3.fromDegrees(c[0], c[1]), text: name, font: `italic ${ocean ? 700 : 600} ${ocean ? 16 : 13}px serif`, fillColor: C.Color.fromCssColorString('#d6f1ff'),
+          style: C.LabelStyle.FILL, disableDepthTestDistance: Number.POSITIVE_INFINITY, distanceDisplayCondition: new C.DistanceDisplayCondition(0, ocean ? 4e7 : rank <= 2 ? 1.2e7 : rank <= 4 ? 5e6 : 2e6), id: { oge: 'region', q: clean(p.wikidataid), name } });
       }
       const occ = new C.EllipsoidalOccluder(C.Ellipsoid.WGS84, viewer.camera.positionWC);
       viewer.scene.preRender.addEventListener(() => { if (!labels.show) return; occ.cameraPosition = viewer.camera.positionWC; for (let i = 0; i < labels.length; i++) { const l = labels.get(i); l.show = occ.isPointVisible(l.position); } });
@@ -605,11 +605,16 @@
   OGE.planeIcon = planeIcon;
   let planes = null, planeTimer = null; // planes: BillboardCollection of the live aircraft
   const cbP = $('layerPlanes');
-  if (!window.__TAURI__) { cbP.checked = false; cbP.closest('li').hidden = true; } // the web page cannot read the feeds: the layer is only in the desktop app
+  if (!window.__TAURI__) { cbP.checked = false; cbP.parentElement.lastChild.textContent = ' ' + T('Aviones en vivo (AvioADSB)'); } // on the web the layer is off until asked for (its feed has a daily limit)
   OGE.livePlanes = async (lon, lat, km = 250) => { // the aircraft around a point (the flight game uses them too)
     const url = `https://opendata.adsb.fi/api/v2/lat/${lat.toFixed(3)}/lon/${lon.toFixed(3)}/dist/${Math.min(250, Math.round(km))}`;
     const tauri = window.__TAURI__ && window.__TAURI__.core; // the open flight feeds refuse browsers (no CORS): the desktop program fetches them itself
-    if (!tauri) throw new Error(T('los datos de vuelos en vivo solo se pueden leer desde el programa de escritorio (EXE), no desde la página web'));
+    if (!tauri) { // the web page: AvioADSB, the one open feed that lets browsers read it (same readsb fields; fewer receivers; 1 request every 10 s and 100 a day per network)
+      const res = await fetch(`https://avioadsb.org/v1/point/${lat.toFixed(3)}/${lon.toFixed(3)}/100`);
+      if (res.status === 429) throw new Error(T('límite de consultas de AvioADSB alcanzado por hoy; la app de escritorio no tiene ese límite'));
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return ((await res.json()).ac || []).filter((a) => a.lat != null && a.lon != null);
+    }
     const j = JSON.parse(await tauri.invoke('fetch_text', { url }));
     return (j.aircraft || []).filter((a) => a.lat != null && a.lon != null);
   };
@@ -626,7 +631,7 @@
           disableDepthTestDistance: Number.POSITIVE_INFINITY, distanceDisplayCondition: new C.DistanceDisplayCondition(0, 3e6),
           id: { oge: 'plane', a } });
       }
-      OGE.hint(`${list.length} ${T('aviones en vivo cerca de la vista')} (adsb.fi).`);
+      OGE.hint(`${list.length} ${T('aviones en vivo cerca de la vista')} (${window.__TAURI__ ? 'adsb.fi' : 'AvioADSB, CC BY-NC 4.0'}).`);
     } catch (e) { OGE.toast('No se pudieron cargar los aviones en vivo: ' + e.message, true); }
   }
   if (cbP.checked) setTimeout(() => cbP.dispatchEvent(new Event('change')), 0);
@@ -634,7 +639,7 @@
     if (!planes) planes = viewer.scene.primitives.add(new C.BillboardCollection());
     planes.show = cbP.checked;
     clearInterval(planeTimer);
-    if (cbP.checked) { refreshPlanes(); planeTimer = setInterval(refreshPlanes, 10000); } else OGE.hint('');
+    if (cbP.checked) { refreshPlanes(); planeTimer = setInterval(refreshPlanes, window.__TAURI__ ? 10000 : 60000); } else OGE.hint(''); // the web feed allows few requests: once a minute
   });
 
   // ---------- Live satellites: orbital elements from CelesTrak, positions computed here every second (SGP4, satellite.js) ----------
