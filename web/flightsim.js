@@ -162,7 +162,7 @@
   const TH = window.OGE_THEME, VOICE = { lead: ['sawtooth', 0.045], harmony: ['square', 0.018], bass: ['triangle', 0.09] };
   // [modulator ratio, modulation index at the attack, index it decays to, decay seconds, volume, carrier detune in cents]
   const FM = { lead: [1, 3.2, 1.1, 0.25, 0.07, 4], harmony: [2, 1.6, 0.4, 0.4, 0.028, -6], bass: [1, 4.5, 1.4, 0.12, 0.11, 0] };
-  const MUSIC = 0.55; // how loud the music plays: under the sound effects
+  const MUSIC = 0.4; // how loud the music plays: under the sound effects
   let musicBus = null; // music → (dry + echo) → master
   function bus() {
     if (musicBus) return musicBus;
