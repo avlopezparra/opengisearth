@@ -221,11 +221,17 @@
     }
     th.bass = bass; th.harmony = notes.sort((x, y) => x[0] - y[0]).flat(); th.drums = drums;
   }
+  // The atlas plays a quiet piece of its own on each world (the sky has its own switch, in sky.js); a button switches it off and the choice is kept. Browsers only let sound start after a click.
+  const atlasTheme = () => (OGE.body === 'moon' ? window.OGE_ATLAS_MOON_THEME : OGE.body === 'mars' ? window.OGE_ATLAS_MARS_THEME : OGE.body === 'sky' ? null : window.OGE_ATLAS_THEME), wantsAtlas = () => localStorage.getItem('oge.atlasMusic') !== '0';
+  function atlasMusic() { const th = atlasTheme(), w = wantsAtlas(); $('musicBtn').textContent = T(w ? 'Música: sí' : 'Música: no'); if (th && !on && w !== (tune === th)) music(w, th); }
+  $('musicBtn').onclick = () => { const th = atlasTheme(); if (!(wantsAtlas() && th && !on && tune !== th)) localStorage.setItem('oge.atlasMusic', wantsAtlas() ? '0' : '1'); atlasMusic(); }; // wanted but still silent (no click yet): the click only starts it
+  $('musicBtn').hidden = OGE.body === 'sky'; $('musicBtn').textContent = T(wantsAtlas() ? 'Música: sí' : 'Música: no');
+  addEventListener('pointerdown', (e) => { if (e.target.id !== 'musicBtn') atlasMusic(); });
   OGE.music = (play, th) => music(play, th); // the sky view of the atlas plays its own piece
   let tune = null; // the theme playing now: Main Theme or Boss Fight OpenStarshipEarth
   function music(play, th = TH) {
     clearInterval(musicTimer); musicTimer = null; tune = play ? th : null;
-    style = th === window.OGE_RACE_THEME ? STYLE.race : th === window.OGE_ADV_THEME ? STYLE.adventure : th === window.OGE_BOSS_THEME ? STYLE.boss : STYLE.main;
+    style = th === window.OGE_RACE_THEME ? STYLE.race : th === window.OGE_ADV_THEME ? STYLE.adventure : th === window.OGE_BOSS_THEME || (th && th === window.OGE_FINAL_THEME) ? STYLE.boss : STYLE.main;
     if (musicBus) musicBus.wet.gain.value = style.echo;
     if (!play || !th) return;
     if (th === window.OGE_ADV_THEME) march(th);
@@ -238,7 +244,7 @@
         const n = th[k] || [];
         while (idx[k] < n.length && n[idx[k]] < until) {
           const at = t0 + n[idx[k]] * u, len = n[idx[k] + 1] * u, pitch = n[idx[k] + 2];
-          if (!paused && at > audio.currentTime - 0.05) { if (k === 'drums') drum(pitch, at); else fmTone(k, pitch, at, Math.min(len, th === window.OGE_SKY_THEME ? 6 : 1.5)); } // the slow sky piece holds its notes
+          if (!paused && at > audio.currentTime - 0.05) { if (k === 'drums') drum(pitch, at); else fmTone(k, pitch, at, Math.min(len, th.bpm < 100 ? 6 : 1.5)); } // the slow sky piece holds its notes
           idx[k] += 3;
         }
       }
@@ -441,7 +447,7 @@
   // ---------- OpenStarshipEarth arcade: random enemies to shoot, rings to fly through and coins to collect ----------
   // The objects live in the 3D world and are drawn on the HUD at their projected position and size.
   let bursts = []; // bosses blowing up: { p, t, color }
-  let arcade = false, objs = [], booms = [], score = 0, coins = 0;
+  let arcade = false, objs = [], booms = [], score = 0, coins = 0, tut = null; // tut: the tutorial under way
   let maxHp = 100; // grows with the life boosters found over big cities
   let run = { flags: 0, caps: 0, bosses: 0 }; // collected in this flight, for the scoreboard
   let hp = 100, bombs = 3, incoming = [], flash = 0, hit = 0; // incoming: enemy shots { p, vel, t }; flash/hit: time of the last bomb / damage
@@ -493,10 +499,15 @@
     if (BOSSES[o.type].grab && o.phase === 'windup') { n *= 2; o.phase = 'stun'; o.pt = performance.now(); o.held = 0; OGE.toast(T('¡Punto débil! La mano se retira.')); } // caught open: double damage and it backs off
     o.hp -= n; o.hitT = performance.now(); booms.push({ p: o.p, t: performance.now() }); beep(260, 90, 0.2); sfx('bossHit'); // a metallic clang for every hit
     if (BOSSES[o.type].weak && (o.hp === 5 || o.hp === 2)) { o.stage = o.hp === 5 ? 2 : 3; o.lockT = performance.now() + 3000; OGE.toast(`${T('El Acorazado cierra su reactor: fase')} ${o.stage}/3`); sfx('warpUp'); } // next phase: it shuts and fires faster
+    // A final boss has three phases, by thirds of its life: each fires faster and wider than the last, and opens with an escort
+    if (o.fin && o.hp > 0) { const ph = o.hp <= o.max / 3 ? 3 : o.hp <= (o.max * 2) / 3 ? 2 : 1;
+      if (ph > o.stage) { o.stage = ph; o.rage = ph === 3; sfx('warpUp'); OGE.toast(`${T(o.name)}: ${T('fase')} ${ph}/3`);
+        for (let k = 0; k < ph; k++) objs.push({ kind: 'enemy', from: o, look: 2, p: C.Cartesian3.add(o.p, C.Cartesian3.multiplyByScalar(o.east, (k - (ph - 1) / 2) * 1800, new C.Cartesian3()), new C.Cartesian3()), size: 260, next: performance.now() + 1500 }); } }
     if (o.hp > 0) return;
     bursts.push({ p: C.Cartesian3.clone(o.p), t: performance.now(), color: BOSSES[o.type].color });
     objs.splice(objs.indexOf(o), 1); gain(pts(o.from ? 300 : 1000)); if (!o.from) run.bosses++; flash = performance.now(); sfx('boss');
     if (o.type === 'face') objs = objs.filter((x) => { if (x.from !== o) return true; booms.push({ p: x.p, t: performance.now() }); return false; }); // its hands fall with it
+    if (o.fin) { localStorage.setItem('oge.adventure.final.' + advCont, '1'); gain(pts(4000)); OGE.toast(`${T(o.name)} ${T('ha caído.')} ${T('¡Completaste la aventura de')} ${T(advCont)}!`); sfx('achieve'); adv = null; }
     if (o.cap) { // the practice boss of the tutorial guards no capital
       const c = o.cap; dropCrest(c); owe(c, true);
       OGE.toast(`${T('Jefe derrotado: recoge el escudo de')} ${c.name}.`);
@@ -543,7 +554,7 @@
     if (auto) return; // the autopilot brings its own enemies
     if (A.ship && s.alt > 1e5 && warp > 100) { if (objs.length || incoming.length) { objs = objs.filter((o) => o.kind === 'boss' || o.kind === 'crest'); incoming = []; } return; } // hyper turbo: nothing to dodge or collect on the way (it would run into everything); at the turbo of the air, space has its enemies and prizes too
     if (!tut && !race && performance.now() > aaT) aaSites();
-    if (tune) { const BT = window.OGE_BOSS_THEME, near = BT && objs.some((o) => o.kind === 'boss' && C.Cartesian3.distance(o.p, viewer.camera.positionWC) < 1e5), base = (OGE.body === 'moon' && window.OGE_MOON_THEME) || (OGE.body === 'mars' && window.OGE_MARS_THEME) || (adv && window.OGE_ADV_THEME) || (race && window.OGE_RACE_THEME) || TH, want = near ? BT : base; if (want !== tune) music(true, want); } // Boss Fight OpenStarshipEarth while a boss is close
+    if (tune) { const BT = (adv && adv.final && window.OGE_FINAL_THEME) || window.OGE_BOSS_THEME, near = BT && objs.some((o) => o.kind === 'boss' && C.Cartesian3.distance(o.p, viewer.camera.positionWC) < 1e5), base = (OGE.body === 'moon' && window.OGE_MOON_THEME) || (OGE.body === 'mars' && window.OGE_MARS_THEME) || (adv && window.OGE_ADV_THEME) || (race && window.OGE_RACE_THEME) || (s.alt > (tune === window.OGE_SPACE_THEME ? SPACE * 0.8 : SPACE) && window.OGE_SPACE_THEME) || TH, want = near ? BT : base; if (want !== tune) music(true, want); } // Boss Fight OpenStarshipEarth while a boss is close
     const cam = viewer.camera, t = new C.Cartesian3(), far = reach() * 2.5, eff = s.v * warp, slack = eff * 0.03, now = performance.now(); // slack: distance covered in one frame
     const rolling = man && man.type === 'roll'; // a barrel roll deflects enemies and shots
     for (const o of objs.filter((x) => x.kind === 'boss' && x.type === 'face')) for (const side of [-1, 1]) { // the stone face grows back a hand 25 s after losing it
@@ -597,7 +608,7 @@
         }
         if (B.phases && o.hp <= o.max / 2 && !o.rage) { o.rage = true; OGE.toast(T('¡El Faro entra en furia!')); sfx('warpUp'); } // second phase
         if (d < o.size + slack && now - hit > 800 && !rolling) hurt(30);
-        return d < 4e5;
+        return (o.from || o).fin || d < 4e5;
       }
       if (o.kind === 'mine' && performance.now() > o.until) return false; // mines go off after a while
       if (o.lon != null && !o.lifted && ['itembox', 'gate', 'zip', 'scoin'].includes(o.kind)) { const gh = scene.globe.getHeight(C.Cartographic.fromDegrees(o.lon, o.lat)); if (gh !== undefined) { o.p = C.Cartesian3.fromDegrees(o.lon, o.lat, gh + (o.up || 1200)); o.lifted = true; } } // over the terrain once it is known
@@ -642,12 +653,12 @@
       if (o.kind === 'octo' && C.Cartesian3.distance(o.p, cam.positionWC) > 1.2e4) { o.next = now + 1500; continue; }
       if (o.kind === 'ship' && C.Cartesian3.distance(o.p, cam.positionWC) > 1.4e4) { o.next = now + 1500; continue; } // its guns reach further than the octopus's ink
       if (o.kind === 'aa' && C.Cartesian3.distance(o.p, cam.positionWC) > 1e4) { o.next = now + 1500; continue; } // anti-aircraft: only within 10 km
-      o.next = now + DIFF[diff].fire * (boss ? (BOSSES[o.type].every / (o.stage || 1)) * (0.8 + Math.random() * 0.4) : o.kind === 'ship' ? 1600 + Math.random() * 1400 : 4000 + Math.random() * 4000); // a warship fires about three times as often
+      o.next = now + DIFF[diff].fire * (boss ? (BOSSES[o.type].every / (o.fin ? 0.6 + 0.4 * o.stage : o.stage || 1)) * (0.8 + Math.random() * 0.4) : o.kind === 'ship' ? 1600 + Math.random() * 1400 : 4000 + Math.random() * 4000); // a warship fires about three times as often
       const d = C.Cartesian3.distance(o.p, cam.positionWC), speed = (eff * 0.5 + 600) * DIFF[diff].shot, tt = d / (speed + eff);
       if (boss ? d > Math.max(reach() * 1.3, 6e4) : d > reach() * 1.3 || C.Cartesian3.dot(C.Cartesian3.subtract(o.p, cam.positionWC, t), cam.directionWC) < 0) continue;
       const target = C.Cartesian3.add(p2 && !p2.out && p2.p && Math.random() < 0.5 ? p2.p : cam.positionWC, C.Cartesian3.multiplyByScalar(cam.directionWC, eff * tt, new C.Cartesian3()), new C.Cartesian3()); // half the shots go for player 2
       const panels = boss && o.type === 'face' && (o.volley = (o.volley || 0) + 1) % 2 === 1; // the stone face spits panels one volley, fires lasers the next
-      const n = boss ? (o.rage ? 8 : panels ? 7 : BOSSES[o.type].shots) : 1; // a volley fans out sideways (a raging beacon fires eight)
+      const n = boss ? (o.rage ? 8 : panels ? 7 : BOSSES[o.type].shots + (o.fin ? o.stage : 0)) : 1; // a volley fans out sideways (a raging beacon fires eight)
       if (boss || o.kind === 'aa' || o.kind === 'octo' || o.kind === 'ship') o.spat = now;
       for (let i = 0; i < n; i++) {
         const spread = o.rage ? 0.18 : panels ? 0.09 : 0.05, aim = C.Cartesian3.add(target, C.Cartesian3.multiplyByScalar(o.rage && i % 2 ? cam.upWC : cam.rightWC, (i - (n - 1) / 2) * d * spread, new C.Cartesian3()), new C.Cartesian3());
@@ -726,7 +737,7 @@
         const R = Math.max(14, pr);
         drawBoss(o, q.x, q.y, R, now);
         g.shadowBlur = 0; g.fillStyle = '#300'; g.fillRect(q.x - 40, q.y - R * 1.5 - 16, 80, 6); g.fillStyle = '#ff453a'; g.fillRect(q.x - 40, q.y - R * 1.5 - 16, (80 * o.hp) / o.max, 6); // its life
-        g.fillStyle = '#fff'; g.textAlign = 'center'; g.font = '600 12px sans-serif'; g.fillText(`${T(BOSSES[o.type].name)} · ${o.cap ? o.cap.name : T('práctica')} · ${o.hp}/${o.max}`, q.x, q.y - R * 1.5 - 22);
+        g.fillStyle = '#fff'; g.textAlign = 'center'; g.font = '600 12px sans-serif'; g.fillText(`${o.fin ? T(o.name) + ' · ' + T('fase') + ' ' + o.stage + '/3' : T(BOSSES[o.type].name) + ' · ' + (o.cap ? o.cap.name : T('práctica'))} · ${o.hp}/${o.max}`, q.x, q.y - R * 1.5 - 22);
       }
       else if (o.kind === 'airliner') { // a real flight: the airliner icon turned along its track, with its callsign
         const R = Math.max(14, pr * 2); drawMesh(AIRLINER, axesAt(o.p, rad(o.a.track || 0), 0, 0), { h: '#f4f6f9', s: '#d5dae3', d: '#9aa3b2', w: '#ffd60a' }, now - (o.hitT || 0) < 90, meshScale(o.p, R, h), '#ffd60a', true);
@@ -775,7 +786,7 @@
       g.save(); g.fillStyle = g.shadowColor = '#40e0ff'; g.shadowBlur = 14; g.beginPath(); g.arc(q.x, q.y, 7, 0, 7); g.fill(); g.fillStyle = '#e8fbff'; g.textAlign = 'center'; g.font = '600 12px sans-serif'; g.fillText(gl.n, q.x, q.y + 22); g.restore();
     }
     if (race) drawRace(g, w, text);
-    if (adv) text(`${T('ETAPA')} ${adv.i + 1}: ${adv.name} · ${adv.boss ? T('¡derrota al jefe!') : (adv.left ?? '?') + ' ' + T('banderas restantes') + (adv.goalsLeft ? ` · ${T('visita')}: ${adv.goals.filter((gl) => !gl.done).map((gl) => gl.n).join(', ')}` : '')}`, 24, 136, 14, 'left');
+    if (adv) text(`${adv.final ? T('JEFE FINAL') : T('ETAPA') + ' ' + (adv.i + 1)}: ${adv.name} · ${adv.boss ? T('¡derrota al jefe!') : (adv.left ?? '?') + ' ' + T('banderas restantes') + (adv.goalsLeft ? ` · ${T('visita')}: ${adv.goals.filter((gl) => !gl.done).map((gl) => gl.n).join(', ')}` : '')}`, 24, 136, 14, 'left');
     text(`${T('PUNTOS')} ${score}  ·  ${T('MONEDAS')} ${coins}  ·  ${T('BOMBAS')} ${bombs}`, 24, 96, 16, 'left'); // below the heading tape
     g.save(); g.strokeRect(24, 110, 180, 12); g.fillStyle = hp > maxHp / 2 ? '#39ff14' : hp > maxHp / 4 ? '#ffd60a' : '#ff453a'; g.fillRect(24, 110, (180 * Math.max(0, hp)) / maxHp, 12); g.restore();
     text(`${T('VIDA')} ${Math.max(0, Math.round(hp))}/${maxHp}  ·  ${T('ESCUDOS')} ${shields}/3`, 212, 117, 12, 'left');
@@ -1301,9 +1312,15 @@
   const ROUTES = { 'Sudamérica': ['CHL', 'ARG', 'URY', 'PRY', 'BOL', 'PER', 'ECU', 'COL', 'VEN', 'GUY', 'SUR', 'BRA'],
     'Norteamérica': ['MEX', 'USA', 'CAN'], 'Centroamérica': ['GTM', 'BLZ', 'SLV', 'HND', 'NIC', 'CRI', 'PAN'], 'Caribe': ['CUB', 'JAM', 'HTI', 'DOM', 'BHS', 'TTO'],
     'Europa': ['ISL', 'GBR', 'IRL', 'PRT', 'ESP', 'FRA', 'ITA', 'CHE', 'DEU', 'POL', 'UKR', 'GRC', 'NOR', 'SWE'], 'Magreb': ['MAR', 'DZA', 'TUN', 'LBY', 'EGY'],
-    'Sahel': ['MRT', 'MLI', 'NER', 'TCD', 'SDN'], 'África subsahariana': ['SEN', 'NGA', 'ETH', 'KEN', 'COD', 'AGO', 'ZAF', 'MDG'],
-    'Medio Oriente': ['TUR', 'SYR', 'JOR', 'IRQ', 'IRN', 'SAU', 'ARE'], 'Asia': ['KAZ', 'UZB', 'IND', 'CHN', 'MNG', 'KOR', 'JPN', 'IDN'], 'Oceanía': ['AUS', 'NZL', 'PNG'],
+    'Sahel': ['MRT', 'MLI', 'NER', 'TCD', 'SDN'], 'África subsahariana': ['SEN', 'NGA', 'ETH', 'KEN', 'TZA', 'COD', 'AGO'], 'África del Sur': ['NAM', 'BWA', 'ZWE', 'MOZ', 'SWZ', 'LSO', 'ZAF', 'MDG'],
+    'Medio Oriente': ['TUR', 'SYR', 'JOR', 'IRQ', 'IRN', 'SAU', 'ARE'], 'Asia central': ['KAZ', 'KGZ', 'TJK', 'UZB', 'TKM'], 'Asia del Sur': ['PAK', 'IND', 'NPL', 'BTN', 'BGD', 'LKA'], 'Asia oriental': ['MNG', 'CHN', 'PRK', 'KOR', 'JPN'],
+    'Sudeste asiático': ['MMR', 'THA', 'LAO', 'KHM', 'VNM', 'MYS', 'IDN', 'PHL'], 'Oceanía': ['AUS', 'NZL', 'PNG'],
     'Ultramar': ['GRL', 'FRO', 'BMU', 'PRI', 'ABW', 'CUW', 'CYM', 'NCL', 'PYF', 'GUM'] }; // territories of other countries, a campaign of their own
+  // The final boss of each campaign: [name, boss kind, lon, lat]. A creature of the region's legends at a place of its own, played by one of the boss kinds above.
+  const FINALS = { 'Sudamérica': ['Amaru', 'snake', -72.545, -13.163, 1], 'Norteamérica': ['Ave Piasa', 'dragon', -90.19, 38.89, 2], 'Centroamérica': ['Camazotz', 'saucer', -89.623, 17.222, 3], 'Caribe': ['Lusca', 'beacon', -77.5, 24.4, 4],
+    'Europa': ['Medusa', 'face', 25.0, 38.4, 5], 'Magreb': ['Anteo', 'golem', -5.8, 35.78, 6], 'Sahel': ['Bida', 'snake', -7.97, 15.77, 7], 'África subsahariana': ['Mokele-mbembe', 'fortress', 17.15, 1.35, 8], 'África del Sur': ['Adamastor', 'face', 18.47, -34.36, 14],
+    'Medio Oriente': ['Tiamat', 'dragon', 50.5, 27.5, 9], 'Asia central': ['Zhalmauyz Kempir', 'hive', 79.08, 43.35, 10], 'Asia del Sur': ['Makara', 'crystal', 88.0, 17.0, 13], 'Asia oriental': ['Yamata no Orochi', 'snake', 132.75, 35.4, 11],
+    'Sudeste asiático': ['Bakunawa', 'saucer', 124.5, 11.5, 12], 'Oceanía': ['Bunyip', 'golem', 142.0, -34.2, 15], 'Ultramar': ['Kraken', 'hive', -8.0, 63.5, 16] };
   let advCont = ROUTES[localStorage.getItem('oge.advCont')] ? localStorage.getItem('oge.advCont') : 'Sudamérica';
   const route = () => ROUTES[advCont], advKey = () => (advCont === 'Sudamérica' ? 'oge.adventure' : 'oge.adventure.' + advCont);
   // Places some stages ask you to reach before the boss (within ~30 km): Chile's islands and its Antarctic territory
@@ -1341,16 +1358,29 @@
   const advDone = () => +localStorage.getItem(advKey()) || 0; // stages beaten on this continent
   async function pickAdventure() { // any stage of any continent's campaign, not only the next one
     const fm = flagMap || await OGE.flags().catch(() => null), name = (a3) => (fm && fm.get(a3) && fm.get(a3).name) || a3, opts = []; // the countries by name once the flags table is in; by code otherwise
-    for (const k of Object.keys(ROUTES)) { const done = +localStorage.getItem(k === 'Sudamérica' ? 'oge.adventure' : 'oge.adventure.' + k) || 0; ROUTES[k].forEach((a3, i) => { if (i <= done) opts.push([k + '|' + i, `${T(k)} · ${i + 1}. ${name(a3)}${i < done ? ' — ' + T('superada') : ''}`]); }); } // only the stages beaten and the next one
+    for (const k of Object.keys(ROUTES)) { const done = +localStorage.getItem(k === 'Sudamérica' ? 'oge.adventure' : 'oge.adventure.' + k) || 0; ROUTES[k].forEach((a3, i) => { if (i <= done) opts.push([k + '|' + i, `${T(k)} · ${i + 1}. ${name(a3)}${i < done ? ' — ' + T('superada') : ''}`]); }); if (done >= ROUTES[k].length) opts.push([k + '|' + done, `${T(k)} · ${T('Jefe final')}: ${T(FINALS[k][0])}${localStorage.getItem('oge.adventure.final.' + k) ? ' — ' + T('superada') : ''}`]); } // only the stages beaten and the next one
     const v = await OGE.ask({ title: 'Aventura: elegir etapa', ok: 'Jugar', help: 'Cada continente es una campaña. Sus etapas se desbloquean a medida que avanzas: puedes repetir las superadas o seguir con la siguiente.',
-      fields: [{ id: 'st', label: 'Campaña y etapa', type: 'select', value: advCont + '|' + Math.min(advDone(), route().length - 1), options: opts }] });
+      fields: [{ id: 'st', label: 'Campaña y etapa', type: 'select', value: advCont + '|' + advDone(), options: opts }] });
     if (!v) return;
     const [k, i] = String(v.st).split('|'); if (!ROUTES[k]) return;
     advCont = k; localStorage.setItem('oge.advCont', k); adventure(+i);
   }
+  function finalBoss() { // the last fight of a campaign: no borders and no flags to collect, only the creature at its place
+    const [nm, type, lon, lat, song] = FINALS[advCont], B = BOSSES[type], now = performance.now();
+    window.OGE_FINAL_THEME = null; document.head.append(Object.assign(document.createElement('script'), { src: `finals/${String(song).padStart(2, '0')}.js` })); // its battle theme, fetched now
+    viewer.camera.setView({ destination: C.Cartesian3.fromDegrees(lon, lat - 0.25, 40000), orientation: { heading: 0, pitch: -Math.PI / 2, roll: 0 } }); // some 28 km south of it
+    advOthers = []; advAllow = null; advShape = null;
+    adv = { i: route().length, a3: '', name: T(nm), final: true, boss: true, cap: null, goals: [{ n: T(nm), lon, lat, p: C.Cartesian3.fromDegrees(lon, lat, 300), done: false }] }; // the goal keeps its place marked on the minimap
+    start('ship', true, true, true, false);
+    graceT = now + 6000;
+    const base = C.Cartesian3.fromDegrees(lon, lat, (scene.globe.getHeight(C.Cartographic.fromDegrees(lon, lat)) || 0) + 6000), hp = Math.ceil(B.hp * 2.5 * DIFF[diff].boss); // far tougher than a capital's boss
+    objs.push({ kind: 'boss', born: now, type, cap: null, fin: true, name: nm, stage: 1, base, p: C.Cartesian3.clone(base), east: C.Cartesian3.normalize(C.Cartesian3.cross(C.Cartesian3.UNIT_Z, base, new C.Cartesian3()), new C.Cartesian3()), size: 1000, hp, max: hp, next: now + 8000 });
+    OGE.toast(`${T('Jefe final')}: ${T(nm)}. ${T('Tiene tres fases: en cada una ataca con más fuerza.')}`);
+  }
   async function adventure(stage = advDone()) {
     relaunch = () => adventure(stage);
     mpGo({ mode: 'adventure', cont: advCont, stage });
+    if (stage >= route().length) return finalBoss(); // every stage beaten: the final boss
     const a3 = route()[Math.min(stage, route().length - 1)];
     const [s2, d2] = await Promise.all([fetch(NE + '50m_cultural/ne_50m_admin_0_countries.shp').then((r) => r.arrayBuffer()), fetch(NE + '50m_cultural/ne_50m_admin_0_countries.dbf').then((r) => r.arrayBuffer())]);
     const all = shp.combine([shp.parseShp(s2), shp.parseDbf(d2)]).features, A3 = (x) => String(x.properties.ADM0_A3).replace(/\0/g, '').trim();
@@ -1383,7 +1413,7 @@
     OGE.toast(`${T('Etapa')} ${stage + 1}/${route().length}: ${name}. ${T('Recoge todas sus banderas y luego derrota al jefe de la capital.')}`);
   }
   function advStep() {
-    if (!adv) return;
+    if (!adv || adv.final) return;
     const here = [C.Math.toDegrees(s.lon), C.Math.toDegrees(s.lat)];
     adv.allow = advAllow; borderStep(adv, advOthers); // the sea, its islands (Easter Island…) and Antarctica are free: only the other countries are off limits
     if (!regs) return; // the flags of the stage are still loading
@@ -1399,10 +1429,10 @@
     if (adv.boss && (!adv.cap || got.has(capId(adv.cap)))) { // its capital won (or none to win): stage cleared
       localStorage.setItem(advKey(), String(Math.max(advDone(), adv.i + 1))); localStorage.removeItem('oge.advGoals.' + adv.a3);
       const next = adv.i + 1;
-      OGE.toast(next < route().length ? `${T('¡Etapa superada!')} ${T('Siguiente')}: ${route()[next]}.` : `${T('¡Completaste la aventura de')} ${T(advCont)}!`);
+      OGE.toast(`${T('¡Etapa superada!')} ${next < route().length ? T('Siguiente') + ': ' + route()[next] : T('Jefe final') + ': ' + T(FINALS[advCont][0])}.`);
       sfx('achieve');
       adv = null; advShape = null;
-      if (next < route().length) setTimeout(() => { stop(); adventure(next); }, 2500);
+      setTimeout(() => { stop(); adventure(next); }, 2500);
     }
   }
 
@@ -1417,7 +1447,7 @@
   function showFlags() { syncRegs(); // the region flags collected: the stage's in the adventure, otherwise the totals per country
     if (!regs) return OGE.toast(T('Las banderas aún se están cargando.'));
     menuPause();
-    if (adv) {
+    if (adv && !adv.final) {
       const mine = regs.filter((r) => r.a3 === adv.a3).sort((a, b) => a.name.localeCompare(b.name));
       return OGE.showTable(`${T('Banderas de')} ${adv.name}: ${mine.filter((r) => gotReg.has(r.id)).length}/${mine.length}`, [T('Región'), T('Estado')], mine.map((r) => [r.name, gotReg.has(r.id) ? T('recolectada') : T('pendiente')]));
     }
@@ -1495,8 +1525,8 @@
     for (const id of autoOn) { $(id).checked = false; $(id).dispatchEvent(new Event('change')); } autoOn = [];
     for (const id of autoOff) { $(id).checked = true; $(id).dispatchEvent(new Event('change')); } autoOff = [];
     engineHum(0); scene.globe.maximumScreenSpaceError = 2; OGE.fxForce = false;
-    on = false; if (race && race.vBase) A.vMax = race.vBase; race = null; if (msg && adv) { adv = null; advShape = null; } // a crash ends the stage tut = null;
-    music(false);
+    on = false; if (race && race.vBase) A.vMax = race.vBase; race = null; if (msg && adv) { adv = null; advShape = null; } tut = null; // a crash ends the stage
+    music(false); atlasMusic();
     if (arcade && !msg && score) msg = `Vuelo terminado: ${score} puntos y ${coins} monedas.`;
     if (arcade && (score || coins)) saveScore(score, coins);
     if (p2) { const n = p2.score; setTimeout(() => OGE.toast(`Jugador 2: ${n} puntos.`), 3500); p2 = null; }
@@ -2613,21 +2643,18 @@
     mpLaunch = false;
     const v = await OGE.ask({ title: '🚀 OpenStarshipEarth', ok: 'Jugar', help: 'Hecho por Alejandro Víctor López Parra @avlopezparra (github)',
       fields: [{ id: 'mode', label: 'Modo de juego', type: 'select', value: localStorage.getItem('oge.shipMode') || 'arcade', options: [
-        ['adventure', advDone() ? `🗺 ${T('Aventura: continuar en la etapa')} ${advDone() + 1} (${route()[Math.min(advDone(), route().length - 1)]})` : '🗺 Aventura: países por etapas, banderas y jefe final'],
-        ...(advDone() ? [['adventure0', `🗺 ${T('Aventura: empezar de nuevo desde la etapa 1')}`]] : []),
+        ['adventure', '🗺 Aventura: países por etapas, banderas y jefe final'],
         ['arcade', '🎯 Partida libre con ranking: enemigos, aros, monedas y jefes'],
         ['race', '🏁 De ciudad a ciudad: llega a la meta en el menor tiempo'],
         ['free', '🕊 Vuelo libre: sin enemigos ni objetivos, solo las vistas']] },
         { id: 'model', label: 'Nave (se ve en tercera persona, tecla Y)', type: 'select', value: SHIPS[localStorage.getItem('oge.shipModel')] ? localStorage.getItem('oge.shipModel') : 'dardo', options: Object.entries(SHIPS).map(([k, m]) => [k, m.name]) },
-        { id: 'cont', label: 'Continente de la aventura (solo para el modo Aventura)', type: 'select', value: advCont, options: Object.keys(ROUTES).map((k) => [k, `${k} (${ROUTES[k].length} ${T('etapas')})`]) },
         { id: 'diff', label: 'Dificultad (cada una tiene su propio ranking)', type: 'select', value: diff, options: Object.entries(DIFF).map(([k, d]) => [k, d.name]) }] });
     if (!v) return;
     localStorage.setItem('oge.shipMode', v.mode);
     if (DIFF[v.diff]) { diff = v.diff; localStorage.setItem('oge.diff', diff); }
     if (SHIPS[v.model]) localStorage.setItem('oge.shipModel', v.model);
-    if (/^adventure/.test(v.mode) && ROUTES[v.cont]) { advCont = v.cont; localStorage.setItem('oge.advCont', advCont); } // the continent only counts for the adventure
     if (OGE.body && /^adventure|^race/.test(v.mode)) { OGE.toast(T('La aventura y las carreras son de la Tierra: aquí, partida libre.')); v.mode = 'arcade'; }
-    if (v.mode === 'adventure0') { localStorage.setItem(advKey(), '0'); adventure(0); } else if (v.mode === 'adventure') adventure(); else if (v.mode === 'race') raceMode(); else quickShip(v.mode);
+    if (v.mode === 'adventure') pickAdventure(); else if (v.mode === 'race') raceMode(); else quickShip(v.mode);
   };
-  OGE.flight = { start, stop, maneuver, state: () => s, flying: () => on, game: () => ({ score, coins, objs, hp, bombs, incoming, shields, regs, tut: tut && tut.i, p2, remote }) };
+  OGE.flight = { start, stop, maneuver, hitBoss, state: () => s, flying: () => on, game: () => ({ score, coins, objs, hp, bombs, incoming, shields, regs, tut: tut && tut.i, p2, remote }) };
 })();
