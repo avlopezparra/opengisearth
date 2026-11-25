@@ -508,9 +508,10 @@
       [520, 390, 290, 200, 110].forEach((f, i) => setTimeout(() => beep(f, f * 0.55, 0.35), i * 190)); // falling notes: the ship is lost
       const msg = `Nave destruida: ${score} puntos y ${coins} monedas.`;
       if (!race && mpMode === 'solo' && !p2) { // alone and not racing: the flight waits, paused, and trying again goes on from here, with no new start and no map to load again
-        if (lostAsk) return; lostAsk = true; paused = true; if (score || coins) saveScore(score, coins);
+        if (lostAsk) return; lostAsk = true; paused = true; // the ranking comes only if the pilot gives up: stop() saves the score then
         const ask = () => { if (document.querySelector('dialog[open]')) return setTimeout(ask, 300); OGE.ask({ title: T('Nave destruida'), ok: T('Reintentar'), help: `${score} ${T('puntos')} · ${coins} ${T('monedas')}. ${T('¿Lo intentas otra vez?')}` }).then((v) => { lostAsk = false; if (!on) return;
-          score = coins = 0; if (!v) return stop(msg, true);
+          if (!v) return stop(msg, true);
+          score = coins = 0;
           hp = maxHp; shields = 0; bombs = 2; incoming = []; objs = objs.filter((o) => o.kind !== 'enemy'); graceT = performance.now() + 5000; paused = false; last = performance.now(); }); };
         return setTimeout(ask, 600);
       }
