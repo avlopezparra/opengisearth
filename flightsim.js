@@ -477,11 +477,11 @@
   let hp = 100, bombs = 3, incoming = [], flash = 0, hit = 0; // incoming: enemy shots { p, vel, t }; flash/hit: time of the last bomb / damage
   const SIZE = { ring: 1, coin: 0.35, enemy: 0.5, wall: 0.6, heart: 0.4, shield: 0.4, bomb: 0.4 };
   // How often each kind appears: hearts and shields are rare, bombs are scarce (about 1 in 40).
-  const POOL = Object.entries({ ring: 4, coin: 12, enemy: 12, wall: 8, heart: 2, shield: 2, bomb: 1 }).flatMap(([k, n]) => Array(n).fill(k)), NORING = POOL.filter((k) => k !== 'ring'); // NORING: for a game started without rings
+  const POOL = Object.entries({ ring: 4, coin: 12, enemy: 12, wall: 8, heart: 2, shield: 2, bomb: 1 }).flatMap(([k, n]) => Array(n).fill(k));
   let shields = 0, broke = 0; // each shield absorbs one hit and breaks; broke: when the last one broke
   const reach = () => Math.max(3000, s.v * warp * 4); // they appear about 4 s ahead, whatever the speed
   function spawn() {
-    const cam = viewer.camera, D = reach() * (0.6 + 0.6 * Math.random()), pool = localStorage.getItem('oge.noRings') === '1' ? NORING : POOL, kind = pool[Math.floor(Math.random() * pool.length)];
+    const cam = viewer.camera, D = reach() * (0.6 + 0.6 * Math.random()), kind = POOL[Math.floor(Math.random() * POOL.length)];
     const p = C.Cartesian3.clone(cam.positionWC), add = (v, k) => C.Cartesian3.add(p, C.Cartesian3.multiplyByScalar(v, k, new C.Cartesian3()), p);
     add(cam.directionWC, D); add(cam.rightWC, (Math.random() - 0.5) * D * 0.5); add(cam.upWC, (Math.random() - 0.5) * D * 0.25);
     const big = kind === 'ring' && Math.random() < 0.25;
@@ -2834,12 +2834,10 @@
         ['race', '🏁 De ciudad a ciudad: llega a la meta en el menor tiempo'],
         ['free', '🕊 Vuelo libre: sin enemigos ni objetivos, solo las vistas']] },
         { id: 'model', label: 'Nave (se ve en tercera persona, tecla Y)', type: 'select', value: SHIPS[localStorage.getItem('oge.shipModel')] ? localStorage.getItem('oge.shipModel') : 'dardo', options: shipOpts() },
-        { id: 'diff', label: 'Dificultad (cada una tiene su propio ranking)', type: 'select', value: diff, options: Object.entries(DIFF).map(([k, d]) => [k, d.name]) },
-        { id: 'rings', label: 'Aros en la partida libre (desmárcalo para jugar sin aros)', type: 'checkbox', value: localStorage.getItem('oge.noRings') !== '1' }] });
+        { id: 'diff', label: 'Dificultad (cada una tiene su propio ranking)', type: 'select', value: diff, options: Object.entries(DIFF).map(([k, d]) => [k, d.name]) }] });
     if (!v) return;
     localStorage.setItem('oge.shipMode', v.mode);
     if (DIFF[v.diff]) { diff = v.diff; localStorage.setItem('oge.diff', diff); }
-    localStorage.setItem('oge.noRings', v.rings === false ? '1' : '0');
     if (SHIPS[v.model]) localStorage.setItem('oge.shipModel', v.model);
     if (OGE.body && /^adventure|^race/.test(v.mode)) { OGE.toast(T('La aventura y las carreras son de la Tierra: aquí, partida libre.')); v.mode = 'arcade'; }
     if (v.mode === 'adventure') pickAdventure(); else if (v.mode === 'race') raceMode(); else quickShip(v.mode);
