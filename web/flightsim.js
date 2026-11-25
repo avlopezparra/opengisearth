@@ -2598,7 +2598,11 @@
     }
   }
   const PLACES = { earth: 'la Tierra', moon: 'la Luna', mars: 'Marte' }, DEST = Object.keys(PLACES).filter((k) => k !== (OGE.body || 'earth')); // the autopilot keys 1, 2 and 3: every place but this one
-  [...DEST, 'down'].forEach((d, i) => { const b = document.querySelector(`#flyTL button[data-key="${i + 1}"]`); if (b) b.textContent = '→ ' + T(PLACES[d] || 'la superficie'); });
+  // Phones: one button for the autopilot; where to is asked in a dialog (the keys 1, 2 and 3 on a keyboard)
+  $('flyAuto').addEventListener('pointerdown', async (e) => { e.preventDefault(); const solo = mpMode === 'solo' && !p2; if (solo) paused = true;
+    const v = await OGE.ask({ title: 'Piloto automático', ok: 'Ir', fields: [{ id: 'to', label: 'Destino', type: 'select', options: [...DEST.map((d) => [d, T(PLACES[d])]), ['down', T('la superficie')]] }] });
+    if (solo) { paused = false; last = performance.now(); }
+    if (v) autopilot(v.to); });
   function arrive(to) { // the trip goes on over the other world itself; the outer space is the sky view
     paused = true; OGE.toast(`${T('Llegando a')} ${T(PLACES[to])}…`); const u = new URL(location.href);
     if (to === 'earth') u.searchParams.delete('body'); else u.searchParams.set('body', to);
@@ -2705,7 +2709,7 @@
   }
   $('flyBtn').onclick = open;
   $('mpBtn').onclick = $('flyMp').onclick = multiplayer;
-  for (const b of document.querySelectorAll('#flyTL button')) { // phones: landing, take-off and the rest of the keys, top left
+  for (const b of document.querySelectorAll('#flyTL button[data-key]')) { // phones: landing, take-off and the rest of the keys, top left
     const key = b.dataset.key, up = () => document.dispatchEvent(new KeyboardEvent('keyup', { key }));
     b.addEventListener('pointerdown', (e) => { e.preventDefault(); document.dispatchEvent(new KeyboardEvent('keydown', { key })); if (!b.dataset.hold) setTimeout(up, 80); });
     if (b.dataset.hold) for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, up); // held keys (T: climb)
