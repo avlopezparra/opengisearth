@@ -40,7 +40,7 @@
   const CHARGE_MS = 700;
   function fire(who = 1, auto = false, power = 1) { // power > 1: a charged shot // auto: aim by itself at the enemy nearest the middle of the view (B key, touch button, pad) // who: 1, or 2 for the local second player (it fires through its own reticle)
     const t = performance.now(), mine = shots.filter((sh) => sh.who === who);
-    if (auto && who === 1) return; // on autopilot the lasers are off: only dodging counts
+    if (who === 1 && cruising()) return; // on autopilot the lasers are off: only dodging counts (fire's own auto is the auto-aim)
     if (on && !A.ship) return OGE.toast('Disparar y las maniobras son solo de la OpenStarshipEarth.');
     if (!on || paused || (mine.length && t - mine[mine.length - 1].t < 110) || (who === 2 && (!p2 || p2.out || p2.sx == null))) return;
     let ax = who === 2 ? p2.sx : aimMouse ? mouse.x : hud.clientWidth / 2, ay = who === 2 ? p2.sy - p2.R * 1.6 : aimMouse ? mouse.y : hud.clientHeight / 2; // where the lasers go
@@ -447,6 +447,7 @@
     if (!shieldOpen(o)) { booms.push({ p: o.p, t: performance.now() }); return sfx('shieldBreak'); } // deflected by the crystal shield
     if (BOSSES[o.type].spawns && escortsUp(o) >= 2) { booms.push({ p: o.p, t: performance.now() }); return sfx('shieldBreak'); } // the hive's core is covered
     if (BOSSES[o.type].weak) n = 1; // the reactor takes one hit at a time, whatever hits it
+    if (BOSSES[o.type].grab && o.phase === 'windup') { n *= 2; o.phase = 'stun'; o.pt = performance.now(); o.held = 0; OGE.toast(T('¡Punto débil! La mano se retira.')); } // caught open: double damage and it backs off
     o.hp -= n; o.hitT = performance.now(); booms.push({ p: o.p, t: performance.now() }); beep(260, 90, 0.2); sfx('bossHit'); // a metallic clang for every hit
     if (BOSSES[o.type].weak && (o.hp === 5 || o.hp === 2)) { o.stage = o.hp === 5 ? 2 : 3; o.lockT = performance.now() + 3000; OGE.toast(`${T('El Acorazado cierra su reactor: fase')} ${o.stage}/3`); sfx('warpUp'); } // next phase: it shuts and fires faster
     if (o.hp > 0) return;
@@ -519,8 +520,9 @@
           o.phase = o.phase || 'hover'; o.pt = o.pt || now;
           if (o.held) { C.Cartesian3.clone(cp, o.p); C.Cartesian3.add(o.p, C.Cartesian3.multiplyByScalar(cam.directionWC, 250, t), o.p); }
           else if (far) { toward(o.base, chase); o.phase = 'hover'; o.pt = now; o.met = 0; }
-          else if (o.phase === 'hover') { o.met = o.met || now; toward(ahead, chase); if (seen && now - o.met > 6000 && now - o.pt > 4000 + Math.random() * 2000 && now > graceT) { o.phase = 'windup'; o.pt = now; sfx('warpDown'); OGE.toast(T('¡La mano va a atacar! Prepara un tonel (R).')); } } // first it shows itself for a while
-          else if (o.phase === 'windup') { toward(ahead, chase); if (now - o.pt > 1500) { o.phase = 'lunge'; o.pt = now; } } // 1.5 s of warning
+          else if (o.phase === 'hover') { o.met = o.met || now; toward(ahead, chase); if (seen && now - o.met > 6000 && now - o.pt > 4000 + Math.random() * 2000 && now > graceT) { o.phase = 'windup'; o.pt = now; sfx('warpDown'); OGE.toast(T('¡La mano va a atacar! Dispara a su punto débil o prepara un tonel (R).')); } } // first it shows itself for a while
+          else if (o.phase === 'windup') { toward(ahead, chase); if (now - o.pt > 2500) { o.beamT = now; sfx('shieldBreak'); if (!rolling) hurt(18); o.phase = 'lunge'; o.pt = now; } } // 2.5 s with its weak point open: left alone, the ray fires (a barrel roll deflects it) and then it lunges
+          else if (o.phase === 'stun') { toward(o.from ? C.Cartesian3.add(o.base, C.Cartesian3.multiplyByScalar(o.east, (o.mirror || 0) * 1500, new C.Cartesian3()), new C.Cartesian3()) : o.base, chase * 1.5); if (now - o.pt > 6000) { o.phase = 'hover'; o.pt = now; o.met = now; } } // hit on its weak point: back beside its face (or home), closed, until it recovers
           else if (o.phase === 'lunge') { toward(cp, Math.max(1200, s.v * warp * 1.6) * dt); if (now - o.pt > 1500) { o.phase = 'back'; o.pt = now; } }
           else { toward(ahead, chase * 0.6); if (now - o.pt > 1200) { o.phase = 'hover'; o.pt = now; } }
           const dd = C.Cartesian3.distance(cp, o.p);
@@ -1701,9 +1703,11 @@
       drawMesh(BOSS3D.crystal.mesh, foeAxes(o.p, now / 1200), BOSS3D.crystal.col, white, sc * 0.95, '#9fe8ff');
       g.save(); g.shadowBlur = 0; g.fillStyle = open ? '#ff2d55' : '#7fb8d8'; g.beginPath(); g.arc(x, y, R * 0.28, 0, 7); g.fill(); g.restore(); // its core, red while exposed
     } else if (k === 'hand') {
-      const close = o.held ? 1 : o.phase === 'windup' ? 0 : o.phase === 'lunge' ? 0.6 : 0.25 + 0.2 * Math.sin(now / 250);
+      const close = o.held || o.phase === 'stun' ? 1 : o.phase === 'windup' ? 0 : o.phase === 'lunge' ? 0.6 : 0.25 + 0.2 * Math.sin(now / 250);
       if (o.phase === 'windup' || o.phase === 'lunge') { g.save(); g.shadowBlur = 0; g.fillStyle = 'rgba(255,40,40,.3)'; g.beginPath(); g.arc(x, y, R * (1.8 + 0.2 * Math.sin(now / 50)), 0, 7); g.fill(); g.restore(); } // about to grab
       drawMesh(handMesh(close, o.mirror < 0 ? -1 : 1), foeAxes(o.p, Math.sin(now / 900) * 0.35), { h: '#ffd2a6', d: '#a8714a', s: '#e0a678' }, white, sc * 1.1, null);
+      if (o.phase === 'windup') { const k = Math.min(1, (now - o.pt) / 2500); glow(g, x, y, R * (0.35 + 0.5 * k) * (1 + 0.15 * Math.sin(now / 40)), k < 0.7 ? '#ffd60a' : '#ff2d55'); g.save(); g.shadowBlur = 0; g.strokeStyle = '#fff'; g.lineWidth = 2; g.beginPath(); g.arc(x, y, R * 0.5, 0, 7); g.stroke(); g.restore(); } // the weak point in its palm: the ray charging there, redder as it fills
+      if (now - (o.beamT || 0) < 350) { g.save(); g.strokeStyle = g.shadowColor = '#ff2d55'; g.shadowBlur = 24; g.lineWidth = 14 * (1 - (now - o.beamT) / 350) + 2; g.lineCap = 'round'; g.beginPath(); g.moveTo(x, y); g.lineTo(hud.clientWidth / 2, hud.clientHeight * 0.8); g.stroke(); g.restore(); } // the ray, from the palm to the ship
       if (o.held) { g.save(); g.shadowBlur = 0; g.fillStyle = 'rgba(255,0,0,.25)'; g.beginPath(); g.arc(x, y, R * 1.6, 0, 7); g.fill(); g.restore(); }
     } else if (k === 'face') { // the stone face: its mouth opens when it spits
       const gape = Math.max(0, 1 - (now - (o.spat || 0)) / 500);
@@ -2291,6 +2295,7 @@
   // shortcut: only the Moon seen from the Earth has a real position; every other trip is TRIP_MS straight out. Give the planets an ephemeris if the sky ever shows them.
   const TRIP_MS = 45000;
   let auto = null; // { to, real: towards the real Moon, t0, ox, oy: the dodge, sideways and up from the path, next: when the next enemy comes, speed, dir }
+  function cruising() { return !!auto; }
   function autopilot(to) {
     if (!on || !A.ship || paused || !to) return;
     if (auto) { auto = null; objs = objs.filter((o) => !o.auto); return OGE.toast(T('Piloto automático apagado.')); }
