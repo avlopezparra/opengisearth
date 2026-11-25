@@ -790,7 +790,7 @@
     }
     const fade = (t0, ms, color) => { const k = (now - t0) / ms; if (k < 1) { g.save(); g.globalAlpha = 0.5 * (1 - k); g.fillStyle = color; g.fillRect(0, 0, w, h); g.restore(); } };
     fade(flash, 450, '#fff'); fade(hit, 250, broke === hit ? '#0a84ff' : '#f00'); // bomb / shield broken / damage
-    if (shields) { g.save(); g.strokeStyle = 'rgba(10,132,255,.55)'; g.lineWidth = 3 * shields; g.beginPath(); g.ellipse(w / 2, h / 2, w * 0.46, h * 0.46, 0, 0, 7); g.stroke(); g.restore(); } // shield around the view, thicker with more layers
+    if (shields && !tps()) { g.save(); g.strokeStyle = 'rgba(10,132,255,.55)'; g.lineWidth = 3 * shields; g.beginPath(); g.ellipse(w / 2, h / 2, w * 0.46, h * 0.46, 0, 0, 7); g.stroke(); g.restore(); } // shield around the view, thicker with more layers
     if (adv) for (const gl of adv.goals) { // the places to visit: a glowing dot on the ground when it is in sight
       if (gl.done) continue; const occ = new C.EllipsoidalOccluder(C.Ellipsoid.WGS84, viewer.camera.positionWC), dd = C.Cartesian3.distance(gl.p, viewer.camera.positionWC);
       if (dd > 3e5 || !occ.isPointVisible(gl.p) || C.Cartesian3.dot(C.Cartesian3.subtract(gl.p, viewer.camera.positionWC, new C.Cartesian3()), viewer.camera.directionWC) < 0) continue;
@@ -1904,7 +1904,15 @@
     const mid = toWin(scene, ax.P);
     if (mid && man && man.type === 'roll') { const k = (performance.now() - man.t0) / man.dur; g.save(); g.globalAlpha = 0.35; glow(g, mid.x, mid.y, px * 58, '#7fd4ff'); g.globalAlpha = 1; g.strokeStyle = 'rgba(225,245,255,.85)'; g.lineWidth = 3; g.lineCap = 'round';
       for (const n of [0, 1, 2]) { const a = k * 5 * Math.PI * man.dir + n * 2.09; g.beginPath(); g.arc(mid.x, mid.y, px * (50 + 7 * n), a, a + 1.2); g.stroke(); } g.restore(); }
-    if (mid && (shields || auto)) { g.save(); g.strokeStyle = shields ? 'rgba(10,132,255,.7)' : 'rgba(48,209,88,.75)'; g.fillStyle = shields ? 'rgba(10,132,255,.12)' : 'rgba(48,209,88,.14)'; g.lineWidth = 2 + shields; g.beginPath(); g.arc(mid.x, mid.y, px * 62, 0, 7); g.fill(); g.stroke(); g.restore(); } // the shield around it
+    if (mid && (shields || auto)) { // the shield around it: a crystal ball, clear in the middle, tinted and brighter towards its rim, with the light it catches (blue; green for the autopilot's)
+      const R = px * 62, rgb = shields ? '90,170,255' : '70,220,120', x = mid.x, y = mid.y; g.save();
+      const body = g.createRadialGradient(x, y, R * 0.35, x, y, R); body.addColorStop(0, `rgba(${rgb},0)`); body.addColorStop(0.72, `rgba(${rgb},.07)`); body.addColorStop(0.93, `rgba(${rgb},.3)`); body.addColorStop(1, `rgba(${rgb},.6)`);
+      g.fillStyle = body; g.beginPath(); g.arc(x, y, R, 0, 7); g.fill();
+      g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = 1 + shields * 0.6; g.stroke(); // a thin bright rim, thicker with more layers
+      const shine = g.createRadialGradient(x - R * 0.42, y - R * 0.48, 0, x - R * 0.42, y - R * 0.48, R * 0.5); shine.addColorStop(0, 'rgba(255,255,255,.6)'); shine.addColorStop(0.35, 'rgba(255,255,255,.18)'); shine.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = shine; g.beginPath(); g.arc(x, y, R, 0, 7); g.fill(); // the highlight, up and to the left
+      g.strokeStyle = 'rgba(255,255,255,.35)'; g.lineWidth = R * 0.035; g.lineCap = 'round'; g.beginPath(); g.arc(x, y, R * 0.86, 0.45, 1.25); g.stroke(); // light coming through, low on the other side
+      g.restore(); }
     // twin reticles on the line of the nose: what is under the far one gets hit
     const near = toWin(scene, shipPoint(ax, 0, 0, 1800)), far = toWin(scene, shipPoint(ax, 0, 0, 5200));
     g.save(); g.strokeStyle = '#39ff14'; g.shadowColor = '#000'; g.shadowBlur = 3; g.lineWidth = 2;
