@@ -308,7 +308,7 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
     c.setView({ destination: c.positionWC, orientation: { heading: c.heading, pitch: c.pitch + (-Math.PI / 2 - c.pitch) * Math.min(1, (h - 3e6) / 7e6) * 0.15, roll: 0 } }); // the further out, the firmer; from 10,000 km up it looks straight down within a second
   });
   // Navigation pad, as Google Earth has: four arrows that slide the view over the globe (held: they keep going) and a zoom bar with + and −
-  if (BODY === 'sky') $('navPad').hidden = true;
+  if (BODY === 'sky') for (const el of $('navPad').children) if (el.id !== 'musicBtn') el.style.display = 'none'; // the sky keeps only the music button
   const camH = () => viewer.camera.positionCartographic.height, panBy = () => C.Math.clamp(camH() / 6.4e6, 0.00002, 0.5) * 0.12; // radians a step: finer the closer the view
   const PAN = { up: (a) => viewer.camera.rotateDown(a), down: (a) => viewer.camera.rotateUp(a), left: (a) => viewer.camera.rotateLeft(a), right: (a) => viewer.camera.rotateRight(a) };
   for (const b of document.querySelectorAll('#navPad button[data-pan]')) { let timer = null; const stop = () => { clearInterval(timer); timer = null; };
