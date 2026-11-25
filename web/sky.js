@@ -49,5 +49,14 @@
   });
   for (const ev of ['pointerup', 'pointercancel']) cv.addEventListener(ev, (e) => touch.delete(e.pointerId));
   cv.addEventListener('wheel', (e) => { e.preventDefault(); zoom(e.deltaY > 0 ? 1.1 : 0.9); }, { passive: false });
+  // The sky has a piece of its own (sky_theme.js); a button switches it off, and the choice is kept. Browsers only let sound start after a click.
+  { // the theme file loads after this one: it is looked up when the music starts
+    const mb = Object.assign(document.createElement('button'), { type: 'button', style: 'position:absolute;left:12px;bottom:14px;z-index:5' }), wants = () => localStorage.getItem('oge.skyMusic') !== '0';
+    const label = () => { mb.textContent = T(wants() ? 'Música: sí' : 'Música: no'); };
+    let playing = false; const sync = () => { if (OGE.music && window.OGE_SKY_THEME && wants() !== playing) { playing = wants(); OGE.music(playing, window.OGE_SKY_THEME); } };
+    mb.onclick = (e) => { e.stopPropagation(); localStorage.setItem('oge.skyMusic', wants() ? '0' : '1'); label(); sync(); };
+    cv.addEventListener('pointerdown', sync, { once: true }); // the first touch of the sky starts it
+    label(); cv.parentElement.append(mb);
+  }
   OGE.toast('Cielo: arrastra para mirar alrededor y usa la rueda para acercar. El Sol y la Luna están donde se ven ahora.');
 })();
