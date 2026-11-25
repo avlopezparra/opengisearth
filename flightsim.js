@@ -386,6 +386,7 @@
     { text: 'Sube y baja la nariz con S y W.', test: (r) => Math.abs(s.pitch - r.pitch) > rad(8) },
     { text: 'Pulsa E para un turbo breve y Q para detenerte (Q otra vez sigue).', test: (r) => Math.abs(s.v - r.v) > r.v * 0.3 + 30 },
     { text: 'Espacio sube el turbo y Shift izquierdo lo baja; T te eleva un poco.', test: (r) => warp !== r.warp },
+    { text: 'Pulsa Y para cambiar entre primera y tercera persona (la nave vista desde atrás).', test: (r) => third !== r.third },
     { text: 'Ese es un enemigo: apúntale con el centro de la mira y dispara con B o clic derecho.', need: 'enemy', make: () => put('enemy'), test: (r) => score >= r.score + 100 },
     { text: 'Atraviesa el aro: da puntos y repara la nave.', need: 'ring', make: () => put('ring', 0.05), test: (r) => score >= r.score + 50 },
     { text: 'Recoge la moneda, el corazón (vida) y el escudo (absorbe un golpe).', need: 'coin', make: () => { put('coin', -0.08); put('heart'); put('shield', 0.08); }, test: (r) => coins > r.coins },
@@ -397,7 +398,7 @@
     { text: 'Un jefe custodia cada capital. Este es de práctica: dispárale hasta vaciar su barra de vida.', need: 'boss', make: () => { const o = put('boss', 0, 0.05, { type: 'fortress', hp: 5, max: 5, cap: null }); o.base = C.Cartesian3.clone(o.p); o.east = viewer.camera.rightWC.clone(); o.size = Math.max(o.size, 400); }, test: (r, age) => age > 1000 && !has('boss') },
     { text: '¡Listo! Ahora colecciona banderas, derrota jefes en las capitales y suma puntos. I: ayuda · O: repetir el tutorial.', test: (r, age) => age > 6000 },
   ];
-  const snap = () => ({ warp, heading: s.heading, pitch: s.pitch, v: s.v, score, coins, bombs, t: performance.now() });
+  const snap = () => ({ warp, third, heading: s.heading, pitch: s.pitch, v: s.v, score, coins, bombs, t: performance.now() });
   function tutorial(startIt) {
     if (!startIt) { tut = null; return; }
     if (!A || !A.ship) return OGE.toast('El tutorial guiado es para la OpenStarshipEarth: elígela al pulsar Volar.');
@@ -1935,7 +1936,7 @@
   // Back controls · Start pause · L3 turn back · R3 camera · D-pad ↑ climb · ↓ land · ← race item · → take off
   // XInput pad, standard layout. Buttons that stand for a key: A turbo burst · B turn back · X barrel roll · Y loop · LB race item · RB bomb · RT fire with auto-aim (held: charge)
   // Start pause · L3 stop · d-pad up take off, down land, left / right turbo. By hand below: LT fire where it points, Back the options menu, R3 lock-on or free aim, the right stick.
-  const PAD = ['e', 'f', 'r', 'x', 'u', 'v', null, 'b', null, 'enter', 'q', null, 'c', 'z', 'shift', ' ']; // 'shift' stands for the left Shift: turbo down
+  const PAD = ['e', 'f', 'r', 'x', null, null, null, 'b', null, 'enter', 'q', null, 'c', 'z', 'shift', ' ']; // 'shift' stands for the left Shift: turbo down
   const padPrev = [], pad = { x: 0, y: 0, on: false, free: false, flick: false, menu: false, navT: 0, el: null };
   let padLock = null; // the enemy the right stick picked: the auto-aim fires at it
   const LOCKABLE = ['enemy', 'boss', 'airliner', 'aa', 'octo', 'ship'];
@@ -1982,6 +1983,9 @@
       }
       if (pad.free) { if (rx || ry) { mouse.x = clamp(mouse.x + rx * 14, 0, hud.clientWidth); mouse.y = clamp(mouse.y + ry * 14, 0, hud.clientHeight); } }
       else { const m = Math.hypot(rx, ry); if (m > 0.6 && !pad.flick) { pad.flick = true; pickLock(rx / m, ry / m); } else if (m < 0.3) pad.flick = false; } // one push of the stick, one change of target
+      if (down(4) && down(5)) { if (!pad.combo) { pad.combo = true; document.dispatchEvent(new KeyboardEvent('keydown', { key: 'y' })); } } // both bumpers together: first or third person
+      else { for (const [i, key] of [[4, 'u'], [5, 'v']]) if (padPrev[i] && !down(i) && !pad.combo) { document.dispatchEvent(new KeyboardEvent('keydown', { key })); document.dispatchEvent(new KeyboardEvent('keyup', { key })); } // alone, a bumper acts as it is let go (LB the race item, RB the bomb): pressed, it could still become the pair
+        if (!down(4) && !down(5)) pad.combo = false; }
       if (hit(6)) trigger(false); // LT: fires where the ship (or the free crosshair) points; held, it charges
       if (!down(6) && padPrev[6]) letGo();
       PAD.forEach((key, i) => {
@@ -2514,7 +2518,7 @@
   for (const b of document.querySelectorAll('#flyActs button')) b.addEventListener('pointerdown', (e) => { e.preventDefault(); const key = b.dataset.key, up = () => document.dispatchEvent(new KeyboardEvent('keyup', { key })); document.dispatchEvent(new KeyboardEvent('keydown', { key })); if (key === 'b') { b.addEventListener('pointerup', up, { once: true }); b.addEventListener('pointercancel', up, { once: true }); } else setTimeout(up, 80); }); // the fire button can be held to charge // the same as their keys
   if (!matchMedia('(pointer: coarse)').matches) { // with a keyboard the key buttons are not needed: only Controls and Scores stay at hand
     $('flyBtns').classList.add('keyboard');
-    $('flyKeys').append(Object.assign(document.createElement('li'), { className: 'keyBtns' })); $('flyKeys').lastChild.append($('flyScores'), $('flyFlags'), $('flyArms'), $('flyColors'), $('flyMp'), $('flyReset'), $('flyShip'), $('flySun'),
+    $('flyKeys').append(Object.assign(document.createElement('li'), { className: 'keyBtns' })); $('flyKeys').lastChild.append($('flyScores'), $('flyFlags'), $('flyArms'), $('flyColors'), $('flyMp'), $('flyReset'), $('flyShip'), $('flySun'), $('flyThird'),
       ...DEST.map((d) => Object.assign(document.createElement('button'), { type: 'button', className: 'autoDest', textContent: `${T('Piloto automático')} → ${T(PLACES[d])}`, onclick: () => { if (pad.menu) padMenu(false); autopilot(d); } }))); // the autopilot can be chosen here as well as with 1, 2, 3 $('flyKeys').style.right = $('flyRules').style.right = '12px'; // no column of buttons beside them // the few actions without a key live in the K panel
   } else { $('flyBtns').classList.add('touch'); document.body.classList.add('touchdev'); } // on a phone the stick steers (left half of the screen): the right column keeps the touch actions and the speed
   $('flyThird').onclick = () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'y' }));
