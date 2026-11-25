@@ -219,6 +219,7 @@
     }
     th.bass = bass; th.harmony = notes.sort((x, y) => x[0] - y[0]).flat(); th.drums = drums;
   }
+  OGE.music = (play, th) => music(play, th); // the sky view of the atlas plays its own piece
   let tune = null; // the theme playing now: Main Theme or Boss Fight OpenStarshipEarth
   function music(play, th = TH) {
     clearInterval(musicTimer); musicTimer = null; tune = play ? th : null;
@@ -235,7 +236,7 @@
         const n = th[k] || [];
         while (idx[k] < n.length && n[idx[k]] < until) {
           const at = t0 + n[idx[k]] * u, len = n[idx[k] + 1] * u, pitch = n[idx[k] + 2];
-          if (!paused && at > audio.currentTime - 0.05) { if (k === 'drums') drum(pitch, at); else fmTone(k, pitch, at, Math.min(len, 1.5)); }
+          if (!paused && at > audio.currentTime - 0.05) { if (k === 'drums') drum(pitch, at); else fmTone(k, pitch, at, Math.min(len, th === window.OGE_SKY_THEME ? 6 : 1.5)); } // the slow sky piece holds its notes
           idx[k] += 3;
         }
       }
@@ -534,7 +535,7 @@
     if (auto) return; // the autopilot brings its own enemies
     if (A.ship && s.alt > 1e5 && warp > 100) { if (objs.length || incoming.length) { objs = objs.filter((o) => o.kind === 'boss' || o.kind === 'crest'); incoming = []; } return; } // hyper turbo: nothing to dodge or collect on the way (it would run into everything); at the turbo of the air, space has its enemies and prizes too
     if (!tut && !race && performance.now() > aaT) aaSites();
-    if (tune) { const BT = window.OGE_BOSS_THEME, near = BT && objs.some((o) => o.kind === 'boss' && C.Cartesian3.distance(o.p, viewer.camera.positionWC) < 1e5), base = (adv && window.OGE_ADV_THEME) || (race && window.OGE_RACE_THEME) || TH, want = near ? BT : base; if (want !== tune) music(true, want); } // Boss Fight OpenStarshipEarth while a boss is close
+    if (tune) { const BT = window.OGE_BOSS_THEME, near = BT && objs.some((o) => o.kind === 'boss' && C.Cartesian3.distance(o.p, viewer.camera.positionWC) < 1e5), base = (OGE.body === 'moon' && window.OGE_MOON_THEME) || (OGE.body === 'mars' && window.OGE_MARS_THEME) || (adv && window.OGE_ADV_THEME) || (race && window.OGE_RACE_THEME) || TH, want = near ? BT : base; if (want !== tune) music(true, want); } // Boss Fight OpenStarshipEarth while a boss is close
     const cam = viewer.camera, t = new C.Cartesian3(), far = reach() * 2.5, eff = s.v * warp, slack = eff * 0.03, now = performance.now(); // slack: distance covered in one frame
     const rolling = man && man.type === 'roll'; // a barrel roll deflects enemies and shots
     objs = objs.filter((o) => {
@@ -1321,8 +1322,8 @@
   const advDone = () => +localStorage.getItem(advKey()) || 0; // stages beaten on this continent
   async function pickAdventure() { // any stage of any continent's campaign, not only the next one
     const fm = flagMap || await OGE.flags().catch(() => null), name = (a3) => (fm && fm.get(a3) && fm.get(a3).name) || a3, opts = []; // the countries by name once the flags table is in; by code otherwise
-    for (const k of Object.keys(ROUTES)) { const done = +localStorage.getItem(k === 'Sudamérica' ? 'oge.adventure' : 'oge.adventure.' + k) || 0; ROUTES[k].forEach((a3, i) => opts.push([k + '|' + i, `${T(k)} · ${i + 1}. ${name(a3)}${i < done ? ' — ' + T('superada') : ''}`])); }
-    const v = await OGE.ask({ title: 'Aventura: elegir etapa', ok: 'Jugar', help: 'Cada continente es una campaña. Puedes jugar cualquiera de sus etapas, en el orden que quieras.',
+    for (const k of Object.keys(ROUTES)) { const done = +localStorage.getItem(k === 'Sudamérica' ? 'oge.adventure' : 'oge.adventure.' + k) || 0; ROUTES[k].forEach((a3, i) => { if (i <= done) opts.push([k + '|' + i, `${T(k)} · ${i + 1}. ${name(a3)}${i < done ? ' — ' + T('superada') : ''}`]); }); } // only the stages beaten and the next one
+    const v = await OGE.ask({ title: 'Aventura: elegir etapa', ok: 'Jugar', help: 'Cada continente es una campaña. Sus etapas se desbloquean a medida que avanzas: puedes repetir las superadas o seguir con la siguiente.',
       fields: [{ id: 'st', label: 'Campaña y etapa', type: 'select', value: advCont + '|' + Math.min(advDone(), route().length - 1), options: opts }] });
     if (!v) return;
     const [k, i] = String(v.st).split('|'); if (!ROUTES[k]) return;
