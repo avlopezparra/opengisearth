@@ -10,7 +10,14 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
   // The Layers checkboxes remember their state between sessions (restored before each module reads them).
   if (matchMedia('(pointer: coarse)').matches && !localStorage.getItem('oge.fix.satsPhone')) { localStorage.removeItem('oge.ui.layerSats'); localStorage.setItem('oge.fix.satsPhone', '1'); } // phones: satellites off (left on by earlier versions)
   if (!localStorage.getItem('oge.fix.liveOff')) { localStorage.removeItem('oge.ui.layerSats'); localStorage.removeItem('oge.ui.layerPlanes'); localStorage.setItem('oge.fix.liveOff', '1'); }
+  // Another world instead of the Earth (?body=moon or ?body=mars): NASA Solar System Treks imagery on the globe; the Earth's layers stay off and are not saved.
+  const BODIES = {
+    moon: { name: 'Luna', max: 8, url: 'https://trek.nasa.gov/tiles/Moon/EQ/LRO_WAC_Mosaic_Global_303ppd_v02/1.0.0/default/default028mm/{z}/{y}/{x}.jpg', credit: 'Luna: NASA / GSFC / Arizona State University (LRO WAC) · NASA Solar System Treks' },
+    mars: { name: 'Marte', max: 7, url: 'https://trek.nasa.gov/tiles/Mars/EQ/Mars_Viking_MDIM21_ClrMosaic_global_232m/1.0.0/default/default028mm/{z}/{y}/{x}.jpg', credit: 'Marte: NASA / JPL / USGS (Viking MDIM 2.1) · NASA Solar System Treks' },
+  };
+  const BODY = BODIES[new URLSearchParams(location.search).get('body')] ? new URLSearchParams(location.search).get('body') : null;
   document.querySelectorAll('.layers input[type=checkbox], .layers select').forEach((c) => {
+    if (BODY) { if (c.type === 'checkbox') c.checked = false; c.disabled = true; return; }
     const key = 'oge.ui.' + c.id, saved = localStorage.getItem(key);
     if (saved !== null) { if (c.type === 'checkbox') c.checked = saved === '1'; else c.value = saved; }
     c.addEventListener('change', () => localStorage.setItem(key, c.type === 'checkbox' ? (c.checked ? '1' : '0') : c.value));
@@ -54,7 +61,7 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
     hot: osm('https://a.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', '© OpenStreetMap · estilo Humanitario (HOT)', 19),
   });
   const viewer = new C.Viewer('globe', {
-    baseLayer: new C.ImageryLayer((IMAGERY[$('baseImagery').value] || IMAGERY.s2)()),
+    baseLayer: new C.ImageryLayer(BODY ? new C.UrlTemplateImageryProvider({ url: BODIES[BODY].url, maximumLevel: BODIES[BODY].max, tilingScheme: new C.GeographicTilingScheme(), credit: BODIES[BODY].credit }) : (IMAGERY[$('baseImagery').value] || IMAGERY.s2)()),
     baseLayerPicker: false, geocoder: false, sceneModePicker: false,
     timeline: false, animation: false, fullscreenButton: false,
   });
@@ -69,6 +76,14 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
   });
 
   const OGE = window.OGE = { viewer, $, el };
+  OGE.body = BODY; // null on the Earth
+  if (BODY) { // no blue sky, no sea of air: the Moon has none, and Mars gets a thin butterscotch one
+    scene.globe.showGroundAtmosphere = false; scene.fog.enabled = false; scene.moon.show = false; scene.globe.enableLighting = false; scene.globe.baseColor = C.Color.fromCssColorString(BODY === 'moon' ? '#3a3a3a' : '#7a4a30');
+    if (BODY === 'moon') scene.skyAtmosphere.show = false; else { scene.skyAtmosphere.hueShift = -0.5; scene.skyAtmosphere.saturationShift = -0.3; scene.skyAtmosphere.brightnessShift = -0.25; }
+    document.title = BODIES[BODY].name + ' · OpenGISEarth';
+  }
+  $('bodySel').value = BODY || ''; // the Earth, the Moon or Mars: the page reloads on the chosen one
+  $('bodySel').addEventListener('change', (e) => { const u = new URL(location.href); if (e.target.value) u.searchParams.set('body', e.target.value); else u.searchParams.delete('body'); location.href = u; });
   // Point of view of the visitor's country (from the browser language or time zone), as Natural Earth does with its POV fields.
   // In Argentina and Spain the Malvinas / Falkland Islands are shown as part of Argentina.
   OGE.pov = (() => { const l = navigator.language || '', tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '', force = new URLSearchParams(location.search).get('pov');
