@@ -487,6 +487,7 @@
     aaBusy = false;
   }
   function arcadeStep(dt) {
+    if (A.ship && s.alt > 1e5) { if (objs.length || incoming.length) { objs = objs.filter((o) => o.kind === 'boss' || o.kind === 'crest'); incoming = []; } return; } // space: nothing to dodge or collect on the way (the hyper turbo would run into everything)
     if (!tut && !race && performance.now() > aaT) aaSites();
     if (tune) { const BT = window.OGE_BOSS_THEME, near = BT && objs.some((o) => o.kind === 'boss' && C.Cartesian3.distance(o.p, viewer.camera.positionWC) < 7e4), base = (adv && window.OGE_ADV_THEME) || (race && window.OGE_RACE_THEME) || TH, want = near ? BT : base; if (want !== tune) music(true, want); } // Boss Fight OpenStarshipEarth while a boss is close
     const cam = viewer.camera, t = new C.Cartesian3(), far = reach() * 2.5, eff = s.v * warp, slack = eff * 0.03, now = performance.now(); // slack: distance covered in one frame
@@ -954,7 +955,7 @@
         const h = scene.globe.getHeight(C.Cartographic.fromDegrees(r.lon, r.lat));
         if (h !== undefined) { r.p = C.Cartesian3.fromDegrees(r.lon, r.lat, h * scene.verticalExaggeration + 2500); r.onRelief = true; }
       }
-      if (d > R) continue;
+      if (d > R || s.alt > 1e5) continue; // flags are picked up flying past them, not from space
       gotReg.add(r.id); localStorage.setItem(REGS, JSON.stringify([...gotReg])); run.flags++;
       const all = (fn) => regs.filter(fn).every((x) => gotReg.has(x.id)), mine = regs.filter((x) => x.a3 === r.a3), n = mine.filter((x) => gotReg.has(x.id)).length;
       if (arcade) score += 100;
@@ -1793,7 +1794,7 @@
     if (s.v < (A.v0 || 300)) { s.v = A.v0 || 300; s.throttle = Math.max(s.throttle, 0.5); } // stopped with Q: E gets it moving again
     if (boost || performance.now() < boostCd) return;
     stopped = false;
-    const to = WARPS[Math.min(WARPS.length - 1, WARPS.indexOf(warp) + 2)]; // two turbo levels up
+    const to = warp > 100 ? warp : WARPS[Math.min(WARPS.length - 1, WARPS.indexOf(warp) + 2)]; // two turbo levels up (the hyper turbo is already past them)
     boost = { t0: performance.now(), from: warp, to }; boostCd = performance.now() + 3500; setWarp(to); sfx('thrust');
   }
   function maneuver(type) {
@@ -1840,7 +1841,7 @@
       if (A.ship && airbrake) { s.v = Math.max(0, s.v - Math.max(A.thrust * 3, s.v * 4) * dt); if (boost) { if (warp === boost.to) setWarp(boost.from); boost = null; } } // Q: the ship stops in about a second and hovers
       else if (A.ship && boost && performance.now() - boost.t0 > 2500) { if (warp === boost.to) setWarp(boost.from); boost = null; } // after 2.5 s, back to the turbo it had (unless changed by hand) // the burst rises and falls back to the speed it had
       s.vs = s.v * Math.sin(pe);
-      s.alt += s.vs * dt * warp;
+      if (!(A.ship && s.alt > SPACE)) s.alt += s.vs * dt * warp; // in space the whole move is made below, in a straight line
       if (A.ship && keys.has('t')) { s.alt += 250 * dt; s.vs += 250; } // T held: a gentle climb, ~250 m/s
       if (A.ship && s.alt <= ground + 30) { // the starship bounces off the ground; in the arcade a hard touch costs life
         s.alt = ground + 30; s.pitch = Math.max(s.pitch, rad(arcade ? 8 : 2));
@@ -1854,8 +1855,12 @@
       }
     }
     const horiz = s.v * Math.cos(pe) * dt * warp; // negative over the top of a loop: it flies backwards
-    s.lat = clamp(s.lat + (horiz * Math.cos(s.heading)) / R, rad(-89), rad(89));
-    s.lon = C.Math.negativePiToPi(s.lon + (horiz * Math.sin(s.heading)) / (R * Math.cos(s.lat)));
+    if (A.ship && s.alt > SPACE && !landing) spaceStep(dt, pe);
+    else {
+      if (warp > 100) setWarp(100); // back in the air: no hyper turbo
+      s.lat = clamp(s.lat + (horiz * Math.cos(s.heading)) / R, rad(-89), rad(89));
+      s.lon = C.Math.negativePiToPi(s.lon + (horiz * Math.sin(s.heading)) / (R * Math.cos(s.lat)));
+    }
     s.heading = C.Math.zeroToTwoPi(s.heading);
     s.agl = s.alt - ground;
     s.rollOff = rollOff; s.pe = pe; // the drawing of the own ship (third person) turns with the maneuvers
@@ -1933,6 +1938,7 @@
     if (regs && quest()) drawRegs();
     if (caps && quest()) drawCaps();
     if (arcade) drawArcade(w, h, text);
+    if (A.ship && !OGE.body) moonHud(w, h);
     const tp3 = tps() ? drawShip3D(w, h) : null; // third person: the ship in 3D and its reticles
     if (p2 || remote) mpDraw(w, h, text);
     if (tut) drawTutorial(w);
@@ -1993,7 +1999,7 @@
     const bx = Math.min(r + 70, cx - 60);
     g.strokeRect(cx - bx - 38, cy - 12, 76, 24); text(landing === 'parked' ? Math.round((s.taxi || 0) * 3.6) + ' km/h' : Math.round(s.v * warp * KT) + ' KT', cx - bx, cy + 1, 14); // the turbo counts as speed; on the ground, the driving speed
     { // turbo gauge under the speed: one segment per turbo level, lit up to the current one, and the real speed in km/h
-      const n = WARPS.indexOf(warp), sw = 76 / WARPS.length;
+      const n = warp > 100 ? WARPS.length - 1 : WARPS.indexOf(warp), sw = 76 / WARPS.length;
       g.save(); WARPS.forEach((_, i) => { g.fillStyle = i <= n ? (i >= 4 ? '#ff453a' : i >= 2 ? '#ffd60a' : '#39ff14') : 'rgba(57,255,20,.18)'; g.fillRect(cx - bx - 38 + i * sw + 1, cy + 18, sw - 2, 8); }); g.restore();
       text(`TURBO ×${warp} · ${Math.round(s.v * warp * 3.6).toLocaleString(OGE_LANG)} km/h`, cx - bx, cy + 40, 12);
     }
@@ -2096,7 +2102,35 @@
   }, true);
   document.addEventListener('keyup', (e) => { const k = e.key.toLowerCase(); keys.delete(k); if (k === 'b' && charge) { const held = performance.now() - charge; charge = 0; if (held >= CHARGE_MS) fire(1, true, 4); } }, true); // letting go of a full charge fires it
   window.addEventListener('blur', () => keys.clear());
-  const nextWarp = (d = 1) => setWarp(WARPS[clamp(WARPS.indexOf(warp) + d, 0, WARPS.length - 1)]); // stops at both ends
+  const SPACE = 1e5, HYPER = [1000, 10000, 50000]; // out of the atmosphere: turbo levels only for space, enough to reach the Moon in under a minute
+  const levels = () => (on && A && A.ship && s.alt > SPACE && !race ? [...WARPS, ...HYPER] : WARPS);
+  const nextWarp = (d = 1) => { const L = levels(); setWarp(L[clamp(L.indexOf(warp) + d, 0, L.length - 1)]); }; // stops at both ends
+  let moonAt = null, moonT = 0, spaceMsg = false;
+  function moonPos() { // the Moon in the Earth's frame at the clock's time: the same place where it is drawn, in step with the sun's light
+    if (moonAt && performance.now() < moonT) return moonAt;
+    const t = viewer.clock.currentTime, m = C.Transforms.computeIcrfToFixedMatrix(t) || C.Transforms.computeTemeToPseudoFixedMatrix(t);
+    moonAt = C.Matrix3.multiplyByVector(m, C.Simon1994PlanetaryPositions.computeMoonPositionInEarthInertialFrame(t), new C.Cartesian3()); moonT = performance.now() + 2000;
+    return moonAt;
+  }
+  function spaceStep(dt, pe) { // a straight line through space: move along the nose, then express that same direction in the new place's own east, north and up
+    if (!spaceMsg) { spaceMsg = true; OGE.toast(T(OGE.body ? 'Fuera de la atmósfera: hiperturbo disponible (Espacio).' : 'Fuera de la atmósfera: hiperturbo disponible (Espacio). Apunta a la Luna para viajar a ella.')); }
+    const P0 = C.Cartesian3.fromRadians(s.lon, s.lat, s.alt), F = axesAt(P0, s.heading, pe, 0).F, P1 = C.Cartesian3.add(P0, C.Cartesian3.multiplyByScalar(F, s.v * dt * warp, new C.Cartesian3()), new C.Cartesian3());
+    const cg = C.Cartographic.fromCartesian(P1), m = C.Transforms.eastNorthUpToFixedFrame(P1), along = (i) => F.x * m[i * 4] + F.y * m[i * 4 + 1] + F.z * m[i * 4 + 2]; // the nose along east (0), north (1) and up (2) there
+    s.lon = cg.longitude; s.lat = clamp(cg.latitude, rad(-89), rad(89)); s.alt = cg.height;
+    s.heading = Math.atan2(along(0), along(1)); if (!man) s.pitch = clamp(Math.asin(clamp(along(2), -1, 1)), rad(-89), rad(89));
+    if (!OGE.body && !paused && C.Cartesian3.distance(P1, moonPos()) < 1.2e7) { // within 12,000 km: the trip goes on over the Moon itself
+      paused = true; OGE.toast(T('Llegando a la Luna…')); const u = new URL(location.href); u.searchParams.set('body', 'moon'); u.searchParams.set('land', '1'); u.searchParams.delete('play'); setTimeout(() => { location.href = u; }, 1500);
+    }
+  }
+  function moonHud(w, h) { // where the Moon is and how far, once the ship is high enough to go
+    if (s.alt < 3e4) return;
+    const mp = moonPos(), cam = viewer.camera, v = C.Cartesian3.subtract(mp, cam.positionWC, new C.Cartesian3()), label = `${T('Luna')} · ${Math.round(C.Cartesian3.magnitude(v) / 1000).toLocaleString()} km`;
+    const q = C.Cartesian3.dot(v, cam.directionWC) > 0 ? (C.SceneTransforms.worldToWindowCoordinates || C.SceneTransforms.wgs84ToWindowCoordinates)(scene, mp) : null;
+    g.save(); g.strokeStyle = g.fillStyle = '#e8e8f0'; g.shadowColor = '#000'; g.shadowBlur = 4; g.lineWidth = 2; g.textAlign = 'center'; g.font = '600 13px sans-serif';
+    if (q && q.x > 0 && q.y > 0 && q.x < w && q.y < h) { g.beginPath(); g.arc(q.x, q.y, 22, 0, 7); g.stroke(); g.fillText(label, q.x, q.y + 40); }
+    else { const a = Math.atan2(-C.Cartesian3.dot(v, cam.upWC), C.Cartesian3.dot(v, cam.rightWC)), r = Math.min(w, h) * 0.36; g.translate(w / 2 + Math.cos(a) * r, h / 2 + Math.sin(a) * r); g.fillText(label, 0, -18); g.rotate(a + Math.PI / 2); g.beginPath(); g.moveTo(0, -12); g.lineTo(8, 8); g.lineTo(0, 3); g.lineTo(-8, 8); g.closePath(); g.fill(); } // out of view: an arrow towards it
+    g.restore();
+  }
   $('flyWarp').onclick = () => nextWarp(1);
   $('flyWarpDown').onclick = () => nextWarp(-1);
   const nextTurn = () => setTurn(TURNS[(TURNS.indexOf(turn) + 1) % TURNS.length] || 1);
@@ -2149,6 +2183,7 @@
   $('flyThird').onclick = () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'y' }));
   $('flyMore').onclick = () => { const more = $('flyBtns').classList.toggle('more'); localStorage.setItem('oge.flyMore', more ? '1' : ''); }; // remembered
   $('flyBtns').classList.toggle('more', !!localStorage.getItem('oge.flyMore'));
+  if (OGE.body && new URLSearchParams(location.search).has('land')) setTimeout(() => { OGE.hideSide(true); viewer.camera.setView({ destination: C.Cartesian3.fromDegrees(20, 5, 40000) }); quickShip('arcade'); OGE.toast(T('Has llegado a la Luna: busca las banderas de las misiones.')); }, 2500); // arriving from the Earth: straight into the flight
   if (new URLSearchParams(location.search).has('play')) setTimeout(() => { OGE.hideSide(true); $('shipBtn').click(); }, 1500); // the OpenStarshipEarth page opens the game directly
   const lastOpts = () => { try { return JSON.parse(localStorage.getItem('oge.flyOpts')) || {}; } catch { return {}; } };
   function quickShip(mode = 'arcade') { // the OpenStarshipEarth arcade with the options used last time; 'free': no enemies, no goals
