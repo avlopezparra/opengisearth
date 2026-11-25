@@ -730,6 +730,7 @@
     if (v) { if (DIFF[v.diff]) { diff = v.diff; localStorage.setItem('oge.diff', diff); } localStorage.setItem('oge.quest', v.quest ? '1' : '0'); start(v.plane, v.mouse, v.arcade, v.aim, v.tut); }
   }
   function start(plane, useMouse, useArcade = true, useAim = false, useTut = false, useCalm = false) {
+    if (OGE.body === 'sky') return OGE.toast(T('El cielo es para mirar: elige la Tierra, la Luna o Marte para volar.'), true);
     calm = useCalm;
     A = PLANES[plane];
     landing = null;
@@ -1086,7 +1087,7 @@
     if (warp > race.maxWarp) setWarp(race.maxWarp);
     if (v.lands && v.lands.trim()) raceLands(v.lands); // only these countries (the sea and Antarctica stay open)
     if (!p2 && !remote) race.cpus = Array.from({ length: +v.cpus || 0 }, (_, i) => ({ // rivals: each flies the route at its own pace
-      name: CPU_NAMES[i], color: CPU_COLORS[i], f: 0, side: ((i % 2 ? 1 : -1) * (1 + Math.floor(i / 2))) * 0.004, speed: (1200 + Math.random() * 2600) * Math.min(1, race.maxWarp / 5 + 0.2), stunT: 0, itemT: performance.now() + 8000 + Math.random() * 10000 }));
+      name: CPU_NAMES[i], color: CPU_COLORS[i], model: Object.keys(SHIPS)[i % Object.keys(SHIPS).length], f: 0, side: ((i % 2 ? 1 : -1) * (1 + Math.floor(i / 2))) * 0.004, speed: (1200 + Math.random() * 2600) * Math.min(1, race.maxWarp / 5 + 0.2), stunT: 0, itemT: performance.now() + 8000 + Math.random() * 10000 }));
     const stops = laps > 1 ? [a, ...via, a] : [a, ...via, b], lap1 = stops.map((p) => [p.lon, p.lat]);
     const repeat = (pts) => { let out = pts.slice(); for (let i = 1; i < laps; i++) out = out.concat(pts.slice(1)); return out; }; // the same loop once per lap
     items = []; setPath(repeat(lap1.length > 1 ? lap1 : [[a.lon, a.lat], [b.lon, b.lat]])); placeBoxes();
@@ -1182,7 +1183,7 @@
       const p = cpuPos(c), d = C.Cartesian3.distance(p, viewer.camera.positionWC);
       if (d > 6e4 || !occ.isPointVisible(p) || C.Cartesian3.dot(C.Cartesian3.subtract(p, viewer.camera.positionWC, new C.Cartesian3()), viewer.camera.directionWC) < 0) continue;
       const q = toWin(scene, p); if (!q) continue;
-      const R = clamp(2.4e5 / d, 8, 40); shipBack(q.x, q.y, R, c.color, Math.sin(performance.now() / 700 + c.side * 900) * 0.2, c.stunT > performance.now() ? performance.now() : 0);
+      const R = clamp(2.4e5 / d, 8, 40); shipBack(q.x, q.y, R, c.color, Math.sin(performance.now() / 700 + c.side * 900) * 0.2, c.stunT > performance.now() ? performance.now() : 0, c.model, p);
       g.save(); g.fillStyle = c.color; g.textAlign = 'center'; g.font = '600 11px sans-serif'; g.fillText(c.name, q.x, q.y + R + 12); g.restore();
     }
     if (race.gates) text((race.laps > 1 ? `${T('Vuelta')} ${Math.min(race.laps, 1 + Math.floor((race.nextGate * race.laps) / race.gates.length))}/${race.laps} · ` : '') + `${T('Aro')} ${Math.min(race.nextGate + 1, race.gates.length)}/${race.gates.length}` + (race.missed ? ` · ${T('saltados')}: ${race.missed}` : '') + ` · ${T('Monedas de velocidad')}: ${race.coins || 0}/10`, 24, 196, 14, 'left');
@@ -1309,12 +1310,19 @@
   function showArms() { // the coats of arms won from the bosses, one per capital
     if (!caps || !flagMap) return OGE.toast(T('Los escudos aún se están cargando: abre el arcade primero.'));
     const mine = caps.filter((c) => got.has(capId(c))).sort((x, y) => x.name.localeCompare(y.name)), box = Object.assign(document.createElement('div'), { style: 'display:flex;flex-wrap:wrap;gap:14px;justify-content:center' });
+    const btn = (text, fn) => Object.assign(document.createElement('button'), { type: 'button', textContent: T(text), onclick: fn, style: 'display:block;width:100%;margin-top:4px;font-size:11px' });
+    const wear = (u) => { if (u) localStorage.setItem('oge.insignia', u); else localStorage.removeItem('oge.insignia'); OGE.toast(T(u ? 'Insignia puesta en las alas y los costados de tu nave.' : 'Nave sin insignia.')); };
+    if (mine.length) box.append(Object.assign(btn('Quitar la insignia de la nave', () => wear(null)), { style: 'flex-basis:100%;font-size:12px' }));
     for (const c of mine) {
       const fl = flagMap.get(c.a3), fig = Object.assign(document.createElement('figure'), { style: 'margin:0;width:110px;text-align:center;font-size:12px' });
       if (fl && fl.arms) fig.append(Object.assign(new Image(), { src: fl.arms, alt: '', loading: 'lazy', style: 'max-width:100px;max-height:100px' }));
-      fig.append(Object.assign(document.createElement('figcaption'), { textContent: c.name + (fl && fl.name ? ' · ' + fl.name : '') })); box.append(fig);
+      fig.append(Object.assign(document.createElement('figcaption'), { textContent: c.name + (fl && fl.name ? ' · ' + fl.name : '') }));
+      if (fl && fl.arms) fig.append(btn('Escudo en la nave', () => wear(fl.arms)), btn('Escarapela aérea', async (e) => { // the roundel, as Wikidata has it; without one, the coat of arms
+        e.target.disabled = true; const u = await roundel(fl.q).catch(() => null); e.target.disabled = false;
+        if (!u) OGE.toast(T('Wikidata no tiene la insignia de esa fuerza aérea: se usa el escudo.')); wear(u || fl.arms); }));
+      box.append(fig);
     }
-    OGE.showTable(`${T('Escudos de armas')}: ${mine.length}/${caps.length}`, [], [], { content: box, note: mine.length ? T('Imágenes: Wikimedia Commons.') : T('Aún ninguno: vence al jefe de una capital y recoge su escudo.') });
+    OGE.showTable(`${T('Escudos de armas')}: ${mine.length}/${caps.length}`, [], [], { content: box, note: mine.length ? T('Imágenes: Wikimedia Commons. Elige un escudo, o la escarapela de la fuerza aérea de ese país (Wikidata), para llevarlo en la nave.') : T('Aún ninguno: vence al jefe de una capital y recoge su escudo.') });
   }
   OGE.showArms = showArms;
   const showScores = () => OGE.showTable('🏆 Mejores puntajes', [T('Dificultad'), '#', 'Piloto', 'Puntos', 'Monedas', 'Banderas', 'Capitales', 'Jefes', 'Fecha'],
@@ -1432,6 +1440,34 @@
   const shipModel = (id) => SHIPS[id] || SHIPS[localStorage.getItem('oge.shipModel')] || SHIPS.dardo;
   const mixHex = (a, b, k) => '#' + [1, 3, 5].map((i) => Math.round(parseInt(a.slice(i, i + 2), 16) * (1 - k) + parseInt(b.slice(i, i + 2), 16) * k).toString(16).padStart(2, '0')).join('');
   const shipCol = (sk) => ({ h: '#c9cfd8', d: '#6c7483', s: mixHex(/^#[0-9a-f]{6}$/i.test(sk) ? sk : '#3fa9ff', '#565d6a', 0.3), w: '#c2901c', g: '#1b3a57', e: '#ffb300' }); // painted metal: the skin colour, a little worn
+  const insignia = (M) => { // where an air force paints its roundel: on top of each wing and on each side of the fuselage. These 'i' faces are drawn only when the pilot wears an image
+    const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]], cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]], dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2], unit = (a) => { const l = Math.hypot(...a) || 1; return a.map((x) => x / l); };
+    const quads = M.F.map(([idx, c], fi) => { if (idx.length !== 4) return null; const P = idx.map((k) => M.V[k]), nn = cross(sub(P[1], P[0]), sub(P[2], P[0])); return { fi, c, P, n: unit(nn), area: Math.hypot(...nn), mid: [0, 1, 2].map((k) => (P[0][k] + P[1][k] + P[2][k] + P[3][k]) / 4) }; }).filter(Boolean);
+    const put = (q, n, up, k) => { // a square lying on face q, its top towards up, read the right way round from the side n points to; k times the room to the nearest edge
+      const a = unit(sub(up, n.map((x) => x * dot(n, up)))), b = cross(n, a);
+      const r = k * Math.min(...q.P.map((p, j) => { const e = unit(sub(q.P[(j + 1) % 4], p)), d = sub(q.mid, p); return Math.hypot(...sub(d, e.map((x) => x * dot(d, e)))); }));
+      const at = (ka, kb) => q.mid.map((x, j) => x + (a[j] * ka + b[j] * kb) * r);
+      M.F.push([[at(1, -1), at(1, 1), at(-1, 1), at(-1, -1)].map((p) => M.V.push(p) - 1), 'i', q.fi]); // top left, top right, bottom right, bottom left
+    };
+    for (const q of quads.filter((q) => q.c === 's').slice(0, 2)) put(q, q.n[1] < 0 ? q.n.map((x) => -x) : q.n, [0, 0, 1], 0.85); // the wings: the first mirrored pair, the image's top towards the nose
+    for (const e of [-1, 1]) { const q = quads.filter((q) => 'hd'.includes(q.c) && Math.abs(q.n[0]) > 0.9 && q.mid[0] * e > 0).sort((x, y) => y.area - x.area)[0]; if (q) put(q, [e, 0, 0], [0, 1, 0], 1.6); } // the biggest plate on each side of the hull (the square stands a little proud of it)
+  };
+  for (const k in SHIPS) insignia(SHIPS[k].mesh);
+  let badge = null;
+  const insigniaImg = () => { // the image the pilot chose (localStorage oge.insignia), only from Wikimedia
+    const u = localStorage.getItem('oge.insignia') || '';
+    if (!badge || badge.u !== u) badge = { u, im: /^https:\/\/[a-z]+\.wikimedia\.org\//.test(u) ? Object.assign(new Image(), { src: u }) : null };
+    return badge.im;
+  };
+  async function roundel(q) { // Wikidata, searched as the Making History editor does: the air forces (P31) of the country (P17) that have a logo (P154), the roundel their aircraft wear; the best known one still in service wins
+    if (!/^Q\d+$/.test(q || '')) return null;
+    const api = (p) => fetch('https://www.wikidata.org/w/api.php?format=json&origin=*&' + new URLSearchParams(p)).then((r) => r.json());
+    const ids = ((await api({ action: 'query', list: 'search', srlimit: 20, srsearch: `haswbstatement:P17=${q} haswbstatement:P31=Q61883|P31=Q133505337 haswbstatement:P154` })).query.search || []).map((x) => x.title).filter((id) => /^Q\d+$/.test(id)); // air force, aerospace force
+    if (!ids.length) return null;
+    const file = (e) => { const v = ((e.claims || {}).P154 || [])[0]; return v && v.mainsnak.datavalue && v.mainsnak.datavalue.value; }, links = (e) => Object.keys(e.sitelinks || {}).length;
+    const best = Object.values((await api({ action: 'wbgetentities', ids: ids.join('|'), props: 'claims|sitelinks' })).entities || {}).filter(file).sort((a, b) => !!a.claims.P576 - !!b.claims.P576 || links(b) - links(a))[0];
+    return best ? 'https://commons.wikimedia.org/wiki/Special:FilePath/' + encodeURIComponent(file(best).replace(/ /g, '_')) + '?width=250' : null;
+  }
   const FOES = [ // three enemy craft of our own, drawn nose-on to the player
     { col: { h: '#e2574c', d: '#7a1f1f', s: '#ff8a65', w: '#ffd60a', g: '#1c2a44', e: '#ffb300' }, mesh: meshOf((m) => { m.hull(40, [[12, 9, 8, 6], [-22, 7, 6, 5]], 6); canopy(m, 26, 6, 6, 6, 4);
       m.sym('s', [8, 0, 10], [46, -12, -16], [40, -12, -26], [6, 0, -18]); m.sym('w', [46, -12, -16], [50, -2, -24], [40, -12, -26]); }) },
@@ -1567,6 +1603,7 @@
     const dist = []; let fi = -1;
     for (const [idx, c, par] of M.F) {
       fi++;
+      if (c === 'i' && !(COL.i && COL.i.complete && COL.i.naturalWidth)) continue; // the insignia: only when one is worn and its image has arrived
       if (idx.some((k) => !S[k])) continue; // a corner behind the camera
       C.Cartesian3.cross(C.Cartesian3.subtract(W[idx[1]], W[idx[0]], a), C.Cartesian3.subtract(W[idx[2]], W[idx[0]], b), n);
       if (C.Cartesian3.magnitudeSquared(n) < 1e-12) continue;
@@ -1578,6 +1615,10 @@
     faces.sort((x, y) => y.d - x.d || x.o - y.o); // far to near; a detail right after the face it lies on
     g.save(); g.lineJoin = 'round'; g.lineWidth = 0.8;
     for (const f of faces) {
+      if (f.c === 'i') { // painted on: the image stretched over its square
+        if (!white) { const o = S[f.idx[0]], u = S[f.idx[1]], v = S[f.idx[3]], im = COL.i, k = Math.max(im.naturalWidth, im.naturalHeight), iw = im.naturalWidth / k, ih = im.naturalHeight / k; g.save(); g.transform(u.x - o.x, u.y - o.y, v.x - o.x, v.y - o.y, o.x, o.y); g.drawImage(im, (1 - iw) / 2, (1 - ih) / 2, iw, ih); g.restore(); }
+        continue;
+      }
       let y0 = Infinity, y1 = -Infinity;
       g.beginPath(); f.idx.forEach((k, q) => { const p = S[k]; if (q) g.lineTo(p.x, p.y); else g.moveTo(p.x, p.y); y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y); }); g.closePath();
       const base = COL[f.c] || '#cccccc';
@@ -1632,7 +1673,7 @@
   function drawShip3D(w, h) {
     const ax = shipAxes(), toWin = C.SceneTransforms.worldToWindowCoordinates || C.SceneTransforms.wgs84ToWindowCoordinates, cam = viewer.camera, md = shipModel();
     const px = (h / 2 / Math.tan((cam.frustum.fovy || rad(60)) / 2)) / Math.max(60, chase ? chase.d : 380); // pixels per metre at the ship
-    drawMesh(md.mesh, ax, shipCol(skin(1)), performance.now() - hit < 200, 1, null, true);
+    drawMesh(md.mesh, ax, { ...shipCol(skin(1)), i: insigniaImg() }, performance.now() - hit < 200, 1, null, true);
     const tail = toWin(scene, shipPoint(ax, 0, 1, md.tail));
     if (tail && !landing) glow(g, tail.x, tail.y, px * (9 + 12 * s.throttle + (boost ? 20 : 0)) * (0.9 + 0.1 * Math.sin(performance.now() / 40)), boost ? '#7fd4ff' : '#ffb300'); // the engine flame, bigger with the gas and the turbo
     const mid = toWin(scene, ax.P);
@@ -1648,15 +1689,16 @@
     const [tx, ty, tz] = md.tip;
     return { far, nose: toWin(scene, shipPoint(ax, 0, 0, 72)), tips: [toWin(scene, shipPoint(ax, -tx, ty, tz)), toWin(scene, shipPoint(ax, tx, ty, tz))] };
   }
-  function shipBack(x, y, R, color, roll = 0, hurtT = 0) { // a starship seen from behind, in the player's color
-    g.save(); g.translate(x, y); g.rotate(roll); g.lineJoin = 'round'; g.shadowColor = color; g.shadowBlur = 14; g.lineWidth = 2; g.strokeStyle = '#fff';
-    g.fillStyle = performance.now() - hurtT < 200 ? '#fff' : color; // blinks white when hit
-    g.beginPath(); g.moveTo(-R, R * 0.3); g.lineTo(-R * 0.2, -R * 0.12); g.lineTo(R * 0.2, -R * 0.12); g.lineTo(R, R * 0.3); g.lineTo(R * 0.25, R * 0.2); g.lineTo(-R * 0.25, R * 0.2); g.closePath(); g.fill(); g.stroke(); // wings
-    g.beginPath(); g.moveTo(0, -R * 0.62); g.lineTo(R * 0.13, -R * 0.05); g.lineTo(-R * 0.13, -R * 0.05); g.closePath(); g.fill(); g.stroke(); // tail fin
-    for (const e of [-1, 1]) { g.beginPath(); g.moveTo(e * R, R * 0.3); g.lineTo(e * R * 0.92, -R * 0.2); g.lineTo(e * R * 0.82, R * 0.26); g.closePath(); g.fill(); g.stroke(); } // wing tips
-    g.fillStyle = '#1c2a44'; g.beginPath(); g.ellipse(0, R * 0.05, R * 0.26, R * 0.2, 0, 0, 7); g.fill(); g.stroke(); // hull
-    for (const e of [-1, 1]) glow(g, e * R * 0.12, R * 0.08, R * 0.16, '#7fd4ff'); // engines
-    g.restore();
+  const backAxes = (p, roll = 0) => { // a ship flying away from the camera, seen from behind and a little above, banked by roll
+    const c = viewer.camera, mix = (a, ka, b, kb) => new C.Cartesian3(a.x * ka + b.x * kb, a.y * ka + b.y * kb, a.z * ka + b.z * kb), U0 = mix(c.upWC, 0.95, c.directionWC, -0.31), cr = Math.cos(roll), sr = Math.sin(roll);
+    return { P: p, F: mix(c.directionWC, 0.95, c.upWC, 0.31), R: mix(c.rightWC, cr, U0, -sr), U: mix(U0, cr, c.rightWC, sr) };
+  };
+  function shipBack(x, y, R, color, roll = 0, hurtT = 0, model, P) { // a starship flying ahead, in its model and colour: R pixels from the middle to a wing tip, at the world point P or 200 m into the screen at x, y
+    if (!P) { const ray = viewer.camera.getPickRay(new C.Cartesian2(x, y)); if (!ray) return; P = C.Cartesian3.add(ray.origin, C.Cartesian3.multiplyByScalar(ray.direction, 200, new C.Cartesian3()), new C.Cartesian3()); }
+    const md = shipModel(model), ax = backAxes(P, roll), sc = meshScale(P, R, hud.clientHeight);
+    drawMesh(md.mesh, ax, { ...shipCol(color), i: model ? null : insigniaImg() }, performance.now() - hurtT < 200, sc, null, true); // only the pilot's own ship wears the insignia
+    const t = (C.SceneTransforms.worldToWindowCoordinates || C.SceneTransforms.wgs84ToWindowCoordinates)(scene, shipPoint(ax, 0, sc, md.tail * sc));
+    if (t) glow(g, t.x, t.y, R * 0.3, '#7fd4ff'); // its engine
   }
   function p2Hurt(n) {
     if (!p2 || p2.out || tut || performance.now() < graceT) return;
@@ -1697,7 +1739,7 @@
       shipBack(...P1POS(w, h), 34, skin(1), s.roll * 0.3, hit);
       p2.sx = w / 2 + (p2.x * w) / 2; p2.sy = h / 2 + (p2.y * h) / 2; p2.R = clamp(9000 / p2.z, 16, 80);
       if (!p2.out) {
-        shipBack(p2.sx, p2.sy, p2.R, skin(2), p2.tilt, p2.hit);
+        shipBack(p2.sx, p2.sy, p2.R, skin(2), p2.tilt, p2.hit, localStorage.getItem('oge.shipModel2') || 'delta', p2.p);
         const rx = p2.sx, ry = p2.sy - p2.R * 1.6; // its reticle
         g.save(); g.strokeStyle = skin(2); g.lineWidth = 2; g.beginPath(); g.arc(rx, ry, 10, 0, 7); g.moveTo(rx - 16, ry); g.lineTo(rx + 16, ry); g.moveTo(rx, ry - 16); g.lineTo(rx, ry + 16); g.stroke(); g.restore();
       }
@@ -1741,33 +1783,43 @@
   async function multiplayer() {
     const wasOn = on; paused = true;
     const v = await OGE.ask({ title: 'OpenStarshipEarth: multijugador', ok: 'Jugar',
-      help: 'Local: el jugador 2 mueve su nave con I J K L, se adelanta con O, se retrasa con U y dispara con Enter (su mira es la cruz sobre su nave). En línea: la app de escritorio crea la partida y muestra su IP:puerto; el otro jugador se une con esa dirección desde su app o desde la página (la página publicada en https puede bloquear la conexión: entonces usa la app). Los jugadores pueden dispararse entre ellos.',
-      fields: [{ id: 'mode', label: 'Modo', type: 'select', value: mpMode, options: [['solo', 'Un jugador'], ['local', 'Local: 2 jugadores en esta pantalla'], ['host', 'En línea: crear partida (app de escritorio)'], ['join', 'En línea: unirse a una partida']] },
+      help: 'Local: el jugador 2 mueve su nave con I J K L, se adelanta con O, se retrasa con U y dispara con Enter (su mira es la cruz sobre su nave). En línea: la app de escritorio crea la partida y muestra su IP:puerto; el otro jugador se une con esa dirección desde su app o desde la página (la página publicada en https puede bloquear la conexión: entonces usa la app). En la misma red Wi-Fi o por cable, el otro jugador elige «buscar partidas en esta red local» en su app y no escribe ninguna dirección. Los jugadores pueden dispararse entre ellos.',
+      fields: [{ id: 'mode', label: 'Modo', type: 'select', value: mpMode, options: [['solo', 'Un jugador'], ['local', 'Local: 2 jugadores en esta pantalla'], ['host', 'En línea: crear partida (app de escritorio)'], ['join', 'En línea: unirse a una partida'], ['lan', 'En línea: buscar partidas en esta red local (app de escritorio)']] },
         { id: 'addr', label: 'Dirección del anfitrión (IP:puerto), para unirse', value: localStorage.getItem('oge.mpAddr') || '', placeholder: '192.168.1.20:7777' },
         { id: 'port', label: 'Puerto, para crear la partida', type: 'number', value: +localStorage.getItem('oge.mpPort') || 7777, min: 1024, max: 65535, step: 1 },
         { id: 'model', label: 'Modelo de tu nave', type: 'select', value: SHIPS[localStorage.getItem('oge.shipModel')] ? localStorage.getItem('oge.shipModel') : 'dardo', options: Object.entries(SHIPS).map(([k, m]) => [k, m.name]) },
+        { id: 'model2', label: 'Modelo de la nave del jugador 2 (modo local)', type: 'select', value: SHIPS[localStorage.getItem('oge.shipModel2')] ? localStorage.getItem('oge.shipModel2') : 'delta', options: Object.entries(SHIPS).map(([k, m]) => [k, m.name]) },
         { id: 'pvp', label: 'Los jugadores pueden dañarse entre sí con sus disparos', type: 'checkbox', value: pvp() },
         { id: 'c1', label: 'Color de tu nave', type: 'color', value: skin(1) },
         { id: 'c2', label: 'Color de la nave del jugador 2 (modo local)', type: 'color', value: skin(2) }] });
     paused = false; last = performance.now();
     if (!v) return;
-    localStorage.setItem('oge.skin1', v.c1); localStorage.setItem('oge.skin2', v.c2); localStorage.setItem('oge.pvp', v.pvp ? '1' : '0'); if (SHIPS[v.model]) localStorage.setItem('oge.shipModel', v.model);
+    localStorage.setItem('oge.skin1', v.c1); localStorage.setItem('oge.skin2', v.c2); localStorage.setItem('oge.pvp', v.pvp ? '1' : '0'); if (SHIPS[v.model]) localStorage.setItem('oge.shipModel', v.model); if (SHIPS[v.model2]) localStorage.setItem('oge.shipModel2', v.model2);
     mpMode = v.mode;
-    if (v.mode !== 'host' && v.mode !== 'join') mpClose();
+    if (!['host', 'join', 'lan'].includes(v.mode)) mpClose();
     try {
       if (v.mode === 'host') {
         const tauri = window.__TAURI__ && window.__TAURI__.core;
         if (!tauri) { mpMode = 'solo'; return OGE.toast('Crear una partida en línea necesita la app de escritorio; desde la página puedes unirte a una.', true); }
         localStorage.setItem('oge.mpPort', v.port);
-        const addr = await tauri.invoke('mp_host', { port: v.port });
+        const addr = await tauri.invoke('mp_host', { port: v.port, name: localStorage.getItem('oge.pilot') || T('Piloto') });
         await mpOnline('127.0.0.1:' + v.port);
-        OGE.toast(`${T('Partida creada. El otro jugador se une con')} ${addr}`);
+        OGE.toast(`${T('Partida creada. El otro jugador se une con')} ${addr} ${T('o buscándola en su red local.')}`);
       } else if (v.mode === 'join') {
         const addr = v.addr.trim().replace(/^wss?:\/\//, '');
         if (!/^[\w.-]+:\d{2,5}$/.test(addr)) { mpMode = 'solo'; return OGE.toast('Escribe la dirección como IP:puerto, por ejemplo 192.168.1.20:7777.', true); }
         localStorage.setItem('oge.mpAddr', addr);
         await mpOnline(addr);
         OGE.toast(`${T('Conectado a')} ${addr}`);
+      } else if (v.mode === 'lan') {
+        const tauri = window.__TAURI__ && window.__TAURI__.core;
+        if (!tauri) { mpMode = 'solo'; return OGE.toast('Buscar partidas en la red local necesita la app de escritorio.', true); }
+        const games = (await tauri.invoke('mp_find')).map((x) => /^([\d.]+:\d{2,5})\|(.*)$/.exec(x)).filter(Boolean); // each one: IP:port|pilot
+        if (!games.length) { mpMode = 'solo'; return OGE.toast('No hay ninguna partida en esta red: el anfitrión debe crearla antes y permitir la app en su firewall.', true); }
+        let addr = games[0][1];
+        if (games.length > 1) { const pick = await OGE.ask({ title: 'Partidas en esta red', ok: 'Unirme', fields: [{ id: 'g', label: 'Partida', type: 'select', value: addr, options: games.map((m) => [m[1], `${m[2].slice(0, 24) || T('Piloto')} · ${m[1]}`]) }] }); if (!pick) { mpMode = 'solo'; return; } addr = pick.g; }
+        await mpOnline(addr);
+        OGE.toast(`${T('Conectado a')} ${games.find((m) => m[1] === addr)[2] || addr}`);
       }
     } catch (e) { mpMode = 'solo'; return OGE.toast(T('Multijugador') + ': ' + (e.message || e), true); }
     p2 = mpMode === 'local' && wasOn && arcade ? { x: -0.65, y: 0.55, z: 200, hp: 100, score: 0, tilt: 0 } : null; // joins the flight in progress

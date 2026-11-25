@@ -13,6 +13,7 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
   // Another world instead of the Earth (?body=moon or ?body=mars): NASA Solar System Treks imagery on the globe; the Earth's layers stay off and are not saved.
   const BODIES = {
     moon: { name: 'Luna', max: 8, url: 'https://trek.nasa.gov/tiles/Moon/EQ/LRO_WAC_Mosaic_Global_303ppd_v02/1.0.0/default/default028mm/{z}/{y}/{x}.jpg', credit: 'Luna: NASA / GSFC / Arizona State University (LRO WAC) · NASA Solar System Treks' },
+    sky: { name: 'Cielo' }, // no imagery of its own: the star map is already there, sky.js draws the constellations
     mars: { name: 'Marte', max: 7, url: 'https://trek.nasa.gov/tiles/Mars/EQ/Mars_Viking_MDIM21_ClrMosaic_global_232m/1.0.0/default/default028mm/{z}/{y}/{x}.jpg', credit: 'Marte: NASA / JPL / USGS (Viking MDIM 2.1) · NASA Solar System Treks' },
   };
   const BODY = BODIES[new URLSearchParams(location.search).get('body')] ? new URLSearchParams(location.search).get('body') : null;
@@ -61,7 +62,7 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
     hot: osm('https://a.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', '© OpenStreetMap · estilo Humanitario (HOT)', 19),
   });
   const viewer = new C.Viewer('globe', {
-    baseLayer: new C.ImageryLayer(BODY ? new C.UrlTemplateImageryProvider({ url: BODIES[BODY].url, maximumLevel: BODIES[BODY].max, tilingScheme: new C.GeographicTilingScheme(), credit: BODIES[BODY].credit }) : (IMAGERY[$('baseImagery').value] || IMAGERY.s2)()),
+    baseLayer: new C.ImageryLayer(BODY && BODIES[BODY].url ? new C.UrlTemplateImageryProvider({ url: BODIES[BODY].url, maximumLevel: BODIES[BODY].max, tilingScheme: new C.GeographicTilingScheme(), credit: BODIES[BODY].credit }) : (IMAGERY[$('baseImagery').value] || IMAGERY.s2)()),
     baseLayerPicker: false, geocoder: false, sceneModePicker: false,
     timeline: false, animation: false, fullscreenButton: false,
   });
@@ -80,6 +81,7 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
   if (BODY) { // no blue sky, no sea of air: the Moon has none, and Mars gets a thin butterscotch one
     scene.globe.showGroundAtmosphere = false; scene.fog.enabled = false; scene.moon.show = false; scene.globe.enableLighting = false; scene.globe.baseColor = C.Color.fromCssColorString(BODY === 'moon' ? '#3a3a3a' : '#7a4a30');
     if (BODY === 'moon') scene.skyAtmosphere.show = false; else { scene.skyAtmosphere.hueShift = -0.5; scene.skyAtmosphere.saturationShift = -0.3; scene.skyAtmosphere.brightnessShift = -0.25; }
+    if (BODY === 'sky') { scene.globe.show = false; scene.skyAtmosphere.show = false; scene.moon.show = true; }
     document.title = BODIES[BODY].name + ' · OpenGISEarth';
   }
   $('bodySel').value = BODY || ''; // the Earth, the Moon or Mars: the page reloads on the chosen one
