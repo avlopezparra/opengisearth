@@ -58,6 +58,8 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
     baseLayerPicker: false, geocoder: false, sceneModePicker: false,
     timeline: false, animation: false, fullscreenButton: false,
   });
+  viewer.scene.globe.preloadSiblings = true; viewer.scene.globe.tileCacheSize = 800; // the tiles around the view are fetched too: a new area is ready sooner
+  C.RequestScheduler.requestsByServer['tiles.maps.eox.at:443'] = 12; // the default imagery host serves over HTTP/2: more tiles at once
   const scene = viewer.scene;
   viewer.cesiumWidget.screenSpaceEventHandler.removeInputAction(C.ScreenSpaceEventType.LEFT_DOUBLE_CLICK); // no entity tracking
   let base = viewer.imageryLayers.get(0);
