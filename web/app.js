@@ -186,6 +186,10 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
         get[f.id] = numeric ? () => (inp.value === '' ? null : Number(inp.value)) : () => inp.value;
       }
       form.append(f.type === 'checkbox' ? el('label', { className: 'check' }, inp, f.label) : el('label', {}, f.label, inp));
+      if (f.type === 'select' && f.preview) { // the options are images (flags): the one chosen is shown under the list. Only from Wikimedia, where they all come from
+        const im = el('img', { className: 'askPreview', alt: '' }), show = () => { const u = /^https:\/\/[a-z]+\.wikimedia\.org\//.test(inp.value) ? inp.value : ''; im.hidden = !u; if (u) im.src = u; };
+        inp.addEventListener('change', show); show(); form.append(im);
+      }
       if (f.hint) form.append(el('div', { className: 'small', textContent: f.hint }));
     }
     const cancel = el('button', { type: 'button', textContent: 'Cancelar' });
