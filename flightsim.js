@@ -76,7 +76,7 @@
     const cam = viewer.camera, to = new C.Cartesian3(); // an enemy inside the aim cone is destroyed
     let best = null, bestAng = 9, bossHit = null, bossAng = 9;
     for (const o of objs) {
-      if (o.kind !== 'enemy' && o.kind !== 'boss' && o.kind !== 'airliner' && o.kind !== 'aa' && o.kind !== 'octo' && o.kind !== 'ship') continue;
+      if (o.kind !== 'enemy' && o.kind !== 'boss' && o.kind !== 'airliner' && o.kind !== 'aa' && o.kind !== 'octo' && o.kind !== 'ship' && !(power > 1 && o.kind === 'wall')) continue; // a charged shot also breaks crates and asteroids
       C.Cartesian3.subtract(o.p, cam.positionWC, to);
       const d = C.Cartesian3.magnitude(to), ang = Math.acos(clamp(C.Cartesian3.dot(to, ray.direction) / d, -1, 1));
       if (o.kind === 'boss') { if (ang < Math.atan(o.size / d) + rad(0.4) && ang < bossAng) { bossHit = o; bossAng = ang; } } // a boss only counts when the laser really meets it
@@ -1963,7 +1963,7 @@
     }
     for (let i = 0; i < 17; i++) padPrev[i] = down(i);
   }
-  window.addEventListener('gamepadconnected', (e) => { OGE.toast(`${T('Mando conectado')}: ${e.gamepad.id.slice(0, 40)}`); $('padMap').hidden = false; });
+  window.addEventListener('gamepadconnected', (e) => { OGE.toast(`${T('Mando conectado')}: ${e.gamepad.id.slice(0, 40)}. ${T('Select (Back) abre las opciones: piloto automático, nave, puntajes.')}`); $('padMap').hidden = false; });
   window.addEventListener('gamepaddisconnected', () => { $('padMap').hidden = true; });
   function controls(dt) {
     const k = (x) => keys.has(x), ease = Math.min(1, 12 * dt), shift = k('shift'); // quick response to the keys
@@ -2231,7 +2231,8 @@
     line(jx - js, jy + js + 8, jx + js, jy + js + 8); g.fillRect(jx + s.rud * js - 3, jy + js + 4, 6, 8);
     text(T(aimMouse ? 'MOUSE: apunta, clic dispara, mantenido carga' : mouseCtl ? 'MOUSE: clic suelta la palanca' : 'TECLADO: clic para volar con el mouse'), cx, h - 22, 12);
     text(A.name.split(' — ')[0], w - 24, h - 22, 12, 'right');
-    if ($('flyBtns').classList.contains('keyboard')) text(T('K: ver los controles'), w - 24, h - 40, 12, 'right');
+    if (pad.on) text(T('Select: opciones y piloto automático'), w - 24, h - 40, 12, 'right'); // with a pad in hand, its own way to the options
+    else if ($('flyBtns').classList.contains('keyboard')) text(T('K: ver los controles'), w - 24, h - 40, 12, 'right');
     if (third && A.ship) text(T('Cámara en tercera persona · Y: volver a primera persona'), w - 24, h - 58, 12, 'right'); // with a keyboard there are no buttons: this is the reminder
   }
 
