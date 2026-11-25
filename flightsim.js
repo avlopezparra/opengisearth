@@ -230,11 +230,22 @@
     }
     th.bass = bass; th.harmony = notes.sort((x, y) => x[0] - y[0]).flat(); th.drums = drums;
   }
-  // The atlas plays a quiet piece of its own on each world and on the sky while the note button under the zoom bar is on (off unless chosen; the choice is kept). Browsers only let sound start after a click.
-  const atlasTheme = () => (OGE.body === 'moon' ? window.OGE_ATLAS_MOON_THEME : OGE.body === 'mars' ? window.OGE_ATLAS_MARS_THEME : OGE.body === 'sky' ? window.OGE_SKY_THEME : window.OGE_ATLAS_THEME), wantsAtlas = () => localStorage.getItem('oge.atlasMusic') === '1';
+  // The atlas has music while the note button under the zoom bar is on (off unless chosen; the choice is kept): on each world a recorded loop, decoded once and played without a gap;
+  // the sky plays its own written piece. Browsers only let sound start after a click.
+  const ATLAS_LOOP = { moon: 'music/atlas_moon.ogg', mars: 'music/atlas_mars.ogg' }, wantsAtlas = () => localStorage.getItem('oge.atlasMusic') === '1';
+  let loopSrc = null, loopBuf = null; // the loop playing; its decoded sound (0 while it is being fetched)
+  async function atlasLoop(play) {
+    if (!play) { if (loopSrc) { try { loopSrc.stop(); } catch { /* it had stopped */ } loopSrc = null; } return; }
+    if (loopSrc || loopBuf === 0) return;
+    try { ac(); } catch { return; } // no audio device
+    if (!loopBuf) { loopBuf = 0; try { loopBuf = await audio.decodeAudioData(await (await fetch(ATLAS_LOOP[OGE.body] || 'music/atlas_earth.ogg')).arrayBuffer()); } catch { loopBuf = null; return; } } // a browser that cannot read Ogg stays silent
+    if (loopSrc || !wantsAtlas() || (on && arcade)) return; // things changed while it loaded
+    const v = audio.createGain(); v.gain.value = 0.5; loopSrc = audio.createBufferSource(); loopSrc.buffer = loopBuf; loopSrc.loop = true; loopSrc.connect(v).connect(master); loopSrc.start();
+  }
+  const skyTune = () => (OGE.body === 'sky' ? window.OGE_SKY_THEME : null), atlasPlaying = () => (OGE.body === 'sky' ? !!tune && tune === skyTune() : !!loopSrc);
   const paintMusic = () => { const b = $('musicBtn'), w = wantsAtlas(); b.style.opacity = w ? 1 : 0.45; b.title = T(w ? 'Música del atlas: sí' : 'Música del atlas: no'); };
-  function atlasMusic() { const th = atlasTheme(), w = wantsAtlas(); paintMusic(); if (th && !(on && arcade) && w !== (tune === th)) music(w, th); }
-  $('musicBtn').onclick = () => { const th = atlasTheme(); if (!(wantsAtlas() && th && !(on && arcade) && tune !== th)) localStorage.setItem('oge.atlasMusic', wantsAtlas() ? '0' : '1'); atlasMusic(); }; // wanted but still silent (no click yet): the click only starts it
+  function atlasMusic() { const w = wantsAtlas() && !(on && arcade), th = skyTune(); paintMusic(); if (OGE.body !== 'sky') atlasLoop(w); else if (th && w !== (tune === th)) music(w, th); }
+  $('musicBtn').onclick = () => { if (!(wantsAtlas() && !(on && arcade) && !atlasPlaying())) localStorage.setItem('oge.atlasMusic', wantsAtlas() ? '0' : '1'); atlasMusic(); }; // wanted but still silent (no click yet): the click only starts it
   paintMusic();
   addEventListener('pointerdown', (e) => { if (e.target.id !== 'musicBtn') atlasMusic(); });
   OGE.music = (play, th) => music(play, th); // the sky view of the atlas plays its own piece
@@ -901,7 +912,7 @@
     maxHp = 100; usedTowns.clear(); hp = 100; bombs = 2; incoming = []; flash = hit = 0; shields = 0; shieldLeft = 4;
     run = { flags: 0, caps: 0, bosses: 0 };
     p2 = mpMode === 'local' && arcade ? { x: -0.65, y: 0.55, z: 200, hp: 100, score: 0, tilt: 0 } : null; // the second local player starts beside the first
-    music(arcade); if (!arcade) atlasMusic(); // a flight that is not arcade keeps the atlas piece
+    music(arcade); if (arcade) atlasLoop(false); else atlasMusic(); // a flight that is not arcade keeps the atlas piece
     objs = []; booms = []; bursts = []; score = coins = 0;
     const la = OGE.lookAt(), c = la ? la.carto : viewer.camera.positionCartographic; // above the look-at point, not from orbit
     const ground = scene.globe.getHeight(c) || 0;
@@ -1771,7 +1782,8 @@
     const onWing = (q, f, k, c, wid = 1) => { const P = [...q.P].sort((x, y) => Math.abs(x[0]) - Math.abs(y[0])), lerp = (a, b, t) => a.map((x, j) => x + (b[j] - x) * t);
       const root = P.slice(0, 2).sort((x, y) => y[2] - x[2]), tip = P.slice(2).sort((x, y) => y[2] - x[2]), front = lerp(root[0], tip[0], f), rear = lerp(root[1], tip[1], f), mid = lerp(front, rear, 0.5);
       const n = q.n[1] < 0 ? q.n.map((x) => -x) : q.n, a = unit(sub(front, rear)), b = cross(n, a), r = (k * Math.hypot(...sub(front, rear))) / 2, at = (ka, kb) => mid.map((x, j) => x + (a[j] * ka + b[j] * kb * wid) * r);
-      M.F.push([[at(1, -1), at(1, 1), at(-1, 1), at(-1, -1)].map((p) => M.V.push(p) - 1), c, q.fi, Math.sign(q.mid[0])]); };
+      M.F.push([[at(1, -1), at(1, 1), at(-1, 1), at(-1, -1)].map((p) => M.V.push(p) - 1), c, q.fi, Math.sign(q.mid[0])]);
+      M.F.push([[at(1, 1), at(1, -1), at(-1, -1), at(-1, 1)].map((p) => M.V.push(p) - 1), c, q.fi, Math.sign(q.mid[0])]); }; // and the same under the wing, turned over so that it reads right from below
     // The wings carry both: the flag near the root and the roundel further out, where neither the engine flame nor the hull hides them from the camera behind the ship.
     // The Falcon is the exception (below): roundel and flag on the upper plates of its hull.
     const wings = quads.filter((q) => q.c === 's').slice(0, 2);
@@ -1939,6 +1951,7 @@
     m.sym('h', CR, MR, JR); m.sym('d', MR, LL, JR); m.sym('h', JR, LL, CH); m.poly('m', [-16, -26, 10], UL, MR, LL);
   });
   const shade = (hex, k) => { const n = parseInt(hex.slice(1), 16); return `rgb(${Math.min(255, Math.round(((n >> 16) & 255) * k))},${Math.min(255, Math.round(((n >> 8) & 255) * k))},${Math.min(255, Math.round((n & 255) * k))})`; };
+  const MARKSIDE = 1; // the sign of a mark's own normal against the view when the camera is behind it (the mesh axes are left-handed)
   // An image the ship wears, lit as the plate it is painted on: in the shade it darkens with it. One copy per image and step of light is kept.
   const painted = (im, lum) => { const key = Math.round(Math.min(1.2, lum) * 10), lit = im.ogeLit || (im.ogeLit = {});
     if (!lit[key]) { const cv = Object.assign(document.createElement('canvas'), { width: im.naturalWidth, height: im.naturalHeight }), x = cv.getContext('2d'), k = key / 10; x.drawImage(im, 0, 0, cv.width, cv.height); x.globalCompositeOperation = 'source-atop'; x.fillStyle = k < 1 ? `rgba(0,0,0,${((1 - k) * 0.85).toFixed(2)})` : `rgba(255,255,255,${((k - 1) * 0.5).toFixed(2)})`; x.fillRect(0, 0, cv.width, cv.height); lit[key] = cv; }
@@ -1961,6 +1974,7 @@
       C.Cartesian3.normalize(n, n);
       const mid = idx.reduce((mm, k) => C.Cartesian3.add(mm, W[k], mm), new C.Cartesian3()); C.Cartesian3.multiplyByScalar(mid, 1 / idx.length, mid);
       C.Cartesian3.normalize(C.Cartesian3.subtract(cp, mid, v), v); C.Cartesian3.normalize(C.Cartesian3.add(L, v, hv), hv);
+      if (mark && C.Cartesian3.dot(n, v) * MARKSIDE > 0) continue; // a mark is paint on one side of its plate: seen from the other side it is not there
       faces.push({ idx, c, im, lum: (real ? 0.3 : 0.45) + (real ? 0.7 : 0.55) * Math.abs(C.Cartesian3.dot(n, L)), sp: Math.abs(C.Cartesian3.dot(n, hv)) ** 40, d: (dist[fi] = par != null && dist[par] != null ? dist[par] : C.Cartesian3.distance(cp, mid)), o: fi });
     }
     faces.sort((x, y) => y.d - x.d || x.o - y.o); // far to near; a detail right after the face it lies on
