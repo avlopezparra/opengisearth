@@ -557,7 +557,7 @@
       for (const p of shp.parseDbf(await buf('10m_cultural/ne_10m_admin_1_states_provinces.dbf'))) {
         const lon = +p.longitude, lat = +p.latitude, name = clean(OGE_LANG === 'en' ? p.name : p.name_es) || clean(p.name);
         if (!isFinite(lon) || !isFinite(lat) || !name) continue;
-        bills.add({ position: C.Cartesian3.fromDegrees(lon, lat), text: name, font: 'italic 600 13px sans-serif', fillColor: C.Color.fromCssColorString('#ffe9a8'), style: C.LabelStyle.FILL, showBackground: true, backgroundColor: C.Color.fromCssColorString('rgba(10,30,60,0.55)'), backgroundPadding: new C.Cartesian2(5, 3), disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        bills.add({ position: C.Cartesian3.fromDegrees(lon, lat), text: name, font: 'italic 600 13px sans-serif', fillColor: C.Color.fromCssColorString('#ffe9a8'), style: C.LabelStyle.FILL_AND_OUTLINE, outlineColor: C.Color.fromCssColorString('#0a1e3c'), outlineWidth: 3, disableDepthTestDistance: Number.POSITIVE_INFINITY,
           distanceDisplayCondition: new C.DistanceDisplayCondition(0, (+p.min_label || 5) <= 4 ? 4e6 : 2e6), id: { oge: 'region', q: clean(p.wikidataid), name } });
       }
       const occluder = new C.EllipsoidalOccluder(C.Ellipsoid.WGS84, viewer.camera.positionWC);
