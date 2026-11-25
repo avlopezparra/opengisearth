@@ -320,6 +320,7 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
   $('mmMin').onclick = () => mmMin(!$('mmBox').classList.contains('min'));
   mmMin(!!localStorage.getItem('oge.mmMin'));
   OGE.minimap.toggle = $('mmMin').onclick;
+  OGE.minimap.open = () => { const cb = $('layerMinimap'); if (cb && !cb.checked) { cb.checked = true; cb.dispatchEvent(new Event('change')); } mmMin(false); }; // the arcade starts with it open
   $('mmIn').onclick = () => mmSetZoom(1);
   $('mmOut').onclick = () => mmSetZoom(-1);
   mm.addEventListener('wheel', (e) => { e.preventDefault(); mmSetZoom(e.deltaY < 0 ? 1 : -1); }, { passive: false });
