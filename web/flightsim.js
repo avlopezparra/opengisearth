@@ -214,9 +214,39 @@
   let thrT = 0, boost = null, boostCd = 0, eHeld = false, landing = null; // boost: the ship's single burst on E { t0, base } // landing: 'down' while dropping, 'parked' on the ground, 'up' while lifting off
   let calm = false; // free flight chosen from the mode menu: nothing to collect
   const quest = () => !calm && localStorage.getItem('oge.quest') !== '0';
+  const PICKS = new Set(['coin', 'ring', 'heart', 'shield', 'bombGet', 'flag', 'capital']);
   function sfx(name) {
     const d = SFX[name];
-    try { ac(); d[2].forEach((n, i) => tone(n, audio.currentTime + i * d[1], d[1] * 2.4, d[0], 0.07)); } catch { /* no audio device */ }
+    try {
+      ac(); d[2].forEach((n, i) => tone(n, audio.currentTime + i * d[1], d[1] * 2.4, d[0], 0.07));
+      if (PICKS.has(name)) chime(d[2][d[2].length - 1] + 12, d[1] * (d[2].length - 1)); // something caught: a bell rings on its last note
+      if (name === 'boss') blast();
+    } catch { /* no audio device */ }
+  }
+  function chime(midi, delay) { // a small FM bell through the echo
+    const t = audio.currentTime + delay, f = 440 * 2 ** ((midi - 69) / 12), car = audio.createOscillator(), mod = audio.createOscillator(), depth = audio.createGain(), v = audio.createGain();
+    car.frequency.value = f; mod.frequency.value = f * 3.5; depth.gain.setValueAtTime(f * 2, t); depth.gain.exponentialRampToValueAtTime(1, t + 0.4); v.gain.setValueAtTime(0.06, t); v.gain.exponentialRampToValueAtTime(0.0005, t + 0.6);
+    mod.connect(depth).connect(car.frequency); car.connect(v).connect(bus()); car.start(t); mod.start(t); car.stop(t + 0.65); mod.stop(t + 0.65);
+  }
+  function blast() { // a boss going down: a long rumble closing in, a falling boom and a string of smaller blasts
+    const t = audio.currentTime; if (!noise) drum(42, t); // the hi-hat makes the noise buffer
+    const src = audio.createBufferSource(), f = audio.createBiquadFilter(), v = audio.createGain(), o = audio.createOscillator(), ov = audio.createGain();
+    src.buffer = noise; src.loop = true; f.type = 'lowpass'; f.frequency.setValueAtTime(2400, t); f.frequency.exponentialRampToValueAtTime(70, t + 1.6); v.gain.setValueAtTime(0.5, t); v.gain.exponentialRampToValueAtTime(0.001, t + 1.8);
+    src.connect(f).connect(v).connect(master); src.start(t); src.stop(t + 1.9);
+    o.frequency.setValueAtTime(110, t); o.frequency.exponentialRampToValueAtTime(28, t + 1.2); ov.gain.setValueAtTime(0.4, t); ov.gain.exponentialRampToValueAtTime(0.001, t + 1.4); o.connect(ov).connect(master); o.start(t); o.stop(t + 1.5);
+    for (let i = 1; i < 6; i++) drum(38, t + i * 0.17 + Math.random() * 0.08);
+  }
+  let hum = null; // the engine: two detuned oscillators through a filter that opens with the gas and the turbo
+  function engineHum(level, turbo = 0) { // level 0 silences it
+    try {
+      if (!hum) {
+        if (!level) return;
+        ac(); const o = audio.createOscillator(), o2 = audio.createOscillator(), f = audio.createBiquadFilter(), v = audio.createGain();
+        o.type = 'sawtooth'; o2.type = 'square'; f.type = 'lowpass'; v.gain.value = 0; o.connect(f); o2.connect(f); f.connect(v).connect(master); o.start(); o2.start(); hum = { o, o2, f, v };
+      }
+      const t = audio.currentTime, base = 48 + 34 * level + 14 * turbo;
+      hum.o.frequency.setTargetAtTime(base, t, 0.15); hum.o2.frequency.setTargetAtTime(base * 1.505, t, 0.15); hum.f.frequency.setTargetAtTime(180 + 500 * level + 260 * turbo, t, 0.15); hum.v.gain.setTargetAtTime(level ? 0.016 + 0.02 * level : 0, t, 0.2);
+    } catch { /* no audio device */ }
   }
   const setMute = (v) => { muted = v; localStorage.setItem('oge.mute', v ? '1' : ''); if (master) master.gain.value = v ? 0 : 1; $('flyMute').textContent = (v ? '🔇 ' : '🔊 ') + T('Sonido') + ' (P)'; $('flyMute').classList.toggle('active', v); };
 
@@ -275,6 +305,7 @@
     beacon: { name: 'Faro', hp: 42, every: 1500, shots: 2, color: '#ff5c5c', sway: 0, phases: true }, // at half life it spins and fires all around
     saucer: { name: 'Platillo nodriza', hp: 34, every: 1300, shots: 2, color: '#b47cff', sway: 2200 },
     golem: { name: 'Gólem de piedra', hp: 50, every: 2400, shots: 3, color: '#ffb347', sway: 0 },
+    dread: { name: 'Acorazado', hp: 8, every: 1700, shots: 2, color: '#ff2d55', sway: 1200, weak: true }, // only its reactor can be hurt, while the bow doors are open: 3 hits, 3 more, then 2
     station: { name: 'Estación orbital', hp: 28, every: 1500, shots: 2, color: '#6ee7ff', sway: 600, shield: true }, // its shield opens like the crystal's
   };
   const SOLO = Object.keys(BOSSES).filter((k) => k !== 'hand'); // the hands come with the stone face
@@ -375,12 +406,17 @@
       if (again) setTimeout(offer, 600);
     }
   }
-  const shieldOpen = (o, now = performance.now()) => !BOSSES[o.type].shield || (now - (o.born || 0)) % 5000 > 3000; // open 2 s out of every 5
+  const shieldOpen = (o, now = performance.now()) => { // can it be hurt now? the crystal's shield opens 2 s out of every 5; a weak point shows 2.5 s out of every 7, and stays shut for a while after each phase
+    const B = BOSSES[o.type];
+    return B.weak ? now > (o.lockT || 0) && (now - (o.born || 0)) % 7000 > 4500 : !B.shield || (now - (o.born || 0)) % 5000 > 3000;
+  };
   const escortsUp = (o) => objs.filter((x) => x.kind === 'enemy' && x.from === o).length;
   function hitBoss(o, n) { // a boss guards each capital in the arcade: beating it wins the capital
     if (!shieldOpen(o)) { booms.push({ p: o.p, t: performance.now() }); return sfx('shieldBreak'); } // deflected by the crystal shield
     if (BOSSES[o.type].spawns && escortsUp(o) >= 2) { booms.push({ p: o.p, t: performance.now() }); return sfx('shieldBreak'); } // the hive's core is covered
+    if (BOSSES[o.type].weak) n = 1; // the reactor takes one hit at a time, whatever hits it
     o.hp -= n; o.hitT = performance.now(); booms.push({ p: o.p, t: performance.now() }); beep(260, 90, 0.2); sfx('bossHit'); // a metallic clang for every hit
+    if (BOSSES[o.type].weak && (o.hp === 5 || o.hp === 2)) { o.stage = o.hp === 5 ? 2 : 3; o.lockT = performance.now() + 3000; OGE.toast(`${T('El Acorazado cierra su reactor: fase')} ${o.stage}/3`); sfx('warpUp'); } // next phase: it shuts and fires faster
     if (o.hp > 0) return;
     bursts.push({ p: C.Cartesian3.clone(o.p), t: performance.now(), color: BOSSES[o.type].color });
     objs.splice(objs.indexOf(o), 1); gain(pts(o.from ? 300 : 1000)); if (!o.from) run.bosses++; flash = performance.now(); sfx('boss');
@@ -518,7 +554,7 @@
       if ((o.kind !== 'enemy' && o.kind !== 'airliner' && o.kind !== 'aa' && o.kind !== 'octo' && !boss) || now < o.next) continue;
       if (o.kind === 'octo' && C.Cartesian3.distance(o.p, cam.positionWC) > 1.2e4) { o.next = now + 1500; continue; }
       if (o.kind === 'aa' && C.Cartesian3.distance(o.p, cam.positionWC) > 1e4) { o.next = now + 1500; continue; } // anti-aircraft: only within 10 km
-      o.next = now + DIFF[diff].fire * (boss ? BOSSES[o.type].every * (0.8 + Math.random() * 0.4) : 4000 + Math.random() * 4000);
+      o.next = now + DIFF[diff].fire * (boss ? (BOSSES[o.type].every / (o.stage || 1)) * (0.8 + Math.random() * 0.4) : 4000 + Math.random() * 4000);
       const d = C.Cartesian3.distance(o.p, cam.positionWC), speed = (eff * 0.5 + 600) * DIFF[diff].shot, tt = d / (speed + eff);
       if (boss ? d > Math.max(reach() * 1.3, 6e4) : d > reach() * 1.3 || C.Cartesian3.dot(C.Cartesian3.subtract(o.p, cam.positionWC, t), cam.directionWC) < 0) continue;
       const target = C.Cartesian3.add(p2 && !p2.out && p2.p && Math.random() < 0.5 ? p2.p : cam.positionWC, C.Cartesian3.multiplyByScalar(cam.directionWC, eff * tt, new C.Cartesian3()), new C.Cartesian3()); // half the shots go for player 2
@@ -774,7 +810,7 @@
       if (race || d > 2e5 || objs.some((o) => o.cap === c)) continue; // its boss or its coat of arms is already there (no bosses in a race)
       if (adv && (c.a3 !== adv.a3 || !adv.boss)) continue; // in the adventure the boss comes after the flags
       const type = bossKind(c.name), B = BOSSES[type], base = C.Cartesian3.fromDegrees(c.lon, c.lat, (scene.globe.getHeight(C.Cartographic.fromDegrees(c.lon, c.lat)) || 0) + 6000);
-      objs.push({ kind: 'boss', born: performance.now(), type, cap: c, base, p: C.Cartesian3.clone(base), east: C.Cartesian3.normalize(C.Cartesian3.cross(C.Cartesian3.UNIT_Z, base, new C.Cartesian3()), new C.Cartesian3()), size: 700, hp: Math.ceil(B.hp * DIFF[diff].boss), max: Math.ceil(B.hp * DIFF[diff].boss), next: performance.now() + 2500 });
+      objs.push({ kind: 'boss', born: performance.now(), type, cap: c, base, p: C.Cartesian3.clone(base), east: C.Cartesian3.normalize(C.Cartesian3.cross(C.Cartesian3.UNIT_Z, base, new C.Cartesian3()), new C.Cartesian3()), size: 700, hp: Math.ceil(B.hp * (B.weak ? 1 : DIFF[diff].boss)), max: Math.ceil(B.hp * (B.weak ? 1 : DIFF[diff].boss)), next: performance.now() + 2500 }); // the phases of a weak-point boss are counted in hits: not scaled
       if (type === 'face') { const face = objs[objs.length - 1]; for (const side of [-1, 1]) objs.push({ kind: 'boss', born: performance.now(), type: 'hand', cap: null, from: face, base, p: C.Cartesian3.add(base, C.Cartesian3.multiplyByScalar(face.east, side * 1500, new C.Cartesian3()), new C.Cartesian3()), east: face.east, size: 500, hp: 6, max: 6, next: performance.now() + 4000, pt: performance.now() + side * 1500, mirror: side }); }
       OGE.toast(`⚠ Jefe de ${c.name}: derrótalo para conseguir la capital.`);
       beep(200, 500, 0.6);
@@ -1257,6 +1293,7 @@
     if (sideWas) { sideWas = false; OGE.hideSide(false); }
     for (const id of autoOn) { $(id).checked = false; $(id).dispatchEvent(new Event('change')); } autoOn = [];
     for (const id of autoOff) { $(id).checked = true; $(id).dispatchEvent(new Event('change')); } autoOff = [];
+    engineHum(0); scene.globe.maximumScreenSpaceError = 2;
     on = false; if (race && race.vBase) A.vMax = race.vBase; race = null; if (msg && adv) { adv = null; advShape = null; } // a crash ends the stage tut = null;
     music(false);
     if (arcade && !msg && score) msg = `Vuelo terminado: ${score} puntos y ${coins} monedas.`;
@@ -1367,6 +1404,14 @@
     boxM(m, -62, -4, -4, -18, 4, 4, 'sdd'); boxM(m, 18, -4, -4, 62, 4, 4, 'sdd'); boxM(m, -4, 18, -4, 4, 54, 4, 'sdd'); boxM(m, -4, -54, -4, 4, -18, 4, 'sdd'); // four arms
     for (const e of [-1, 1]) for (let i = 0; i < 3; i++) for (const v of [-1, 1]) m.poly((i + (v > 0 ? 1 : 0)) % 2 ? 'w' : 'p', [e * (26 + i * 12), v * 6, 0], [e * (38 + i * 12), v * 6, 0], [e * (38 + i * 12), v * 30, 0], [e * (26 + i * 12), v * 30, 0]); // solar wings
     m.poly('m', [0, 9, 18.5], [8, 0, 18.5], [0, -9, 18.5], [-8, 0, 18.5]); }); // its eye: red while the shield is open
+  const dreadMesh = (gap) => meshOf((m) => { // an armoured warship, bow on: the doors on its bow slide apart to show the reactor
+    m.hull(46, [[40, 26, 18, 16], [0, 34, 22, 18], [-45, 30, 20, 16], [-70, 20, 12, 10]], 8, 'e');
+    boxM(m, -9, 20, -30, 9, 40, -4); boxM(m, -5, 40, -24, 5, 48, -12, 'sdd'); // the bridge tower
+    for (const e of [-1, 1]) { boxM(m, e * 34 - 6, -4, -10, e * 34 + 6, 4, 34, 'sdd'); boxM(m, e * 34 - 2.5, -2, 34, e * 34 + 2.5, 2, 52, 'ddd'); } // the side guns
+    m.poly('m', ...Array.from({ length: 6 }, (_, k) => [10 * Math.cos((k * Math.PI) / 3), 10 * Math.sin((k * Math.PI) / 3), 46.5])); // the reactor
+    for (const e of [-1, 1]) m.poly('w', [e * gap * 13, -11, 47.5], [e * (13 + gap * 13), -11, 47.5], [e * (13 + gap * 13), 11, 47.5], [e * gap * 13, 11, 47.5]); // the doors
+    [-1, 0, 1].forEach((x, n) => m.poly('abc'[n], [x * 5 - 1.8, 43, -11.5], [x * 5 + 1.8, 43, -11.5], [x * 5 + 1.8, 46, -11.5], [x * 5 - 1.8, 46, -11.5])); // a light for each phase it has left
+  });
   const golemMesh = (t) => meshOf((m) => { const sw = Math.sin(t * 2) * 6; // a stone giant: its arms swing as it hovers
     boxM(m, -24, -20, -12, 24, 26, 12); boxM(m, -13, 28, -10, 13, 50, 10); // torso and head
     boxM(m, -44, -14 + sw, -9, -27, 24 + sw, 9, 'sdd'); boxM(m, 27, -14 - sw, -9, 44, 24 - sw, 9, 'sdd'); boxM(m, -47, -34 + sw, -11, -26, -16 + sw, 11); boxM(m, 26, -34 - sw, -11, 47, -16 - sw, 11); // arms and fists
@@ -1477,7 +1522,7 @@
   }
   const meshScale = (p, px, h) => (px * C.Cartesian3.distance(p, viewer.camera.positionWC)) / (h / 2 / Math.tan((viewer.camera.frustum.fovy || rad(60)) / 2)) / 50; // so that 50 mesh units span px pixels on screen
   function drawBoss3D(o, x, y, R, now) { // every boss as a lit low-poly solid
-    const k = o.type, sc = meshScale(o.p, R * 1.35, hud.clientHeight), white = now - (o.hitT || 0) < 90, col = BOSSES[k].color, t = now / 1000, open = !BOSSES[k].shield || shieldOpen(o, now);
+    const k = o.type, sc = meshScale(o.p, R * 1.35, hud.clientHeight), white = now - (o.hitT || 0) < 90, col = BOSSES[k].color, t = now / 1000, open = shieldOpen(o, now);
     if (k === 'fortress') drawMesh(BOSS3D.fortress.mesh, foeAxes(o.p, Math.sin(now / 1500) * 0.4), BOSS3D.fortress.col, white, sc * 0.75, col);
     else if (k === 'crystal') {
       drawMesh(BOSS3D.crystal.mesh, foeAxes(o.p, now / 1200), BOSS3D.crystal.col, white, sc * 0.95, '#9fe8ff');
@@ -1499,8 +1544,9 @@
     else if (k === 'dragon') drawMesh(dragonMesh(t, now - (o.spat || 0) < 400), foeAxes(o.p, 0.4), { h: '#ff8a3c', s: '#d6451f', d: '#7a1f12', w: '#ffd23a', e: '#fff07a' }, white, sc * 0.95, null);
     else if (k === 'saucer') drawMesh(SAUCER, foeAxes(o.p, t * 1.5), { h: '#e6e9f0', s: '#aeb5c4', d: '#565d70', g: '#7fdcff', e: col }, white, sc * 0.9, col);
     else if (k === 'golem') drawMesh(golemMesh(t), foeAxes(o.p, Math.sin(t * 0.8) * 0.5), { h: '#b9aa94', s: '#8c7d69', d: '#544a3d', e: col }, white, sc * 0.9, null);
+    else if (k === 'dread') { const lit = (n) => (n <= 3 - (o.stage || 1) ? '#39ff14' : '#1c2a1c'); drawMesh(dreadMesh(open ? 1 : 0), foeAxes(o.p, Math.sin(t * 0.6) * 0.45), { h: '#aeb6c4', s: '#7c8596', d: '#474e5c', e: '#6ee7ff', w: '#59616f', m: open ? (Math.sin(now / 60) > 0 ? '#ff2d55' : '#ffd0d8') : '#141820', a: lit(0), b: lit(1), c: lit(2) }, white, sc, null); }
     else drawMesh(STATION, foeAxes(o.p, Math.sin(t * 0.5) * 0.8), { h: '#dfe5ee', s: '#aab3c2', d: '#5d6678', w: '#2f6fd8', p: '#1f4fa8', m: open ? '#ff2d55' : '#33415c' }, white, sc * 0.9, null); // the orbital station
-    if (!open) { g.save(); g.shadowBlur = 0; g.strokeStyle = 'rgba(160,230,255,.8)'; g.lineWidth = 4; g.beginPath(); g.arc(x, y, R * 1.55, 0, 7); g.stroke(); g.restore(); } // the shield, while it is closed
+    if (!open && !BOSSES[k].weak) { g.save(); g.shadowBlur = 0; g.strokeStyle = 'rgba(160,230,255,.8)'; g.lineWidth = 4; g.beginPath(); g.arc(x, y, R * 1.55, 0, 7); g.stroke(); g.restore(); } // the shield, while it is closed
   }
   function drawShip3D(w, h) {
     const ax = shipAxes(), toWin = C.SceneTransforms.worldToWindowCoordinates || C.SceneTransforms.wgs84ToWindowCoordinates, cam = viewer.camera, md = shipModel();
@@ -1706,6 +1752,8 @@
     sfx(type === 'roll' ? 'roll' : 'loop');
   }
   function step(dt) {
+    if (A && A.ship) engineHum(paused ? 0 : landing === 'parked' ? 0.2 + Math.min(0.8, Math.abs(s.taxi || 0) / 200) : stopped ? 0.15 : 0.45 + 0.55 * s.throttle, Math.log2(Math.max(1, warp)) / 2 + (boost ? 1.5 : 0));
+    scene.globe.maximumScreenSpaceError = warp >= 16 ? 5 : warp >= 4 ? 3 : 2; // fast: fewer, coarser tiles first
     controls(dt);
     let pe = s.pitch, rollOff = 0; // effective pitch and extra roll while a maneuver runs
     if (man) {
@@ -1768,11 +1816,11 @@
         const lo = C.Math.toDegrees(s.lon), la = C.Math.toDegrees(s.lat), field = arcade && airports && airports.find(([x, y]) => Math.abs(y - la) < 0.04 && Math.abs((x - lo) * Math.cos(s.lat)) < 0.04); // ~4 km
         if (field && hp < maxHp) { hp = Math.min(maxHp, hp + 8 * dt); if (!refuelMsg) { refuelMsg = true; OGE.toast(T('🛬 Aeródromo: recuperando vida…')); sfx('heart'); } }
         s.v = 0; s.throttle = 0; s.pitch = 0; stopped = false;
-        // like a car: W / ↑ / E accelerate up to ~400 km/h, S / ↓ / Q brake and then reverse; the steering only turns while it rolls (and reverses backwards)
+        // like a car: W / ↑ / E accelerate up to ~1000 km/h, S / ↓ / Q brake and then reverse; the steering only turns while it rolls (and reverses backwards)
         const kd = (x) => keys.has(x), gas = kd('w') || kd('arrowup') || kd('e') || kd('pageup') || stick.y < -0.2, brake = kd('s') || kd('arrowdown') || kd('q') || kd('pagedown') || stick.y > 0.2;
         let v = s.taxi || 0;
-        if (gas) v += (v < 0 ? 60 : 28) * dt; else if (brake) v -= (v > 0 ? 50 : 12) * dt; else v -= Math.sign(v) * Math.min(Math.abs(v), 4 * dt); // engine braking when nothing is pressed
-        s.taxi = v = clamp(v, -25, 110); // ground speed: up to ~400 km/h, separate from the flight speed
+        if (gas) v += (v < 0 ? 60 : 28 + v * 0.12) * dt; else if (brake) v -= (v > 0 ? 50 : 12) * dt; else v -= Math.sign(v) * Math.min(Math.abs(v), 4 * dt); // engine braking when nothing is pressed
+        s.taxi = v = clamp(v, -25, 280); // ground speed: up to ~1000 km/h, separate from the flight speed
         s.lat += (v * dt * Math.cos(s.heading)) / R; s.lon = C.Math.negativePiToPi(s.lon + (v * dt * Math.sin(s.heading)) / (R * Math.cos(s.lat)));
         s.heading = C.Math.zeroToTwoPi(s.heading + s.rud * clamp(v / 12, -1, 1) * 0.9 * dt);
         s.alt = gnd + 12; // closer to the ground, like a car
