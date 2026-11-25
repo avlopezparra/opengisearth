@@ -289,6 +289,19 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
   // ---------- Compass: the needle follows the camera heading; a click turns the view north-up ----------
   scene.postRender.addEventListener(() => { $('compass').firstElementChild.style.transform = `rotate(${-viewer.camera.heading}rad)`; });
   $('compass').onclick = () => viewer.camera.flyTo({ destination: viewer.camera.positionWC.clone(), orientation: { heading: 0, pitch: viewer.camera.pitch, roll: 0 }, duration: 0.6 });
+  // GPS: the location service of the browser itself; the position stays on this device
+  let gpsDot = null;
+  $('gpsBtn').hidden = !!BODY || !navigator.geolocation;
+  $('gpsBtn').onclick = () => {
+    OGE.toast('Buscando tu ubicación…');
+    navigator.geolocation.getCurrentPosition(({ coords: c }) => {
+      if (gpsDot) viewer.entities.remove(gpsDot);
+      gpsDot = viewer.entities.add({ position: C.Cartesian3.fromDegrees(c.longitude, c.latitude), point: { pixelSize: 14, color: C.Color.fromCssColorString('#0a84ff'), outlineColor: C.Color.WHITE, outlineWidth: 3, disableDepthTestDistance: Number.POSITIVE_INFINITY } });
+      gpsDot._tmp = true; // not a user feature: never saved
+      viewer.camera.flyTo({ destination: C.Cartesian3.fromDegrees(c.longitude, c.latitude, Math.max(1500, c.accuracy * 6)), duration: 2 });
+      OGE.toast(`Tu ubicación: ${c.latitude.toFixed(5)}, ${c.longitude.toFixed(5)} (±${Math.round(c.accuracy)} m)`);
+    }, (e) => OGE.toast(e.code === 1 ? 'Permiso de ubicación denegado: actívalo en el navegador para usar el GPS.' : 'No se pudo obtener tu ubicación.', true), { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
+  };
 
   // ---------- World minimap: where the camera (or the aircraft) is; other modules add their marks through OGE.minimap.extra ----------
   const mm = $('minimap'), mg = mm.getContext('2d'), mmTiles = new Map(); // Natural Earth II level 2 (8 × 4 tiles of 45°), loaded when first needed
