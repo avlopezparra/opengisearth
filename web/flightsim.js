@@ -223,8 +223,8 @@
   }
   // The atlas plays a quiet piece of its own on each world (the sky has its own switch, in sky.js); a button switches it off and the choice is kept. Browsers only let sound start after a click.
   const atlasTheme = () => (OGE.body === 'moon' ? window.OGE_ATLAS_MOON_THEME : OGE.body === 'mars' ? window.OGE_ATLAS_MARS_THEME : OGE.body === 'sky' ? null : window.OGE_ATLAS_THEME), wantsAtlas = () => localStorage.getItem('oge.atlasMusic') !== '0';
-  function atlasMusic() { const th = atlasTheme(), w = wantsAtlas(); $('musicBtn').textContent = T(w ? 'Música: sí' : 'Música: no'); if (th && !on && w !== (tune === th)) music(w, th); }
-  $('musicBtn').onclick = () => { const th = atlasTheme(); if (!(wantsAtlas() && th && !on && tune !== th)) localStorage.setItem('oge.atlasMusic', wantsAtlas() ? '0' : '1'); atlasMusic(); }; // wanted but still silent (no click yet): the click only starts it
+  function atlasMusic() { const th = atlasTheme(), w = wantsAtlas(); $('musicBtn').textContent = T(w ? 'Música: sí' : 'Música: no'); if (th && !(on && arcade) && w !== (tune === th)) music(w, th); }
+  $('musicBtn').onclick = () => { const th = atlasTheme(); if (!(wantsAtlas() && th && !(on && arcade) && tune !== th)) localStorage.setItem('oge.atlasMusic', wantsAtlas() ? '0' : '1'); atlasMusic(); }; // wanted but still silent (no click yet): the click only starts it
   $('musicBtn').hidden = OGE.body === 'sky'; $('musicBtn').textContent = T(wantsAtlas() ? 'Música: sí' : 'Música: no');
   addEventListener('pointerdown', (e) => { if (e.target.id !== 'musicBtn') atlasMusic(); });
   OGE.music = (play, th) => music(play, th); // the sky view of the atlas plays its own piece
@@ -466,6 +466,12 @@
       if (!tut && !OGE.body && sea !== undefined && sea < 1.5 && Math.random() < 0.3 && objs.filter((o) => o.kind === 'octo').length < 4) { objs.push({ kind: 'octo', p: C.Cartesian3.fromRadians(cg.longitude, cg.latitude, 30), size: 260, hp: 2, next: performance.now() + 1500 + Math.random() * 2500 }); return; } } // sea creatures, only over the water
     objs.push({ kind, big, p, rock: kind === 'wall' && (!!OGE.body || (s.alt > SPACE && (s.alt > DEEP || Math.random() < 0.5))), size: D * 0.06 * SIZE[kind] * (big ? 2.5 : 1), look: Math.floor(Math.random() * ENEMY.length), next: performance.now() + 3000 + Math.random() * 4000 }); // sized for the speed it was created at; next: when an enemy fires
   }
+  function buyBomb() { // coins buy bombs too: 15 each, while fewer than three are carried
+    if (!on || !arcade || paused) return;
+    if (bombs >= 3) return OGE.toast(T('Ya llevas 3 bombas.'));
+    if (coins < 15) return OGE.toast(`${T('Una bomba cuesta 15 monedas: tienes')} ${coins}.`);
+    coins -= 15; bombs++; sfx('bombGet'); OGE.toast(T('Bomba comprada por 15 monedas.'));
+  }
   function buyShield() { // coins buy shields: 10 each, three at most
     if (!on || !arcade || paused) return;
     if (shields >= 3) return OGE.toast(T('Ya llevas los 3 escudos.'));
@@ -554,7 +560,7 @@
     if (auto) return; // the autopilot brings its own enemies
     if (A.ship && s.alt > 1e5 && warp > 100) { if (objs.length || incoming.length) { objs = objs.filter((o) => o.kind === 'boss' || o.kind === 'crest'); incoming = []; } return; } // hyper turbo: nothing to dodge or collect on the way (it would run into everything); at the turbo of the air, space has its enemies and prizes too
     if (!tut && !race && performance.now() > aaT) aaSites();
-    if (tune) { const BT = (adv && adv.final && window.OGE_FINAL_THEME) || window.OGE_BOSS_THEME, near = BT && objs.some((o) => o.kind === 'boss' && C.Cartesian3.distance(o.p, viewer.camera.positionWC) < 1e5), base = (OGE.body === 'moon' && window.OGE_MOON_THEME) || (OGE.body === 'mars' && window.OGE_MARS_THEME) || (adv && window.OGE_ADV_THEME) || (race && window.OGE_RACE_THEME) || (s.alt > (tune === window.OGE_SPACE_THEME ? SPACE * 0.8 : SPACE) && window.OGE_SPACE_THEME) || TH, want = near ? BT : base; if (want !== tune) music(true, want); } // Boss Fight OpenStarshipEarth while a boss is close
+    if (tune && arcade) { const BT = (adv && adv.final && window.OGE_FINAL_THEME) || window.OGE_BOSS_THEME, near = BT && objs.some((o) => o.kind === 'boss' && C.Cartesian3.distance(o.p, viewer.camera.positionWC) < 1e5), base = (OGE.body === 'moon' && window.OGE_MOON_THEME) || (OGE.body === 'mars' && window.OGE_MARS_THEME) || (adv && window.OGE_ADV_THEME) || (race && window.OGE_RACE_THEME) || (s.alt > (tune === window.OGE_SPACE_THEME ? SPACE * 0.8 : SPACE) && window.OGE_SPACE_THEME) || TH, want = near ? BT : base; if (want !== tune) music(true, want); } // Boss Fight OpenStarshipEarth while a boss is close
     const cam = viewer.camera, t = new C.Cartesian3(), far = reach() * 2.5, eff = s.v * warp, slack = eff * 0.03, now = performance.now(); // slack: distance covered in one frame
     const rolling = man && man.type === 'roll'; // a barrel roll deflects enemies and shots
     for (const o of objs.filter((x) => x.kind === 'boss' && x.type === 'face')) for (const side of [-1, 1]) { // the stone face grows back a hand 25 s after losing it
@@ -838,7 +844,7 @@
     maxHp = 100; usedTowns.clear(); hp = 100; bombs = 2; incoming = []; flash = hit = 0; shields = 0;
     run = { flags: 0, caps: 0, bosses: 0 };
     p2 = mpMode === 'local' && arcade ? { x: -0.65, y: 0.55, z: 200, hp: 100, score: 0, tilt: 0 } : null; // the second local player starts beside the first
-    music(arcade);
+    music(arcade); if (!arcade) atlasMusic(); // a flight that is not arcade keeps the atlas piece
     objs = []; booms = []; bursts = []; score = coins = 0;
     const la = OGE.lookAt(), c = la ? la.carto : viewer.camera.positionCartographic; // above the look-at point, not from orbit
     const ground = scene.globe.getHeight(c) || 0;
@@ -1653,7 +1659,9 @@
     };
     // The tail flag ('j' faces): on each fin, that is, the biggest wing or accent plate standing more upright than flat on that side; a single middle fin carries one on each face; a ship without fins wears it on the sides of the hull.
     const plates = M.F.map(([idx, c], fi) => { const P = idx.map((k) => M.V[k]), nn = cross(sub(P[1], P[0]), sub(P[2], P[0])); return { fi, c, P, n: unit(nn), area: Math.hypot(...nn) / (P.length === 3 ? 2 : 1), mid: [0, 1, 2].map((k) => P.reduce((s, p) => s + p[k], 0) / P.length) }; }).filter((q) => q.P.length <= 4 && 'sw'.includes(q.c) && Math.abs(q.n[0]) > 0.5).sort((x, y) => y.area - x.area);
-    for (const e of [-1, 1]) { const fin = plates.find((q) => q.mid[0] * e > 1) || plates.find((q) => Math.abs(q.mid[0]) <= 1), side = fin || quads.filter((q) => 'hd'.includes(q.c) && Math.abs(q.n[0]) > 0.9 && q.mid[0] * e > 0).sort((x, y) => y.area - x.area)[0]; if (side) put(side, fin && Math.abs(fin.mid[0]) > 1 ? (fin.n[0] * e < 0 ? fin.n.map((x) => -x) : fin.n) : [e, 0, 0], [0, 1, 0], fin ? 0.55 : 1.1, 1, 'j', e, 1.5); } // lying on the fin itself, facing outwards
+    // On the upper side of the hull beside each fin, where the camera behind the ship sees it: top towards the nose and stretched that way, since the plate is seen almost edge-on. The Falcon wears its roundel there, so its flag stays on the fins.
+    for (const e of [-1, 1]) { const top = !onHull && quads.filter((q) => q.c === 'h' && q.mid[0] * e > 0 && q.mid[1] > 0 && q.mid[2] < 0 && Math.abs(q.n[1]) > 0.3 && Math.abs(q.n[0]) > 0.3).sort((x, y) => y.area - x.area)[0]; if (top) { put(top, top.n[1] < 0 ? top.n.map((x) => -x) : top.n, [0, 0, 1], 1.3, 2.4, 'j', e, 1.3); continue; }
+      const fin = plates.find((q) => q.mid[0] * e > 1) || plates.find((q) => Math.abs(q.mid[0]) <= 1), side = fin || quads.filter((q) => 'hd'.includes(q.c) && Math.abs(q.n[0]) > 0.9 && q.mid[0] * e > 0).sort((x, y) => y.area - x.area)[0]; if (side) put(side, fin && Math.abs(fin.mid[0]) > 1 ? (fin.n[0] * e < 0 ? fin.n.map((x) => -x) : fin.n) : [e, 0, 0], [0, 1, 0], fin ? 0.55 : 1.1, 1, 'j', e, 1.5); } // lying on the fin itself, facing outwards
     if (onHull) { for (const e of [-1, 1]) { const q = quads.filter((q) => q.c === 'h' && q.mid[0] * e > 0 && Math.abs(q.n[1]) > 0.3 && Math.abs(q.n[0]) > 0.3).sort((x, y) => y.area - x.area)[0]; if (q) put(q, q.n[1] < 0 ? q.n.map((x) => -x) : q.n, [0, 0, 1], 1.6, 2.7); } return; } // the biggest plate on each upper side of the hull: a little proud of it and longer towards the nose, because the camera sees that plate almost edge-on
     for (const q of quads.filter((q) => q.c === 's').slice(0, 2)) put(q, q.n[1] < 0 ? q.n.map((x) => -x) : q.n, [0, 0, 1], 0.62); // the wings: the first mirrored pair, the image's top towards the nose
     for (const e of [-1, 1]) { const q = quads.filter((q) => 'hd'.includes(q.c) && Math.abs(q.n[0]) > 0.9 && q.mid[0] * e > 0).sort((x, y) => y.area - x.area)[0]; if (q) put(q, [e, 0, 0], [0, 1, 0], 1.6); } // the biggest plate on each side of the hull (the square stands a little proud of it)
@@ -2445,6 +2453,7 @@
     else if (k === 'b' && A && A.ship) { if (!e.repeat) trigger(true); } // B fires, aiming by itself at the nearest enemy; held, it charges
     else if (k === 'v' && A.ship) bomb(); // V drops a bomb
     else if (k === 'g' && A.ship) buyShield(); // G buys a shield with coins
+    else if (k === '5' && A.ship) buyBomb();
     else if (k === '+' || k === '=' || k === '-') OGE.minimap.zoom(k === '-' ? -1 : 1);
     else if (k === 'm') OGE.minimap.toggle();
     else if (k === 'n') nextTurn();
@@ -2624,7 +2633,7 @@
   for (const b of document.querySelectorAll('#flyActs button')) b.addEventListener('pointerdown', (e) => { e.preventDefault(); const key = b.dataset.key, up = () => document.dispatchEvent(new KeyboardEvent('keyup', { key })); document.dispatchEvent(new KeyboardEvent('keydown', { key })); if (key === 'b') { b.addEventListener('pointerup', up, { once: true }); b.addEventListener('pointercancel', up, { once: true }); } else setTimeout(up, 80); }); // the fire button can be held to charge // the same as their keys
   if (!matchMedia('(pointer: coarse)').matches) { // with a keyboard the key buttons are not needed: only Controls and Scores stay at hand
     $('flyBtns').classList.add('keyboard');
-    $('flyKeys').append(Object.assign(document.createElement('li'), { className: 'keyBtns' })); $('flyKeys').lastChild.append($('flyScores'), $('flyFlags'), $('flyArms'), $('flyColors'), $('flyMp'), $('flyReset'), $('flyShip'), $('flySun'), $('flyThird'), Object.assign(document.createElement('button'), { type: 'button', textContent: T('Comprar escudo: 10 monedas (G)'), onclick: () => { if (pad.menu) padMenu(false); buyShield(); } }),
+    $('flyKeys').append(Object.assign(document.createElement('li'), { className: 'keyBtns' })); $('flyKeys').lastChild.append($('flyScores'), $('flyFlags'), $('flyArms'), $('flyColors'), $('flyMp'), $('flyReset'), $('flyShip'), $('flySun'), $('flyThird'), Object.assign(document.createElement('button'), { type: 'button', textContent: T('Comprar escudo: 10 monedas (G)'), onclick: () => { if (pad.menu) padMenu(false); buyShield(); } }), Object.assign(document.createElement('button'), { type: 'button', textContent: T('Comprar bomba: 15 monedas (5)'), onclick: () => { if (pad.menu) padMenu(false); buyBomb(); } }),
       ...[...DEST, 'down'].map((d) => Object.assign(document.createElement('button'), { type: 'button', className: 'autoDest', textContent: `${T('Piloto automático')} → ${T(PLACES[d] || 'la superficie')}`, onclick: () => { if (pad.menu) padMenu(false); autopilot(d); } }))); // the autopilot can be chosen here as well as with 1, 2, 3 $('flyKeys').style.right = $('flyRules').style.right = '12px'; // no column of buttons beside them // the few actions without a key live in the K panel
   } else { $('flyBtns').classList.add('touch'); document.body.classList.add('touchdev'); } // on a phone the stick steers (left half of the screen): the right column keeps the touch actions and the speed
   $('flyThird').onclick = () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'y' }));
