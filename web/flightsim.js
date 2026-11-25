@@ -749,7 +749,7 @@
         const R = Math.max(14, pr);
         drawBoss(o, q.x, q.y, R, now);
         g.shadowBlur = 0; g.fillStyle = '#300'; g.fillRect(q.x - 40, q.y - R * 1.5 - 16, 80, 6); g.fillStyle = '#ff453a'; g.fillRect(q.x - 40, q.y - R * 1.5 - 16, (80 * o.hp) / o.max, 6); // its life
-        g.fillStyle = '#fff'; g.textAlign = 'center'; g.font = '600 12px sans-serif'; g.fillText(`${o.fin ? T(o.name) + ' · ' + T('fase') + ' ' + o.stage + '/3' : T(BOSSES[o.type].name) + ' · ' + (o.cap ? o.cap.name : T('práctica'))} · ${o.hp}/${o.max}`, q.x, q.y - R * 1.5 - 22);
+        g.fillStyle = '#fff'; g.textAlign = 'center'; g.font = '600 12px sans-serif'; g.fillText(`${o.fin ? T(o.name) + ' · ' + T('fase') + ' ' + o.stage + '/3' : T(BOSSES[o.type].name) + ' · ' + (o.cap ? o.cap.name : o.from && o.from.fin ? T(o.from.name) : o.from && o.from.cap ? o.from.cap.name : T('práctica'))} · ${o.hp}/${o.max}`, q.x, q.y - R * 1.5 - 22);
       }
       else if (o.kind === 'airliner') { // a real flight: the airliner icon turned along its track, with its callsign
         const R = Math.max(14, pr * 2); drawMesh(AIRLINER, axesAt(o.p, rad(o.a.track || 0), 0, 0), { h: '#f4f6f9', s: '#d5dae3', d: '#9aa3b2', w: '#ffd60a' }, now - (o.hitT || 0) < 90, meshScale(o.p, R, h), '#ffd60a', true);
@@ -786,7 +786,12 @@
       if (b.ink) { g.save(); g.fillStyle = '#2b1640'; g.globalAlpha = 0.85; for (let k = 0; k < 4; k++) { g.beginPath(); g.arc(q.x + Math.cos(k * 1.7 + b.spin) * br * 0.9, q.y + Math.sin(k * 2.3 + b.spin) * br * 0.9, br * (1.4 - k * 0.2), 0, 7); g.fill(); } g.restore(); continue; } // an ink blot
       if (b.fire) { const r = br * 2.4, gr = g.createRadialGradient(q.x, q.y, 0, q.x, q.y, r); gr.addColorStop(0, '#fff6c0'); gr.addColorStop(0.35, '#ffb300'); gr.addColorStop(0.75, '#ff3d00'); gr.addColorStop(1, 'rgba(255,61,0,0)'); g.save(); g.fillStyle = gr; g.beginPath(); g.arc(q.x, q.y, r, 0, 7); g.fill(); g.fillStyle = 'rgba(255,120,0,.35)'; for (let k = 1; k < 4; k++) { g.beginPath(); g.arc(q.x + Math.sin(b.spin + k) * r * 0.4, q.y + k * r * 0.45, r * (0.7 - k * 0.15), 0, 7); g.fill(); } g.restore(); continue; } // a fireball with a flaming tail
       if (b.panel) { const a = b.spin + performance.now() / 150, sq = Math.abs(Math.cos(a * 0.7)); g.save(); g.translate(q.x, q.y); g.rotate(a); g.fillStyle = '#d7dde5'; g.fillRect(-br * 2, -br * 1.3 * sq, br * 4, br * 2.6 * sq); g.strokeStyle = '#ff7a1a'; g.lineWidth = Math.max(1.5, br * 0.35); g.strokeRect(-br * 2, -br * 1.3 * sq, br * 4, br * 2.6 * sq); g.restore(); continue; } // a tumbling panel
-      g.save(); g.fillStyle = g.shadowColor = b.color || '#ff2df5'; g.shadowBlur = 10; g.beginPath(); g.arc(q.x, q.y, br, 0, 7); g.fill(); g.restore();
+      // An energy bolt: a white-hot core in a pulsing halo of its colour, and a short tail behind it
+      const col = b.color || '#ff2df5', tail = toWin(scene, C.Cartesian3.subtract(b.p, C.Cartesian3.multiplyByScalar(b.vel, 0.06, new C.Cartesian3()), new C.Cartesian3())), r = br * (1.9 + 0.25 * Math.sin(now / 60 + (b.spin || 0)));
+      g.save(); g.globalCompositeOperation = 'lighter';
+      if (tail) { const lg = g.createLinearGradient(tail.x, tail.y, q.x, q.y); lg.addColorStop(0, 'rgba(0,0,0,0)'); lg.addColorStop(1, col); g.strokeStyle = lg; g.lineWidth = br * 0.9; g.lineCap = 'round'; g.beginPath(); g.moveTo(tail.x, tail.y); g.lineTo(q.x, q.y); g.stroke(); }
+      const gr = g.createRadialGradient(q.x, q.y, 0, q.x, q.y, r); gr.addColorStop(0, '#fff'); gr.addColorStop(0.28, '#fff'); gr.addColorStop(0.5, col); gr.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = gr; g.beginPath(); g.arc(q.x, q.y, r, 0, 7); g.fill(); g.restore();
     }
     const fade = (t0, ms, color) => { const k = (now - t0) / ms; if (k < 1) { g.save(); g.globalAlpha = 0.5 * (1 - k); g.fillStyle = color; g.fillRect(0, 0, w, h); g.restore(); } };
     fade(flash, 450, '#fff'); fade(hit, 250, broke === hit ? '#0a84ff' : '#f00'); // bomb / shield broken / damage
