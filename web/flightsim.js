@@ -424,10 +424,11 @@
     lift(p, kind, D * 0.06 * SIZE[kind] * (big ? 2.5 : 1));
     { const cg = C.Cartographic.fromCartesian(p), sea = scene.globe.getHeight(new C.Cartographic(cg.longitude, cg.latitude)); if (!tut && !OGE.body && sea !== undefined && sea < 1.5 && Math.random() < 0.15 && objs.filter((o) => o.kind === 'ship').length < 3) { objs.push({ kind: 'ship', p: C.Cartesian3.fromRadians(cg.longitude, cg.latitude, 15), cog: Math.random() * 6.28, size: 320, hp: 4, next: performance.now() + 2000 }); return; } // a warship, only over the water
       if (!tut && !OGE.body && sea !== undefined && sea < 1.5 && Math.random() < 0.3 && objs.filter((o) => o.kind === 'octo').length < 4) { objs.push({ kind: 'octo', p: C.Cartesian3.fromRadians(cg.longitude, cg.latitude, 30), size: 260, hp: 2, next: performance.now() + 1500 + Math.random() * 2500 }); return; } } // sea creatures, only over the water
-    objs.push({ kind, big, p, rock: kind === 'wall' && s.alt > SPACE && (s.alt > DEEP || Math.random() < 0.5), size: D * 0.06 * SIZE[kind] * (big ? 2.5 : 1), look: Math.floor(Math.random() * ENEMY.length), next: performance.now() + 3000 + Math.random() * 4000 }); // sized for the speed it was created at; next: when an enemy fires
+    objs.push({ kind, big, p, rock: kind === 'wall' && (!!OGE.body || (s.alt > SPACE && (s.alt > DEEP || Math.random() < 0.5))), size: D * 0.06 * SIZE[kind] * (big ? 2.5 : 1), look: Math.floor(Math.random() * ENEMY.length), next: performance.now() + 3000 + Math.random() * 4000 }); // sized for the speed it was created at; next: when an enemy fires
   }
   function hurt(n) {
     if (tut || performance.now() < graceT) { hit = performance.now(); return; } // nothing hurts during the tutorial or the grace time
+    if (landing === 'parked' && OGE.body) return; // landed (Z) and driving over the Moon or Mars: nothing hurts
     if (shields) { shields--; broke = hit = performance.now(); return sfx('shieldBreak'); } // the shield takes the hit and breaks
     n *= DIFF[diff].hurt;
     hp -= n; hit = performance.now(); beep(200, 80, 0.25);
@@ -899,14 +900,14 @@
       mg.save(); mg.strokeStyle = '#34c759'; mg.setLineDash([4, 3]); mg.lineWidth = 1.5; mg.beginPath(); mg.moveTo(sx, sy); mg.lineTo(x, y); mg.stroke();
       mg.setLineDash([]); mg.fillStyle = '#34c759'; mg.strokeStyle = '#fff'; mg.beginPath(); mg.arc(x, y, 4, 0, 7); mg.fill(); mg.stroke(); mg.restore();
     }
-    for (const r of regs || []) { // region flags still to collect: small dots, only those inside the map window
-      if (gotReg.has(r.id)) continue;
+    for (const r of regs || []) { // region flags, only those inside the map window: small squares, yellow to collect and green once collected
       const [x, y] = OGE.minimap.xy(r.lon, r.lat);
-      if (x > 0 && x < 240 && y > 0 && y < 120) { mg.fillStyle = '#7fd4ff'; mg.fillRect(x - 0.75, y - 0.75, 1.5, 1.5); }
+      if (x > 0 && x < 240 && y > 0 && y < 120) { mg.fillStyle = gotReg.has(r.id) ? '#34c759' : '#ffd60a'; mg.fillRect(x - 1.5, y - 1.5, 3, 3); }
     }
-    for (const c of caps || []) { // capitals: yellow to collect, green once collected
+    for (const c of caps || []) { // capitals: bigger ringed dots, yellow to collect and green once collected
       const [x, y] = OGE.minimap.xy(c.lon, c.lat);
-      mg.fillStyle = got.has(capId(c)) ? '#34c759' : '#ffd60a'; mg.beginPath(); mg.arc(x, y, 2.2, 0, 7); mg.fill();
+      if (x < -4 || x > 244 || y < -4 || y > 124) continue;
+      mg.fillStyle = got.has(capId(c)) ? '#34c759' : '#ffd60a'; mg.strokeStyle = '#10141c'; mg.lineWidth = 1; mg.beginPath(); mg.arc(x, y, 3.2, 0, 7); mg.fill(); mg.stroke();
     }
   };
 
