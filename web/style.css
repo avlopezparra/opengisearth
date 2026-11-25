@@ -243,6 +243,7 @@ body.flying #flyBtns.touch { display: grid; grid-template-columns: auto 48px 48p
 #flyBtns.touch.more > #flyMore { grid-area: 2 / 1 / 3 / 4; }
 #flyBtns.touch.more > #flyExtra { display: grid; grid-row: 1; grid-template-columns: 1fr 1fr; gap: 5px; max-height: calc(100vh - 120px); max-height: calc(100dvh - 120px); overflow: auto; }
 #flyBtns.touch #flyExtra button { padding: 6px; }
+#flyBtns.touch #flyShip, #flyBtns.touch #flyFlags, #flyBtns.touch #flyArms { order: -1; } /* dressing the ship (style, flags, coats of arms) comes first in the phone's menu */
 
 /* With a keyboard the right column is not shown at all: K opens the controls (reminded on the HUD) */
 #flyBtns.keyboard { display: none !important; }

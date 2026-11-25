@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- OpenStarshipEarth for Android: a full-screen, landscape window on the game at opengisearth.com (nothing is bundled: the app always plays the current version). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.opengisearth.starship" android:versionCode="1" android:versionName="1.0.0">
+  <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34" />
+  <uses-permission android:name="android.permission.INTERNET" />
+  <uses-feature android:name="android.hardware.touchscreen.multitouch" android:required="false" />
+  <uses-feature android:name="android.hardware.gamepad" android:required="false" />
+  <application android:label="OpenStarshipEarth" android:icon="@mipmap/ic_launcher" android:hardwareAccelerated="true" android:allowBackup="true" android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
+    <activity android:name=".MainActivity" android:exported="true" android:screenOrientation="sensorLandscape" android:launchMode="singleTask"
+      android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|uiMode">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN" />
+        <category android:name="android.intent.category.LAUNCHER" />
+      </intent-filter>
+    </activity>
+  </application>
+</manifest>
