@@ -5,10 +5,10 @@
     <linearGradient id="earth" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#b8f2ff"/><stop offset="0.025" stop-color="#3fb2f2"/><stop offset="0.09" stop-color="#1667c8"/><stop offset="0.22" stop-color="#0a2f78"/><stop offset="1" stop-color="#062257"/></linearGradient>
     <radialGradient id="atmo" cx="0.5" cy="0.5" r="0.5"><stop offset="0.9" stop-color="#8fe6ff" stop-opacity="0.75"/><stop offset="1" stop-color="#8fe6ff" stop-opacity="0"/></radialGradient>
     <linearGradient id="land" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9af07a"/><stop offset="1" stop-color="#1f9a4a"/></linearGradient>
-    <linearGradient id="hullL" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#c9d6ea"/></linearGradient>
-    <linearGradient id="hullR" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c3cfe4"/><stop offset="1" stop-color="#6f7d9c"/></linearGradient>
-    <linearGradient id="wingA" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8fe0ff"/><stop offset="1" stop-color="#2f8df0"/></linearGradient>
-    <linearGradient id="wingB" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a7be6"/><stop offset="1" stop-color="#123f9c"/></linearGradient>
+    <linearGradient id="hullL" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffb873"/><stop offset="1" stop-color="#ff7300"/></linearGradient>
+    <linearGradient id="hullR" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e56700"/><stop offset="1" stop-color="#8a3d00"/></linearGradient>
+    <linearGradient id="wingA" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#aaa0a0"/><stop offset="1" stop-color="#766b6b"/></linearGradient>
+    <linearGradient id="wingB" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6d6262"/><stop offset="1" stop-color="#3f3838"/></linearGradient>
     <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f2feff"/><stop offset="0.5" stop-color="#4fd6ff"/><stop offset="1" stop-color="#0a5fa8"/></linearGradient>
     <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff7b0"/><stop offset="0.5" stop-color="#ffcf1a"/><stop offset="1" stop-color="#e07a00"/></linearGradient>
     <radialGradient id="flame" cx="0.5" cy="0.15" r="0.85"><stop offset="0" stop-color="#ffffff"/><stop offset="0.25" stop-color="#bff3ff"/><stop offset="0.6" stop-color="#3fb2ff"/><stop offset="1" stop-color="#2a5cff" stop-opacity="0"/></radialGradient>
