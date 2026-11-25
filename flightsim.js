@@ -7,7 +7,7 @@
   const scene = viewer.scene, rad = C.Math.toRadians, deg = C.Math.toDegrees, clamp = C.Math.clamp;
   const G = 9.81, R = 6371000, KT = 1.94384, FT = 3.28084, GEAR_H = 1.8;
   const IMPERIAL = /-(US|LR|MM)$/i.test(navigator.language || ''); // knots and feet only where feet are the everyday unit; the rest of the world reads km/h and metres
-  const num = (v) => Math.round(v).toLocaleString(OGE_LANG), spd = (v) => (IMPERIAL ? Math.round(v * KT) + ' KT' : v * 3.6 < 1e5 ? num(v * 3.6) + ' km/h' : num((v * 3.6) / 1000) + 'k km/h'), high = (m) => (IMPERIAL ? Math.round(m * FT) + ' FT' : Math.abs(m) < 1e5 ? num(m) + ' m' : num(m / 1000) + ' km');
+  const num = (v) => String(Math.round(v)), spd = (v) => (IMPERIAL ? Math.round(v * KT) + ' KT' : v * 3.6 < 1e5 ? num(v * 3.6) + ' km/h' : num((v * 3.6) / 1000) + 'k km/h'), high = (m) => (IMPERIAL ? Math.round(m * FT) + ' FT' : Math.abs(m) < 1e5 ? num(m) + ' m' : num(m / 1000) + ' km');
   // vStall/vMax in m/s; thrust: acceleration at full throttle (m/s²); roll/pitch/yaw: maximum angular rates; agl and v0: start
   const PLANES = {
     sr22: { name: 'SR22 — avioneta de hélice, lenta y dócil', vStall: 31, vMax: 95, thrust: 3.2, roll: rad(45), pitch: rad(22), yaw: rad(20), agl: 600, v0: 70 },
@@ -175,18 +175,18 @@
     v.gain.setValueAtTime(vol, t); v.gain.setValueAtTime(vol, t + dur * 0.7); v.gain.exponentialRampToValueAtTime(0.001, t + dur);
     o.connect(v).connect(master); o.start(t); o.stop(t + dur + 0.02);
   }
-  function drum(midi, t) { // 36 kick, 38/40 snare, anything else a hi-hat or cymbal
-    if (midi === 35 || midi === 36) {
-      const o = audio.createOscillator(), v = audio.createGain();
-      o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(40, t + 0.12);
-      v.gain.setValueAtTime(0.25, t); v.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
-      return o.connect(v).connect(master), o.start(t), o.stop(t + 0.15);
+  function drum(midi, t) { // drums as a Mega Drive plays them: an FM tone that drops in pitch for the kick and the toms, and the coarse stepped noise of its PSG chip for the snare and the cymbals
+    const hit = (f0, f1, dur, vol, type = 'sine') => { const o = audio.createOscillator(), v = audio.createGain(); o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur * 0.8); v.gain.setValueAtTime(vol, t); v.gain.exponentialRampToValueAtTime(0.001, t + dur); o.connect(v).connect(master); o.start(t); o.stop(t + dur + 0.01); };
+    if (!noise) { // PSG noise: one of two levels held for several samples, so it is gritty and a little pitched
+      noise = audio.createBuffer(1, audio.sampleRate * 0.4, audio.sampleRate); const ch = noise.getChannelData(0), hold = Math.max(1, Math.round(audio.sampleRate / 9000)); let lv = 1;
+      for (let i = 0; i < ch.length; i++) { if (i % hold === 0) lv = Math.random() < 0.5 ? -1 : 1; ch[i] = lv; }
     }
-    if (!noise) { noise = audio.createBuffer(1, audio.sampleRate * 0.3, audio.sampleRate); const ch = noise.getChannelData(0); for (let i = 0; i < ch.length; i++) ch[i] = Math.random() * 2 - 1; }
-    const src = audio.createBufferSource(), f = audio.createBiquadFilter(), v = audio.createGain(), snare = midi === 38 || midi === 40, len = snare ? 0.14 : midi === 49 ? 0.3 : 0.05;
-    src.buffer = noise; f.type = 'highpass'; f.frequency.value = snare ? 1500 : 7000;
-    v.gain.setValueAtTime(snare ? 0.12 : 0.05, t); v.gain.exponentialRampToValueAtTime(0.001, t + len);
-    src.connect(f).connect(v).connect(master); src.start(t); src.stop(t + len);
+    const hiss = (rate, len, vol, hp) => { const src = audio.createBufferSource(), f = audio.createBiquadFilter(), v = audio.createGain(); src.buffer = noise; src.playbackRate.value = rate; f.type = 'highpass'; f.frequency.value = hp; v.gain.setValueAtTime(vol, t); v.gain.exponentialRampToValueAtTime(0.001, t + len); src.connect(f).connect(v).connect(master); src.start(t); src.stop(t + len); };
+    if (midi === 35 || midi === 36) { hit(240, 42, 0.13, 0.3); return hit(900, 200, 0.02, 0.08, 'square'); } // kick: the drop, and a click on top
+    if (midi === 38 || midi === 40) { hit(330, 170, 0.09, 0.12, 'triangle'); return hiss(0.55, 0.16, 0.13, 900); } // snare: a short tom under low noise
+    if (midi >= 41 && midi <= 48 && ![42, 44, 46].includes(midi)) return hit(90 + (midi - 41) * 28, 60 + (midi - 41) * 14, 0.18, 0.2, 'triangle'); // toms
+    const crash = midi === 49 || midi === 57;
+    hiss(crash ? 0.8 : 1.6, crash ? 0.4 : midi === 46 ? 0.18 : 0.045, crash ? 0.07 : 0.05, crash ? 3000 : 6000); // crash, open hat, closed hat
   }
   function march(th) { // the adventure theme rearranged as a space march: the same tune of ours, in the minor, faster, over a galloping bass and a marching snare
     if (th.marched) return; th.marched = true; th.bpm = 148;
@@ -204,21 +204,13 @@
     }
     th.bass = bass; th.harmony = notes.sort((x, y) => x[0] - y[0]).flat(); th.drums = drums;
   }
-  function funk(th) { // the race theme, a light touch only: the bass pops an octave on the last sixteenth of each beat and the hats fill in the sixteenths
-    if (th.funked) return; th.funked = true;
-    const bass = [], drums = [], q = th.unit / 4;
-    for (let i = 0; i < th.bass.length; i += 3) { const t = th.bass[i], len = th.bass[i + 1], p = th.bass[i + 2], off = t % th.unit === th.unit / 2; bass.push(t, off ? Math.min(len, q - 1) : len, p); if (off) bass.push(t + q, q - 1, p + 12); }
-    for (let i = 0; i < th.drums.length; i += 3) drums.push([th.drums[i], th.drums[i + 1], th.drums[i + 2]]);
-    for (let b = 0; b < th.beats; b++) drums.push([b * th.unit + q, 3, 42], [b * th.unit + 3 * q, 3, 42]);
-    th.bass = bass; th.drums = drums.sort((x, y) => x[0] - y[0]).flat();
-  }
   let tune = null; // the theme playing now: Main Theme or Boss Fight OpenStarshipEarth
   function music(play, th = TH) {
     clearInterval(musicTimer); musicTimer = null; tune = play ? th : null;
     style = th === window.OGE_RACE_THEME ? STYLE.race : th === window.OGE_ADV_THEME ? STYLE.adventure : th === window.OGE_BOSS_THEME ? STYLE.boss : STYLE.main;
     if (musicBus) musicBus.wet.gain.value = style.echo;
     if (!play || !th) return;
-    if (th === window.OGE_ADV_THEME) march(th); else if (th === window.OGE_RACE_THEME) funk(th);
+    if (th === window.OGE_ADV_THEME) march(th);
     try { ac(); } catch { return; } // no audio device
     const u = 60 / th.bpm / th.unit, loop = th.beats * th.unit, idx = { lead: 0, harmony: 0, bass: 0, drums: 0 }; // u: seconds per stored unit
     let t0 = audio.currentTime + 0.1; // when the current pass of the loop started
@@ -1037,10 +1029,10 @@
   const BALLOON = { missile: '#ff453a', mine: '#bf5af2', boost: '#ffd60a', shield: '#0a84ff' }; // the colour tells what a balloon holds
   function placeBoxes() { // the course along the race path: a row of three balloons every few km, numbered gates, boost rings and speed coins
     objs = objs.filter((o) => !['itembox', 'gate', 'zip', 'scoin'].includes(o.kind));
-    const at = (f, side = 0, up = 1500) => { const [lon, lat, hd] = pathAt(f), x = lon + (side * Math.cos(hd)) / Math.cos(rad(lat)), y = lat - side * Math.sin(hd), gh = scene.globe.getHeight(C.Cartographic.fromDegrees(x, y)); return { lon: x, lat: y, up, lifted: gh !== undefined, p: C.Cartesian3.fromDegrees(x, y, (gh || 0) + up) }; };
+    const at = (f, side = 0, up = 2200) => { const [lon, lat, hd] = pathAt(f), x = lon + (side * Math.cos(hd)) / Math.cos(rad(lat)), y = lat - side * Math.sin(hd), gh = scene.globe.getHeight(C.Cartographic.fromDegrees(x, y)); return { lon: x, lat: y, up, lifted: gh !== undefined, p: C.Cartesian3.fromDegrees(x, y, (gh || 0) + up) }; };
     const ng = Math.max(3, Math.min(25, Math.round(race.pathLen / 10000)));
-    race.gates = [];
-    for (let i = 1; i <= ng; i++) { const g0 = { kind: 'gate', n: i, f: i / (ng + 1), size: 900, next: 1e15, ...at(i / (ng + 1)) }; race.gates.push(g0); objs.push(g0); } // pass them in order
+    race.gates = race.rings === false ? null : [];
+    if (race.gates) for (let i = 1; i <= ng; i++) { const g0 = { kind: 'gate', n: i, f: i / (ng + 1), size: 900, next: 1e15, ...at(i / (ng + 1)) }; race.gates.push(g0); objs.push(g0); } // pass them in order
     race.nextGate = 0; race.missed = 0;
     for (let i = 0; i < ng; i++) { const f = (i + 0.5) / (ng + 1); objs.push({ kind: 'zip', size: 500, next: 1e15, ...at(f, (i % 2 ? 1 : -1) * 0.004) }); } // boost rings, a little off the line
     for (let i = 0; i < ng * 4; i++) { const f = (i + 0.25) / (ng * 4 + 1); objs.push({ kind: 'scoin', size: 220, next: 1e15, ...at(f, ((i % 3) - 1) * 0.006) }); } // speed coins
@@ -1050,7 +1042,7 @@
       const [lon, lat, hd] = pathAt(i / n), side = Math.cos(rad(lat));
       for (const o of [-1, 0, 1]) { // across the route
         const x = lon + (o * 0.012 * Math.cos(hd)) / side, y = lat - o * 0.012 * Math.sin(hd), gh = scene.globe.getHeight(C.Cartographic.fromDegrees(x, y));
-        objs.push({ kind: 'itembox', item: Object.keys(BALLOON)[(i + o + 3) % 4], lon: x, lat: y, up: 1200, lifted: gh !== undefined, p: C.Cartesian3.fromDegrees(x, y, (gh || 0) + 1200), size: 350, next: 1e15 });
+        objs.push({ kind: 'itembox', item: Object.keys(BALLOON)[(i + o + 3) % 4], lon: x, lat: y, up: 2200, lifted: gh !== undefined, p: C.Cartesian3.fromDegrees(x, y, (gh || 0) + 2200), size: 350, next: 1e15 });
       }
     }
   }
@@ -1108,10 +1100,11 @@
       help: 'Vuela de una ciudad a otra lo más rápido que puedas. La meta se marca en la pantalla y en el minimapa; se guarda tu mejor tiempo de cada ruta.',
       fields: [{ id: 'from', label: 'Salida', type: 'text', value: last.from || 'Santiago de Chile' }, { id: 'to', label: 'Meta', type: 'text', value: last.to || 'Valparaíso' },
         { id: 'cpus', label: 'Rivales de la CPU (si no hay otros jugadores)', type: 'select', value: String(last.cpus ?? 5), options: Array.from({ length: 13 }, (_, i) => [String(i), i ? String(i) : 'Ninguno']) },
-        { id: 'maxWarp', label: 'Turbo máximo', type: 'select', value: String(last.maxWarp ?? 2), options: WARPS.map((x) => [String(x), x === 100 ? '×100 (sin límite)' : '×' + x]) },
+        { id: 'maxWarp', label: 'Turbo máximo', type: 'select', value: String(Math.min(10, last.maxWarp ?? 2)), options: WARPS.filter((x) => x <= 10).map((x) => [String(x), '×' + x]) }, // the higher ones are for crossing the world, not for a course
         { id: 'route', label: 'Ruta de la carrera', type: 'select', value: last.route === 'line' ? 'line' : 'road', options: [['road', 'Por carreteras y ferris (OpenStreetMap)'], ['line', 'Línea recta entre las ciudades']] },
         { id: 'lands', label: 'Volar solo sobre estos países (separados por comas; vacío = todos)', type: 'text', value: last.lands || '' },
         { id: 'via', label: 'Metas intermedias: ciudades por las que pasar (separadas por comas)', type: 'text', value: last.via || '' },
+        { id: 'rings', label: 'Aros numerados que hay que pasar en orden (desmárcalo para correr sin aros)', type: 'checkbox', value: last.rings ?? true },
         { id: 'laps', label: 'Vueltas (2 o más: circuito que vuelve a la salida)', type: 'select', value: String(last.laps ?? 1), options: [1, 2, 3, 4, 5].map((n) => [String(n), n === 1 ? '1 (de una ciudad a otra)' : String(n)]) }] });
     if (!v || !v.from || !v.to) return;
     localStorage.setItem('oge.raceLast', JSON.stringify(v));
@@ -1130,11 +1123,11 @@
     adv = null; advShape = null;
     start('ship', true, true, true, false);
     s.heading = hd;
-    race = { laps, via, key: `${v.from}|${v.to}|${v.maxWarp}|${v.lands}|${v.via || ''}|${laps}${v.route === 'line' ? '|line' : ''}`.toLowerCase(), from: a, to: b, t0: performance.now(), km: raceKmFrom(a, b), cpus: [], maxWarp: +v.maxWarp || 100, others: null };
+    race = { laps, via, key: `${v.from}|${v.to}|${v.maxWarp}|${v.lands}|${v.via || ''}|${laps}${v.route === 'line' ? '|line' : ''}${v.rings === false ? '|norings' : ''}`.toLowerCase(), from: a, to: b, t0: performance.now(), km: raceKmFrom(a, b), cpus: [], maxWarp: Math.min(10, +v.maxWarp || 10), rings: v.rings !== false, others: null };
     if (warp > race.maxWarp) setWarp(race.maxWarp);
     if (v.lands && v.lands.trim()) raceLands(v.lands); // only these countries (the sea and Antarctica stay open)
     if (!p2 && !remote) race.cpus = Array.from({ length: +v.cpus || 0 }, (_, i) => ({ // rivals: each flies the route at its own pace
-      name: CPU_NAMES[i], color: CPU_COLORS[i], model: Object.keys(SHIPS)[i % Object.keys(SHIPS).length], f: 0, side: ((i % 2 ? 1 : -1) * (1 + Math.floor(i / 2))) * 0.004, speed: (1200 + Math.random() * 2600) * Math.min(1, race.maxWarp / 5 + 0.2), stunT: 0, itemT: performance.now() + 8000 + Math.random() * 10000 }));
+      name: CPU_NAMES[i], color: CPU_COLORS[i], model: Object.keys(SHIPS)[i % Object.keys(SHIPS).length], f: 0, side: ((i % 2 ? 1 : -1) * (1 + Math.floor(i / 2))) * 0.004, speed: A.vMax * race.maxWarp * (0.8 + Math.random() * 0.25), stunT: 0, itemT: performance.now() + 8000 + Math.random() * 10000 }));
     const stops = laps > 1 ? [a, ...via, a] : [a, ...via, b], lap1 = stops.map((p) => [p.lon, p.lat]);
     const repeat = (pts) => { let out = pts.slice(); for (let i = 1; i < laps; i++) out = out.concat(pts.slice(1)); return out; }; // the same loop once per lap
     items = []; setPath(repeat(lap1.length > 1 ? lap1 : [[a.lon, a.lat], [b.lon, b.lat]])); placeBoxes();
@@ -1150,7 +1143,7 @@
   const raceKmFrom = (a, b) => C.Cartesian3.distance(C.Cartesian3.fromDegrees(a.lon, a.lat, 0), C.Cartesian3.fromDegrees(b.lon, b.lat, 0)) / 1000;
   const cpuPos = (c) => { // along the race path (roads and ferries), a little to one side, 1.5 km over the ground
     const [lon, lat, hd] = pathAt(c.f), x = lon + (c.side * Math.cos(hd)) / Math.cos(rad(lat)), y = lat - c.side * Math.sin(hd);
-    return C.Cartesian3.fromDegrees(x, y, (scene.globe.getHeight(C.Cartographic.fromDegrees(x, y)) || 0) + 1500);
+    return C.Cartesian3.fromDegrees(x, y, (scene.globe.getHeight(C.Cartographic.fromDegrees(x, y)) || 0) + 2200);
   };
   const myProgress = () => { // the nearest point of the path, checked a few times a second
     const now = performance.now();
@@ -1217,7 +1210,7 @@
     if (race.others) borderStep(race, race.others);
     const ng = race.gates && race.gates[race.nextGate];
     if (ng && myProgress() > ng.f + 0.04) { race.nextGate++; race.missed++; race.t0 -= 5000; objs = objs.filter((o) => o !== ng); OGE.toast(`${T('Te saltaste el aro')} ${ng.n}: +5 s`); sfx('shieldBreak'); } // a skipped gate: 5 s penalty
-    if (race.gates && race.nextGate < race.gates.length) return; // the gates first (laps and intermediate goals)
+    if (race.gates ? race.nextGate < race.gates.length : myProgress() < 0.9) return; // the gates first (laps and intermediate goals); without rings, most of the course flown
     if (raceKm() > Math.max(3, (s.v * warp * 0.06) / 1000)) return; // within 3 km, or a couple of frames at high speed
     const ms = performance.now() - race.t0, key = 'oge.race.' + race.key, best = +localStorage.getItem(key) || 0, rec = !best || ms < best;
     if (rec) localStorage.setItem(key, String(Math.round(ms)));
@@ -1243,9 +1236,9 @@
     const occ = new C.EllipsoidalOccluder(C.Ellipsoid.WGS84, viewer.camera.positionWC);
     for (const c of race.cpus) { // the rivals, as ships in their colors with their names
       const p = cpuPos(c), d = C.Cartesian3.distance(p, viewer.camera.positionWC);
-      if (d > 6e4 || !occ.isPointVisible(p) || C.Cartesian3.dot(C.Cartesian3.subtract(p, viewer.camera.positionWC, new C.Cartesian3()), viewer.camera.directionWC) < 0) continue;
+      if (d > 2e5 || !occ.isPointVisible(p) || C.Cartesian3.dot(C.Cartesian3.subtract(p, viewer.camera.positionWC, new C.Cartesian3()), viewer.camera.directionWC) < 0) continue;
       const q = toWin(scene, p); if (!q) continue;
-      const R = clamp(2.4e5 / d, 8, 40); shipBack(q.x, q.y, R, c.color, Math.sin(performance.now() / 700 + c.side * 900) * 0.2, c.stunT > performance.now() ? performance.now() : 0, c.model, p);
+      const R = clamp(4e5 / d, 10, 44); shipBack(q.x, q.y, R, c.color, Math.sin(performance.now() / 700 + c.side * 900) * 0.2, c.stunT > performance.now() ? performance.now() : 0, c.model, p);
       g.save(); g.fillStyle = c.color; g.textAlign = 'center'; g.font = '600 11px sans-serif'; g.fillText(c.name, q.x, q.y + R + 12); g.restore();
     }
     if (race.gates) text((race.laps > 1 ? `${T('Vuelta')} ${Math.min(race.laps, 1 + Math.floor((race.nextGate * race.laps) / race.gates.length))}/${race.laps} · ` : '') + `${T('Aro')} ${Math.min(race.nextGate + 1, race.gates.length)}/${race.gates.length}` + (race.missed ? ` · ${T('saltados')}: ${race.missed}` : '') + ` · ${T('Monedas de velocidad')}: ${race.coins || 0}/10`, 24, 196, 14, 'left');
