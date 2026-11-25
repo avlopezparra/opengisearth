@@ -66,6 +66,7 @@ body.noside #panel, body.noside #splitter { display: none; }
 #statusbar { position: absolute; right: 8px; bottom: 4px; font: 12px ui-monospace, monospace; color: #fff; text-shadow: 0 0 3px #000, 0 0 3px #000; pointer-events: none; white-space: pre; z-index: 1; }
 
 /* Flight simulator: full-screen HUD and no bars */
+.askPreview { display: block; max-height: 72px; max-width: 170px; margin: 4px 0 8px; border: 1px solid rgba(128,128,128,.5); background: #fff; }
 #hud { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 2; cursor: crosshair; }
 /* CRT filter: the picture seen through a tube's phosphors. A staggered mask of red, green and blue cells with dark gaps between the rows (the scan lines) is laid over the game
    as an overlay: it shows in the mid tones and fades in the highlights, which bloom as on a tube. The game itself is softened a little; the corners darken. */

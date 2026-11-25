@@ -1498,7 +1498,7 @@
     const pick = (c, u) => Object.assign(document.createElement('button'), { type: 'button', textContent: T('Elegir bandera'), onclick: async () => {
       if (!subMap) try { subMap = await (await fetch('data/subflags.json')).json(); subAsked = true; } catch { /* only the national flag, then */ }
       const own = regs.filter((r) => r.country === c && gotReg.has(r.id) && subMap && subMap[r.id]).map((r) => ['https://commons.wikimedia.org/wiki/Special:FilePath/' + encodeURIComponent(subMap[r.id]) + '?width=250', r.name]).sort((x, y) => x[1].localeCompare(y[1]));
-      const v = await OGE.ask({ title: `${T('Bandera en la nave')}: ${c}`, ok: 'Elegir', fields: [{ id: 'f', label: 'Bandera nacional o de una región recolectada', type: 'select', value: u, options: [[u, 'Bandera nacional'], ...own] },
+      const v = await OGE.ask({ title: `${T('Bandera en la nave')}: ${c}`, ok: 'Elegir', fields: [{ id: 'f', label: 'Bandera nacional o de una región recolectada', type: 'select', preview: true, value: u, options: [[u, 'Bandera nacional'], ...own] },
         { id: 'side', label: 'Lado de la nave', type: 'select', value: 'both', options: [['both', 'Los dos lados'], ['left', 'Lado izquierdo'], ['right', 'Lado derecho']] }] });
       if (!v) return;
       const L = 'oge.finFlag', R = 'oge.finFlagR', old = localStorage.getItem(L); // R: the right side's own flag, when it differs from the left
@@ -1548,8 +1548,8 @@
     const v = await OGE.ask({ title: 'Nave: estilo y colores', ok: 'Aplicar', help: 'La nave se ve en tercera persona (Y). La insignia de las alas se elige en «Escudos de armas».',
       fields: [{ id: 'model', label: 'Estilo de nave', type: 'select', value: SHIPS[localStorage.getItem('oge.shipModel')] ? localStorage.getItem('oge.shipModel') : 'dardo', options: Object.entries(SHIPS).map(([k, m]) => [k, m.name]) },
         ...tintFields('wing', 'Color de las alas', 'Alas: código hex (con «Personalizado»)', skin(1)), ...tintFields('hull', 'Color del fuselaje', 'Fuselaje: código hex (con «Personalizado»)', hull1()),
-        { id: 'fin', label: 'Bandera en las derivas (de tus banderas recolectadas)', type: 'select', value: localStorage.getItem('oge.finFlag') || '', options: [['', 'Sin bandera'], ...flagOpts] },
-        { id: 'finR', label: 'Bandera de la deriva derecha, si quieres otra', type: 'select', value: localStorage.getItem('oge.finFlagR') || '', options: [['', 'La misma que la izquierda'], ...flagOpts] }] });
+        { id: 'fin', label: 'Bandera en la nave (de tus banderas recolectadas)', type: 'select', preview: true, value: localStorage.getItem('oge.finFlag') || '', options: [['', 'Sin bandera'], ...flagOpts] },
+        { id: 'finR', label: 'Bandera del lado derecho, si quieres otra', type: 'select', preview: true, value: localStorage.getItem('oge.finFlagR') || '', options: [['', 'La misma que la izquierda'], ...flagOpts] }] });
     if (on && !live) { paused = was; last = performance.now(); }
     if (!v) return;
     if (SHIPS[v.model]) localStorage.setItem('oge.shipModel', v.model);
