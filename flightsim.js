@@ -925,7 +925,7 @@
     };
     if (adv) for (const gl of adv.goals) if (!gl.done) edge(...OGE.minimap.xy(gl.lon, gl.lat), '#40e0ff');
     if (nav) edge(...OGE.minimap.xy(deg(nav.lon), deg(nav.lat)), '#ff2d55'); // where the autopilot is going
-    if (adv && regs) for (const r of regs) if (r.a3 === adv.a3 && !gotReg.has(r.id)) edge(...OGE.minimap.xy(r.lon, r.lat), '#ffd60a'); // the stage's flags still to collect // collected capitals in green, the rest in yellow; the race goal, kept at the edge when it is outside
+    if (adv && regs) { const c = viewer.camera.positionCartographic, lo = deg(c.longitude), la = deg(c.latitude); for (const r of regs.filter((r) => r.a3 === adv.a3 && !gotReg.has(r.id)).sort((x, y) => Math.hypot(x.lon - lo, x.lat - la) - Math.hypot(y.lon - lo, y.lat - la)).slice(0, 3)) edge(...OGE.minimap.xy(r.lon, r.lat), '#ffd60a'); } // only the three nearest: a whole country of arrows piled up on the edge // the stage's flags still to collect // collected capitals in green, the rest in yellow; the race goal, kept at the edge when it is outside
     if (remote && remote.to) { const c = C.Cartographic.fromCartesian(remote.to), [x, y] = OGE.minimap.xy(deg(c.longitude), deg(c.latitude)); mg.fillStyle = remote.skin; mg.beginPath(); mg.arc(x, y, 4, 0, 7); mg.fill(); } // the other online player
     if (race) {
       const c = viewer.camera.positionCartographic, [sx, sy] = OGE.minimap.xy(deg(c.longitude), deg(c.latitude));
@@ -935,15 +935,10 @@
       mg.save(); mg.strokeStyle = '#34c759'; mg.setLineDash([4, 3]); mg.lineWidth = 1.5; mg.beginPath(); mg.moveTo(sx, sy); mg.lineTo(x, y); mg.stroke();
       mg.setLineDash([]); mg.fillStyle = '#34c759'; mg.strokeStyle = '#fff'; mg.beginPath(); mg.arc(x, y, 4, 0, 7); mg.fill(); mg.stroke(); mg.restore();
     }
-    for (const r of regs || []) { // region flags, only those inside the map window: small squares, yellow to collect and green once collected
-      const [x, y] = OGE.minimap.xy(r.lon, r.lat);
-      if (x > 0 && x < 240 && y > 0 && y < 120) { mg.fillStyle = gotReg.has(r.id) ? '#34c759' : '#ffd60a'; mg.fillRect(x - 1, y - 1, 2, 2); } // plain dots: nothing heavier than a filled square per flag
-    }
-    for (const c of caps || []) { // capitals: bigger ringed dots, yellow to collect and green once collected
-      const [x, y] = OGE.minimap.xy(c.lon, c.lat);
-      if (x < -4 || x > 244 || y < -4 || y > 124) continue;
-      mg.fillStyle = got.has(capId(c)) ? '#34c759' : '#ffd60a'; mg.fillRect(x - 2.5, y - 2.5, 5, 5); // a bigger dot than a flag's
-    }
+    if (!on || !arcade) return; // flags and capitals are marks of the game: not on the atlas, nor in free flight
+    const nearest = (list, n) => list.map((o) => { const [x, y] = OGE.minimap.xy(o.lon, o.lat); return { o, x, y, d: (x - 120) ** 2 + (y - 60) ** 2 }; }).filter((m) => m.x > 0 && m.x < 240 && m.y > 0 && m.y < 120).sort((a, b) => a.d - b.d).slice(0, n); // only those inside the map window, the closest to the ship first
+    for (const m of nearest(regs || [], 40)) { mg.fillStyle = gotReg.has(m.o.id) ? '#34c759' : '#ffd60a'; mg.fillRect(m.x - 1, m.y - 1, 2, 2); } // region flags: plain dots, yellow to collect and green once collected
+    for (const m of nearest(caps || [], 12)) { mg.fillStyle = got.has(capId(m.o)) ? '#34c759' : '#ffd60a'; mg.fillRect(m.x - 2.5, m.y - 2.5, 5, 5); } // capitals: a bigger dot
   };
 
   // ---------- Region flags: the country's flag over every state or province; countries, continents and the world are achievements ----------
@@ -2195,7 +2190,7 @@
     g.textAlign = 'center'; g.textBaseline = 'middle';
     const text = (t, x, y, size = 13, align = 'center') => { g.font = `600 ${size}px ui-monospace, monospace`; g.textAlign = align; g.fillText(t, x, y); };
     const line = (x1, y1, x2, y2) => { g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke(); };
-    if (loading) text(T('Cargando el terreno y las banderas…'), cx, cy - r - 46, 16);
+    if (loading) text(T('Cargando el terreno y las banderas…'), cx, cy - 70, 16);
     else if (paused) text(T('PAUSA — Espacio para seguir'), cx, cy - r - 46, 16);
     else if (s.ground) text(T('EN TIERRA'), cx, cy - r - 46, 16);
     else if (s.v < A.vStall * (1 - 0.1 * s.flaps)) text(T('PÉRDIDA — baja la nariz y da gas'), cx, cy - r - 46, 16);
@@ -2585,6 +2580,7 @@
   const lastOpts = () => { try { return JSON.parse(localStorage.getItem('oge.flyOpts')) || {}; } catch { return {}; } };
   function quickShip(mode = 'arcade') { // the OpenStarshipEarth arcade with the options used last time; 'free': no enemies, no goals
     relaunch = () => quickShip(mode);
+    adv = null; advShape = null; // a free game is not a stage of the adventure: without this the last stage's borders and goals stayed on
     { const c = viewer.camera.positionCartographic; mpGo({ mode, lon: c.longitude, lat: c.latitude }); }
     const last = lastOpts();
     start('ship', last.mouse ?? true, mode !== 'free', true, mode !== 'free' && !localStorage.getItem('oge.tutorial'), mode === 'free');
@@ -2602,13 +2598,13 @@
         ['race', '🏁 De ciudad a ciudad: llega a la meta en el menor tiempo'],
         ['free', '🕊 Vuelo libre: sin enemigos ni objetivos, solo las vistas']] },
         { id: 'model', label: 'Nave (se ve en tercera persona, tecla Y)', type: 'select', value: SHIPS[localStorage.getItem('oge.shipModel')] ? localStorage.getItem('oge.shipModel') : 'dardo', options: Object.entries(SHIPS).map(([k, m]) => [k, m.name]) },
-        { id: 'cont', label: 'Continente de la aventura', type: 'select', value: advCont, options: Object.keys(ROUTES).map((k) => [k, `${k} (${ROUTES[k].length} ${T('etapas')})`]) },
+        { id: 'cont', label: 'Continente de la aventura (solo para el modo Aventura)', type: 'select', value: advCont, options: Object.keys(ROUTES).map((k) => [k, `${k} (${ROUTES[k].length} ${T('etapas')})`]) },
         { id: 'diff', label: 'Dificultad (cada una tiene su propio ranking)', type: 'select', value: diff, options: Object.entries(DIFF).map(([k, d]) => [k, d.name]) }] });
     if (!v) return;
     localStorage.setItem('oge.shipMode', v.mode);
     if (DIFF[v.diff]) { diff = v.diff; localStorage.setItem('oge.diff', diff); }
     if (SHIPS[v.model]) localStorage.setItem('oge.shipModel', v.model);
-    if (ROUTES[v.cont]) { advCont = v.cont; localStorage.setItem('oge.advCont', advCont); }
+    if (/^adventure/.test(v.mode) && ROUTES[v.cont]) { advCont = v.cont; localStorage.setItem('oge.advCont', advCont); } // the continent only counts for the adventure
     if (OGE.body && /^adventure|^race/.test(v.mode)) { OGE.toast(T('La aventura y las carreras son de la Tierra: aquí, partida libre.')); v.mode = 'arcade'; }
     if (v.mode === 'adventure0') { localStorage.setItem(advKey(), '0'); adventure(0); } else if (v.mode === 'adventure') adventure(); else if (v.mode === 'race') raceMode(); else quickShip(v.mode);
   };
