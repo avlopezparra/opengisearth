@@ -53,11 +53,12 @@
       const toW = C.SceneTransforms.worldToWindowCoordinates || C.SceneTransforms.wgs84ToWindowCoordinates, cw = hud.clientWidth, ch = hud.clientHeight, camP = viewer.camera.positionWC;
       let bestQ = null, bestS = Infinity;
       for (const o of objs) {
-        if (o.kind !== 'enemy' && o.kind !== 'boss' && o.kind !== 'airliner') continue;
+        const wall = power > 1 && o.kind === 'wall'; // charged: crates and asteroids count too, after any enemy
+        if (o.kind !== 'enemy' && o.kind !== 'boss' && o.kind !== 'airliner' && !wall) continue;
         const d = C.Cartesian3.distance(o.p, camP); if (d > reach() * 1.5 && o.kind !== 'boss') continue;
         if (C.Cartesian3.dot(C.Cartesian3.subtract(o.p, camP, new C.Cartesian3()), viewer.camera.directionWC) <= 0) continue;
         const q = toW(scene, o.p); if (!q || q.x < 0 || q.y < 0 || q.x > cw || q.y > ch) continue;
-        const sc = Math.hypot(q.x - acx, q.y - acy) + d / 200; if (sc < bestS) { bestS = sc; bestQ = q; }
+        const sc = Math.hypot(q.x - acx, q.y - acy) + d / 200 + (wall ? 400 : 0); if (sc < bestS) { bestS = sc; bestQ = q; }
       }
       if (padLock) { const q = objs.includes(padLock) && C.Cartesian3.dot(C.Cartesian3.subtract(padLock.p, camP, new C.Cartesian3()), viewer.camera.directionWC) > 0 ? toW(scene, padLock.p) : null; if (q && q.x >= 0 && q.y >= 0 && q.x <= cw && q.y <= ch) bestQ = q; } // the enemy picked with the pad comes first
       if (bestQ) { ax = bestQ.x; ay = bestQ.y; lock = { x: ax, y: ay, t }; }
@@ -459,6 +460,12 @@
       if (!tut && !OGE.body && sea !== undefined && sea < 1.5 && Math.random() < 0.3 && objs.filter((o) => o.kind === 'octo').length < 4) { objs.push({ kind: 'octo', p: C.Cartesian3.fromRadians(cg.longitude, cg.latitude, 30), size: 260, hp: 2, next: performance.now() + 1500 + Math.random() * 2500 }); return; } } // sea creatures, only over the water
     objs.push({ kind, big, p, rock: kind === 'wall' && (!!OGE.body || (s.alt > SPACE && (s.alt > DEEP || Math.random() < 0.5))), size: D * 0.06 * SIZE[kind] * (big ? 2.5 : 1), look: Math.floor(Math.random() * ENEMY.length), next: performance.now() + 3000 + Math.random() * 4000 }); // sized for the speed it was created at; next: when an enemy fires
   }
+  function buyShield() { // coins buy shields: 10 each, three at most
+    if (!on || !arcade || paused) return;
+    if (shields >= 3) return OGE.toast(T('Ya llevas los 3 escudos.'));
+    if (coins < 10) return OGE.toast(`${T('Un escudo cuesta 10 monedas: tienes')} ${coins}.`);
+    coins -= 10; shields++; sfx('achieve'); OGE.toast(T('Escudo comprado por 10 monedas.'));
+  }
   function hurt(n) {
     if (tut || performance.now() < graceT) { hit = performance.now(); return; } // nothing hurts during the tutorial or the grace time
     if (landing === 'parked' && OGE.body) return; // landed (Z) and driving over the Moon or Mars: nothing hurts
@@ -515,7 +522,7 @@
     aaBusy = true; aaT = performance.now() + 20000; aaAt = [lo, la];
     try {
       const r = 0.12, bb = `${la - r},${lo - r},${la + r},${lo + r}`; // about 13 km around: only the nearby ones, and few, to keep the game light
-      const q = `[out:json][timeout:20];(way[landuse=military](${bb});node[military](${bb});)->.m;node[amenity=police](${bb})->.p;node[amenity=fuel](${bb})->.f;nwr[aeroway=aerodrome](${bb})->.a;.m out center 4;.p out center 4;.f out center 2;.a out center 8;`; // military and police first: a big city has hundreds of fuel stations
+      const q = `[out:json][timeout:20];(way[landuse=military](${bb});node[military](${bb});)->.m;nwr[aeroway=aerodrome](${bb})->.a;.m out center 6;.a out center 8;`; // guns only at military sites; airfields are for landing // military and police first: a big city has hundreds of fuel stations
       const j = await OGE.overpass(q, 25000); // several mirrors at once: the main server is often full
       objs = objs.filter((o) => o.kind !== 'aa' || C.Cartesian3.distance(o.p, viewer.camera.positionWC) < 2e4); // the far ones go
       for (const e of j.elements || []) { // airfields: places to land and heal
@@ -527,7 +534,7 @@
         if (lon == null || objs.some((o) => o.kind === 'aa' && o.osm === e.id)) continue;
         const gh = scene.globe.getHeight(C.Cartographic.fromDegrees(lon, lat)) || 0, t = e.tags || {};
         objs.push({ kind: 'aa', osm: e.id, lon, lat, p: C.Cartesian3.fromDegrees(lon, lat, gh + 40), size: 300, hp: 2, next: performance.now() + 2000 + Math.random() * 3000,
-          label: t.landuse === 'military' || t.military ? T('Base militar') : t.amenity === 'police' ? T('Policía') : T('Gasolinera') });
+          label: T('Base militar') });
       }
     } catch { /* no data: the flight goes on without them */ }
     aaBusy = false;
@@ -862,7 +869,10 @@
         const big = shp.combine([shp.parseShp(ms), shp.parseDbf(md)]).features.filter((f) => f.geometry && +f.properties.pop_max >= 5e5 && +f.properties.adm0cap !== 1).sort((a, b) => b.properties.pop_max - a.properties.pop_max);
         const near = (a, b) => Math.abs(a[1] - b[1]) < 0.55 && Math.abs((a[0] - b[0]) * Math.cos(rad(a[1]))) < 0.55; // ~60 km: the same metropolitan area
         const capPts = all.filter((f) => +f.properties.adm0cap === 1).map((f) => f.geometry.coordinates);
-        for (const f of big) { const c = f.geometry.coordinates; if (towns.some((t) => near([t.lon, t.lat], c)) || capPts.some((p) => near(p, c))) continue; towns.push({ name: clean(f.properties.name), lon: c[0], lat: c[1], p: C.Cartesian3.fromDegrees(c[0], c[1], 4000) }); }
+        const area = (a, b) => Math.abs(a[1] - b[1]) < 0.7 && Math.abs((a[0] - b[0]) * Math.cos(rad(a[1]))) < 0.7; // ~80 km: one booster
+        const pool = [...all.filter((f) => +f.properties.adm0cap !== 1).map((f) => [f, false]), ...big.map((f) => [f, true])].sort((a, b) => b[0].properties.pop_max - a[0].properties.pop_max), kept = [];
+        for (const [f, strict] of pool) { const c = f.geometry.coordinates; if (kept.some((t) => area([t.lon, t.lat], c)) || (strict && capPts.some((p) => near(p, c)))) continue; kept.push({ name: clean(f.properties.name), lon: c[0], lat: c[1], p: C.Cartesian3.fromDegrees(c[0], c[1], 4000) }); }
+        towns = kept; // by population: where cities crowd together the biggest one keeps the booster (Hong Kong, not Macau)
       } catch { /* the small list stays */ }
       OGE.flags().then((m) => { flagMap = m; }).catch(() => {}); // flags and coats of arms by country
       caps = all.filter((f) => +f.properties.adm0cap === 1).map((f) => {
@@ -2398,6 +2408,7 @@
     else if (k === 'q' && A && A.ship && landing !== 'parked' && !e.repeat) { stopped = !stopped; if (!stopped) { s.v = Math.max(s.v, A.v0 || 300); s.throttle = Math.max(s.throttle, 0.5); } } // Q: stop and hover; Q again: fly on
     else if (k === 'b' && A && A.ship) { if (!e.repeat) trigger(true); } // B fires, aiming by itself at the nearest enemy; held, it charges
     else if (k === 'v' && A.ship) bomb(); // V drops a bomb
+    else if (k === 'g' && A.ship) buyShield(); // G buys a shield with coins
     else if (k === '+' || k === '=' || k === '-') OGE.minimap.zoom(k === '-' ? -1 : 1);
     else if (k === 'm') OGE.minimap.toggle();
     else if (k === 'n') nextTurn();
@@ -2577,7 +2588,7 @@
   for (const b of document.querySelectorAll('#flyActs button')) b.addEventListener('pointerdown', (e) => { e.preventDefault(); const key = b.dataset.key, up = () => document.dispatchEvent(new KeyboardEvent('keyup', { key })); document.dispatchEvent(new KeyboardEvent('keydown', { key })); if (key === 'b') { b.addEventListener('pointerup', up, { once: true }); b.addEventListener('pointercancel', up, { once: true }); } else setTimeout(up, 80); }); // the fire button can be held to charge // the same as their keys
   if (!matchMedia('(pointer: coarse)').matches) { // with a keyboard the key buttons are not needed: only Controls and Scores stay at hand
     $('flyBtns').classList.add('keyboard');
-    $('flyKeys').append(Object.assign(document.createElement('li'), { className: 'keyBtns' })); $('flyKeys').lastChild.append($('flyScores'), $('flyFlags'), $('flyArms'), $('flyColors'), $('flyMp'), $('flyReset'), $('flyShip'), $('flySun'), $('flyThird'),
+    $('flyKeys').append(Object.assign(document.createElement('li'), { className: 'keyBtns' })); $('flyKeys').lastChild.append($('flyScores'), $('flyFlags'), $('flyArms'), $('flyColors'), $('flyMp'), $('flyReset'), $('flyShip'), $('flySun'), $('flyThird'), Object.assign(document.createElement('button'), { type: 'button', textContent: T('Comprar escudo: 10 monedas (G)'), onclick: () => { if (pad.menu) padMenu(false); buyShield(); } }),
       ...[...DEST, 'down'].map((d) => Object.assign(document.createElement('button'), { type: 'button', className: 'autoDest', textContent: `${T('Piloto automático')} → ${T(PLACES[d] || 'la superficie')}`, onclick: () => { if (pad.menu) padMenu(false); autopilot(d); } }))); // the autopilot can be chosen here as well as with 1, 2, 3 $('flyKeys').style.right = $('flyRules').style.right = '12px'; // no column of buttons beside them // the few actions without a key live in the K panel
   } else { $('flyBtns').classList.add('touch'); document.body.classList.add('touchdev'); } // on a phone the stick steers (left half of the screen): the right column keeps the touch actions and the speed
   $('flyThird').onclick = () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'y' }));
