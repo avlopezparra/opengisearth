@@ -1082,6 +1082,7 @@
       fields: [{ id: 'from', label: 'Salida', type: 'text', value: last.from || 'Santiago de Chile' }, { id: 'to', label: 'Meta', type: 'text', value: last.to || 'Valparaíso' },
         { id: 'cpus', label: 'Rivales de la CPU (si no hay otros jugadores)', type: 'select', value: String(last.cpus ?? 5), options: Array.from({ length: 13 }, (_, i) => [String(i), i ? String(i) : 'Ninguno']) },
         { id: 'maxWarp', label: 'Turbo máximo', type: 'select', value: String(last.maxWarp ?? 2), options: WARPS.map((x) => [String(x), x === 100 ? '×100 (sin límite)' : '×' + x]) },
+        { id: 'route', label: 'Ruta de la carrera', type: 'select', value: last.route === 'line' ? 'line' : 'road', options: [['road', 'Por carreteras y ferris (OpenStreetMap)'], ['line', 'Línea recta entre las ciudades']] },
         { id: 'lands', label: 'Volar solo sobre estos países (separados por comas; vacío = todos)', type: 'text', value: last.lands || '' },
         { id: 'via', label: 'Metas intermedias: ciudades por las que pasar (separadas por comas)', type: 'text', value: last.via || '' },
         { id: 'laps', label: 'Vueltas (2 o más: circuito que vuelve a la salida)', type: 'select', value: String(last.laps ?? 1), options: [1, 2, 3, 4, 5].map((n) => [String(n), n === 1 ? '1 (de una ciudad a otra)' : String(n)]) }] });
@@ -1102,7 +1103,7 @@
     adv = null; advShape = null;
     start('ship', true, true, true, false);
     s.heading = hd;
-    race = { laps, via, key: `${v.from}|${v.to}|${v.maxWarp}|${v.lands}|${v.via || ''}|${laps}`.toLowerCase(), from: a, to: b, t0: performance.now(), km: raceKmFrom(a, b), cpus: [], maxWarp: +v.maxWarp || 100, others: null };
+    race = { laps, via, key: `${v.from}|${v.to}|${v.maxWarp}|${v.lands}|${v.via || ''}|${laps}${v.route === 'line' ? '|line' : ''}`.toLowerCase(), from: a, to: b, t0: performance.now(), km: raceKmFrom(a, b), cpus: [], maxWarp: +v.maxWarp || 100, others: null };
     if (warp > race.maxWarp) setWarp(race.maxWarp);
     if (v.lands && v.lands.trim()) raceLands(v.lands); // only these countries (the sea and Antarctica stay open)
     if (!p2 && !remote) race.cpus = Array.from({ length: +v.cpus || 0 }, (_, i) => ({ // rivals: each flies the route at its own pace
@@ -1110,7 +1111,9 @@
     const stops = laps > 1 ? [a, ...via, a] : [a, ...via, b], lap1 = stops.map((p) => [p.lon, p.lat]);
     const repeat = (pts) => { let out = pts.slice(); for (let i = 1; i < laps; i++) out = out.concat(pts.slice(1)); return out; }; // the same loop once per lap
     items = []; setPath(repeat(lap1.length > 1 ? lap1 : [[a.lon, a.lat], [b.lon, b.lat]])); placeBoxes();
-    const me = race; roadPath(stops).then((pts) => { if (pts && race === me) { setPath(repeat(pts)); placeBoxes(); OGE.toast(`${T('Ruta por carreteras y ferris')}: ${Math.round(race.pathLen / 1000)} km`); } }); // the rivals follow the roads, in the air
+    const me = race, road = () => roadPath(stops).then((pts) => { if (pts && race === me) { setPath(repeat(pts)); placeBoxes(); OGE.toast(`${T('Ruta por carreteras y ferris')}: ${Math.round(race.pathLen / 1000)} km`); } }); // the rivals follow the roads, in the air
+    if (v.route !== 'line') road();
+    else lineLeaves(stops).then((home) => { if (home && race === me) { OGE.toast(`${T('La línea recta sale de')} ${home}: ${T('se usa la ruta por carreteras.')}`); road(); } }); // a race inside one country does not cut across another
     race.go = performance.now() + 3000; race.boostOk = false; graceT = race.go + 3000; stopped = true; // the countdown holds everyone at the start
     const best = +localStorage.getItem('oge.race.' + race.key) || 0;
     OGE.toast(`🏁 ${a.name} → ${b.name}: ${Math.round(raceKm())} km.` + (best ? ` ${T('Mejor tiempo')}: ${fmtT(best)}.` : ''));
@@ -1129,6 +1132,19 @@
     for (let i = from; i < to; i++) { const d = (P[i][0] - lo) ** 2 * cl + (P[i][1] - la) ** 2; if (d < bd) { bd = d; best = i; } }
     race.myT = now; race.myIdx = best; race.my = race.cum[best] / race.pathLen; return race.my;
   };
+  let landsP = null; // the country outlines (Natural Earth 1:50m) with their boxes, loaded once
+  const countries = () => landsP || (landsP = Promise.all(['shp', 'dbf'].map((x) => fetch(NE + '50m_cultural/ne_50m_admin_0_countries.' + x).then((r) => r.arrayBuffer()))).then(([s2, d2]) => shp.combine([shp.parseShp(s2), shp.parseDbf(d2)]).features.filter((f) => f.geometry).map((f) => ({ f, box: turf.bbox(f) }))).catch(() => { landsP = null; return []; }));
+  async function lineLeaves(stops) { // the name of the country every stop is in, when the straight course between them crosses the land of another one; null when the line is fine
+    const all = await countries(), inside = (c, pt) => pt[0] >= c.box[0] && pt[0] <= c.box[2] && pt[1] >= c.box[1] && pt[1] <= c.box[3] && turf.booleanPointInPolygon(pt, c.f);
+    const near = (c, p) => [[0, 0], [0.3, 0], [-0.3, 0], [0, 0.3], [0, -0.3]].some(([dx, dy]) => inside(c, [p.lon + dx, p.lat + dy])); // a harbour town may fall just off the simplified coast
+    const home = all.find((c) => inside(c, [stops[0].lon, stops[0].lat])) || all.find((c) => near(c, stops[0]));
+    if (!home || !stops.every((p) => near(home, p))) return null; // an international race may cross whatever lies between
+    for (let i = 0; i + 1 < stops.length; i++) { // a point every 10 km of each leg; the sea belongs to nobody
+      const a = stops[i], b = stops[i + 1], n = Math.max(2, Math.ceil(raceKmFrom(a, b) / 10));
+      for (let k = 1; k < n; k++) { const pt = [a.lon + ((b.lon - a.lon) * k) / n, a.lat + ((b.lat - a.lat) * k) / n]; if (!inside(home, pt) && all.some((c) => c !== home && inside(c, pt))) return String(home.f.properties.NAME_ES || home.f.properties.NAME || '').replace(/\0/g, '').trim(); }
+    }
+    return null;
+  }
   async function raceLands(list) { // the countries named (by name or ISO code) are allowed; any other one turns the ship back, as in the adventure
     try {
       const [s2, d2] = await Promise.all([fetch(NE + '50m_cultural/ne_50m_admin_0_countries.shp').then((r) => r.arrayBuffer()), fetch(NE + '50m_cultural/ne_50m_admin_0_countries.dbf').then((r) => r.arrayBuffer())]);
