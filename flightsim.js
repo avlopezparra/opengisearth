@@ -54,7 +54,7 @@
       let bestQ = null, bestS = Infinity;
       for (const o of objs) {
         const wall = power > 1 && o.kind === 'wall'; // charged: crates and asteroids count too, after any enemy
-        if (o.kind !== 'enemy' && o.kind !== 'boss' && o.kind !== 'airliner' && !wall) continue;
+        if (!LOCKABLE.includes(o.kind) && !wall) continue; // also anti-aircraft guns, warships and octopuses
         const d = C.Cartesian3.distance(o.p, camP); if (d > reach() * 1.5 && o.kind !== 'boss') continue;
         if (C.Cartesian3.dot(C.Cartesian3.subtract(o.p, camP, new C.Cartesian3()), viewer.camera.directionWC) <= 0) continue;
         const q = toW(scene, o.p); if (!q || q.x < 0 || q.y < 0 || q.x > cw || q.y > ch) continue;
@@ -710,7 +710,11 @@
       }
       else if (o.kind === 'aa') { // an anti-aircraft gun: a squat base, a turret and twin barrels raised towards the ship
         const R = Math.max(10, pr * 1.4); g.save();
-        drawMesh(AAGUN, foeAxes(o.p, 0), { h: '#7d8c3a', s: '#5f6d2a', d: '#3a4219' }, false, meshScale(o.p, R * 1.3, h), null, true);
+        if (now > (o.gT || 0)) { o.gT = now + 2000; const gh = scene.globe.getHeight(C.Cartographic.fromDegrees(o.lon, o.lat)); if (gh !== undefined) o.p = C.Cartesian3.fromDegrees(o.lon, o.lat, gh + 110); } // it sits on the ground, also once finer terrain arrives (the base reaches some 110 m below its middle)
+        const upv = C.Cartesian3.normalize(o.p, new C.Cartesian3()), toCam = C.Cartesian3.subtract(viewer.camera.positionWC, o.p, new C.Cartesian3()), east = C.Cartesian3.normalize(C.Cartesian3.cross(C.Cartesian3.UNIT_Z, upv, new C.Cartesian3()), new C.Cartesian3());
+        let aim = C.Cartesian3.subtract(toCam, C.Cartesian3.multiplyByScalar(upv, C.Cartesian3.dot(toCam, upv), new C.Cartesian3()), new C.Cartesian3()); aim = C.Cartesian3.magnitudeSquared(aim) < 1 ? east : C.Cartesian3.normalize(aim, aim); // where the ship is, along the ground
+        const frame = (F) => ({ P: o.p, F, R: C.Cartesian3.cross(F, upv, new C.Cartesian3()), U: upv }), sc = meshScale(o.p, R * 1.3, h), COLS = { h: '#7d8c3a', s: '#5f6d2a', d: '#3a4219' };
+        drawMesh(AABASE, frame(east), COLS, false, sc, null, true); drawMesh(AATOP, frame(aim), COLS, false, sc, null, true); // the base upright on the ground, whatever the camera does; only the turret turns
         if (now - (o.spat || 0) < 250) glow(g, q.x, q.y - R * 0.9, R * 0.45, '#ffd60a'); // muzzle flash
         g.restore(); g.fillStyle = '#ffb3a8'; g.textAlign = 'center'; g.font = '600 11px sans-serif'; g.fillText(o.label, q.x, q.y + R + 12);
       }
@@ -1713,7 +1717,8 @@
   const AIRLINER = meshOf((m) => { m.hull(60, [[46, 5, 5, 5], [-38, 5, 5, 5], [-58, 2, 4, 0]], 8, 'd'); // fuselage, nose forward
     m.sym('s', [5, -2, 14], [60, 1, -16], [60, 1, -24], [5, -2, -10]); m.sym('s', [3, 2, -42], [22, 3, -56], [22, 3, -61], [3, 2, -54]); m.poly('w', [0, 5, -38], [0, 24, -61], [0, 5, -57]); // wings, tailplane, fin
     for (const e of [-1, 1]) boxM(m, e * 22 - 3, -7, -8, e * 22 + 3, -2, 8, 'ddd'); }); // an engine under each wing
-  const AAGUN = meshOf((m) => { lathe(m, [[8, 22], [0, 27], [-10, 30]], 8, 'sd'); lathe(m, [[22, 6], [15, 15], [8, 17]], 8, 'hs'); // the base and the turret
+  const AABASE = meshOf((m) => { lathe(m, [[8, 22], [0, 27], [-10, 30]], 8, 'sd'); }); // an anti-aircraft gun in two parts: the base, which stays put on the ground
+  const AATOP = meshOf((m) => { lathe(m, [[22, 6], [15, 15], [8, 17]], 8, 'hs'); // and the turret, which turns towards the ship
     for (const e of [-1, 1]) { m.poly('d', [e * 5 - 1.6, 15, 4], [e * 5 + 1.6, 15, 4], [e * 5 + 1.6, 46, 36], [e * 5 - 1.6, 46, 36]); m.poly('d', [e * 5, 13.4, 5.6], [e * 5, 16.6, 2.4], [e * 5, 47.6, 34.4], [e * 5, 44.4, 37.6]); } }); // twin barrels raised at the ship
   const MINE = meshOf((m) => { ballAt(m, 0, 0, 0, 22, 'hs');
     for (const [x, y, z] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]) { const u = [y, z, x], v = [z, x, y], P = (k, a, c) => [x * k + u[0] * a + v[0] * c, y * k + u[1] * a + v[1] * c, z * k + u[2] * a + v[2] * c]; m.poly('w', P(19, -5, 0), P(36, 0, 0), P(19, 5, 0)); m.poly('w', P(19, 0, -5), P(36, 0, 0), P(19, 0, 5)); } // a spike on each side
@@ -2152,7 +2157,7 @@
   }
   function step(dt) {
     if (A && A.ship) engineHum(paused ? 0 : landing === 'parked' ? 0.2 + Math.min(0.8, Math.abs(s.taxi || 0) / 700) : stopped ? 0.15 : 0.45 + 0.55 * s.throttle, Math.log2(Math.max(1, landing === 'parked' ? gWarp : warp)) / 2 + (boost ? 1.5 : 0));
-    scene.globe.maximumScreenSpaceError = warp >= 16 ? 5 : warp >= 4 ? 3 : 2; // fast: fewer, coarser tiles first
+    scene.globe.maximumScreenSpaceError = warp >= 16 ? 5 : warp >= 4 || s.alt > SPACE ? 3 : 2; // fast: fewer, coarser tiles first
     controls(dt); warpLabel(); if (auto && landing) endAuto();
     if (A.gun) gunStep(dt, !s.ground && (keys.has('b') || gunHeld)); // in the air: on the ground B is the brakes
     let pe = s.pitch, rollOff = 0; // effective pitch and extra roll while a maneuver runs
