@@ -866,6 +866,7 @@
       if (histPlay) hp.onclick();
       if (histWas) for (const [id, v] of Object.entries(histWas)) flip(id, v);
       histWas = null;
+      flip('fillHistory', false); flip('histLines', false); // closing the timeline always takes its countries and borders off the map, even if they were on before or the page was reloaded with it open
     }
     showYear();
   }
