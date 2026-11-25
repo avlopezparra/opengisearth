@@ -10,7 +10,7 @@
 
   // ---------- Overpass (OpenStreetMap queries; used by "Download from OpenStreetMap") ----------
   // Public servers are often overloaded: several mirrors are requested at once and the first to answer wins.
-  const MIRRORS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
+  const MIRRORS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
   OGE.overpass = async (query, ms = 60000) => {
     const ctl = MIRRORS.map(() => new AbortController());
     const timer = setTimeout(() => ctl.forEach((c) => c.abort()), ms);
