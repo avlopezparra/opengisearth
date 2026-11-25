@@ -62,8 +62,14 @@
       if (padLock) { const q = objs.includes(padLock) && C.Cartesian3.dot(C.Cartesian3.subtract(padLock.p, camP, new C.Cartesian3()), viewer.camera.directionWC) > 0 ? toW(scene, padLock.p) : null; if (q && q.x >= 0 && q.y >= 0 && q.x <= cw && q.y <= ch) bestQ = q; } // the enemy picked with the pad comes first
       if (bestQ) { ax = bestQ.x; ay = bestQ.y; lock = { x: ax, y: ay, t }; }
     }
-    const ray = viewer.camera.getPickRay(new C.Cartesian2(ax, ay));
+    let ray = viewer.camera.getPickRay(new C.Cartesian2(ax, ay));
     if (!ray) return; // no view to aim through (the map is not drawn yet)
+    if (who === 1 && man && tps()) { // mid-maneuver the chase camera sees the ship from elsewhere: the lasers leave along its nose, not towards the click, and the auto-aim takes what the ship has in front
+      const sa = shipAxes(), toWin = C.SceneTransforms.worldToWindowCoordinates || C.SceneTransforms.wgs84ToWindowCoordinates; let dir = sa.F;
+      if (auto && arcade) { let bestA = rad(30); for (const o of objs) { if (o.kind !== 'enemy' && o.kind !== 'boss' && o.kind !== 'airliner') continue; const v = C.Cartesian3.subtract(o.p, sa.P, new C.Cartesian3()), d = C.Cartesian3.magnitude(v); if (d > reach() * 1.5 && o.kind !== 'boss') continue; const a = Math.acos(clamp(C.Cartesian3.dot(v, sa.F) / d, -1, 1)); if (a < bestA) { bestA = a; dir = C.Cartesian3.normalize(v, v); } } }
+      ray = new C.Ray(sa.P, dir);
+      const q = toWin(scene, C.Cartesian3.add(sa.P, C.Cartesian3.multiplyByScalar(dir, 250, new C.Cartesian3()), new C.Cartesian3())); if (q) { ax = q.x; ay = q.y; }
+    }
     const ground = scene.globe.pick(ray, scene);
     shots.push({ t, x: ax, y: ay, who, big: power > 1 });
     if (arcade) versus(who, ax, ay, ray);
@@ -79,7 +85,7 @@
     let best = null, bestAng = 9, bossHit = null, bossAng = 9;
     for (const o of objs) {
       if (o.kind !== 'enemy' && o.kind !== 'boss' && o.kind !== 'airliner' && o.kind !== 'aa' && o.kind !== 'octo' && o.kind !== 'ship' && !(power > 1 && o.kind === 'wall')) continue; // a charged shot also breaks crates and asteroids
-      C.Cartesian3.subtract(o.p, cam.positionWC, to);
+      C.Cartesian3.subtract(o.p, ray.origin, to); // from where the shot leaves: the camera, or the ship itself mid-maneuver
       const d = C.Cartesian3.magnitude(to), ang = Math.acos(clamp(C.Cartesian3.dot(to, ray.direction) / d, -1, 1));
       if (o.kind === 'boss') { if (ang < Math.atan(o.size / d) + rad(0.4) && ang < bossAng) { bossHit = o; bossAng = ang; } } // a boss only counts when the laser really meets it
       else if (ang < Math.atan((o.size * 1.5) / d) + rad(1.2) && ang < bestAng) { best = o; bestAng = ang; }
@@ -88,7 +94,7 @@
     const occ = new C.EllipsoidalOccluder(C.Ellipsoid.WGS84, cam.positionWC);
     if (!best && $('layerSats').checked) for (const sat of OGE.satellites()) { // a satellite hit gives life back and disappears until the page is reloaded
       if (!sat.p || OGE.satHidden.has(sat.name) || !occ.isPointVisible(sat.p)) continue; // the Earth in between stops the laser
-      C.Cartesian3.subtract(sat.p, cam.positionWC, to);
+      C.Cartesian3.subtract(sat.p, ray.origin, to);
       const d = C.Cartesian3.magnitude(to);
       if (Math.acos(clamp(C.Cartesian3.dot(to, ray.direction) / d, -1, 1)) < rad(1.5)) { OGE.satHidden.add(sat.name); hp = Math.min(maxHp, hp + 25); sfx('heart'); booms.push({ p: sat.p, t: performance.now() }); OGE.toast(`🛰 ${sat.name}: +25 ${T('de vida')}`); return; }
     }
@@ -955,6 +961,7 @@
       for (const f of shp.combine([shp.parseShp(ps), shp.parseDbf(pd)]).features) { // a point for every part of a region (each island too)
         const p = f.properties, id = clean(p.adm1_code), fl = flags.get(clean(p.sr_adm0_a3));
         if (!f.geometry || !id || !fl) continue;
+        if (OGE.malvinasAR && ['FLK', 'SGS'].includes(clean(p.sr_adm0_a3))) continue; // part of Argentina from that point of view: no flag of their own, nor in any mission
         const big = grp[id], key = big ? fl.a3 + ':' + big : id; // the flag stands for the largest subdivision: one per region, not one per province inside it
         if (!cand.has(key)) cand.set(key, { p, fl, pts: [], name: big || clean(p.name), ids: new Set() });
         cand.get(key).pts.push(f.geometry.coordinates); cand.get(key).ids.add(id);
@@ -1252,6 +1259,14 @@
       const R = clamp(4e5 / d, 10, 44); shipBack(q.x, q.y, R, c.color, Math.sin(performance.now() / 700 + c.side * 900) * 0.2, c.stunT > performance.now() ? performance.now() : 0, c.model, p);
       g.save(); g.fillStyle = c.color; g.textAlign = 'center'; g.font = '600 11px sans-serif'; g.fillText(c.name, q.x, q.y + R + 12); g.restore();
     }
+    const gt = race.gates && race.gates[race.nextGate]; // where the next ring is: a mark over it, or an arrow at the edge of the view
+    if (gt) {
+      const cam = viewer.camera, v = C.Cartesian3.subtract(gt.p, cam.positionWC, new C.Cartesian3()), label = `${T('Aro')} ${gt.n} · ${(C.Cartesian3.magnitude(v) / 1000).toFixed(1)} km`, q = C.Cartesian3.dot(v, cam.directionWC) > 0 ? toWin(scene, gt.p) : null;
+      g.save(); g.fillStyle = g.strokeStyle = '#34c759'; g.shadowColor = '#000'; g.shadowBlur = 4; g.lineWidth = 2; g.textAlign = 'center'; g.font = '700 13px sans-serif';
+      if (q && q.x > 0 && q.y > 0 && q.x < w && q.y < h) { g.fillText(label, q.x, q.y - 28); g.beginPath(); g.moveTo(q.x, q.y - 8); g.lineTo(q.x - 7, q.y - 21); g.lineTo(q.x + 7, q.y - 21); g.closePath(); g.fill(); }
+      else { const a = Math.atan2(-C.Cartesian3.dot(v, cam.upWC), C.Cartesian3.dot(v, cam.rightWC)), rr = Math.min(w, h) * 0.4; g.translate(w / 2 + Math.cos(a) * rr, h / 2 + Math.sin(a) * rr); g.fillText(label, 0, -18); g.rotate(a + Math.PI / 2); g.beginPath(); g.moveTo(0, -12); g.lineTo(8, 8); g.lineTo(0, 3); g.lineTo(-8, 8); g.closePath(); g.fill(); }
+      g.restore();
+    }
     if (race.gates) text((race.laps > 1 ? `${T('Vuelta')} ${Math.min(race.laps, 1 + Math.floor((race.nextGate * race.laps) / race.gates.length))}/${race.laps} · ` : '') + `${T('Aro')} ${Math.min(race.nextGate + 1, race.gates.length)}/${race.gates.length}` + (race.missed ? ` · ${T('saltados')}: ${race.missed}` : '') + ` · ${T('Monedas de velocidad')}: ${race.coins || 0}/10`, 24, 196, 14, 'left');
     text(`${T('OBJETOS')} (U): ` + [0, 1, 2].map((i) => (items[i] ? `[${ITEMS[items[i]][0]} ${T(ITEMS[items[i]][1])}]` : '[ ]')).join(' '), 24, 176, 14, 'left'); // three slots, the first is used next
   }
@@ -1397,7 +1412,7 @@
     OGE.showTable(`${T('Escudos de armas')}: ${mine.length}/${caps.length}`, [], [], { content: box, note: mine.length ? T('Imágenes: Wikimedia Commons. Elige un escudo, o la escarapela de la fuerza aérea de ese país (Wikidata), para llevarlo en la nave.') : T('Aún ninguno: vence al jefe de una capital y recoge su escudo.') });
   }
   OGE.showArms = showArms;
-  const TINTS = [['#3fa9ff', 'Azul'], ['#ff375f', 'Rojo'], ['#30d158', 'Verde'], ['#ffd60a', 'Amarillo'], ['#ff9f0a', 'Naranja'], ['#bf5af2', 'Morado'], ['#f2f2f7', 'Blanco'], ['#1c1c1e', 'Negro'], ['#8e8e93', 'Gris'], ['#c9cfd8', 'Plateado']];
+  const TINTS = [['#3fa9ff', 'Azul'], ['#ff375f', 'Rojo'], ['#30d158', 'Verde'], ['#ffd60a', 'Amarillo'], ['#ff9f0a', 'Naranja'], ['#bf5af2', 'Morado'], ['#f2f2f7', 'Blanco'], ['#1c1c1e', 'Negro'], ['#8e8e93', 'Gris'], ['#c9cfd8', 'Plateado'], ['#766b6b', 'Gris acero'], ['#ff7300', 'Naranja intenso']];
   const tintFields = (id, label, hexLabel, value) => { const v = String(value || '').toLowerCase(), known = TINTS.some(([c]) => c === v); // a list of named colours, and a hex code for any other
     return [{ id, label, type: 'select', value: known ? v : 'custom', options: [...TINTS, ['custom', 'Personalizado (código hex)']] }, { id: id + 'Hex', label: hexLabel, type: 'text', value: v, placeholder: '#3fa9ff' }]; };
   const tintOf = (v, id, old) => (v[id] !== 'custom' ? v[id] : hex('#' + String(v[id + 'Hex'] || '').trim().replace(/^#/, ''), old)); // a wrong code keeps the colour it had
@@ -1405,11 +1420,11 @@
     const live = !!(p2 || ws || remote), was = paused; if (on && !live) paused = true; // in a multiplayer game the others keep flying: no pause
     const v = await OGE.ask({ title: 'Nave: estilo y colores', ok: 'Aplicar', help: 'La nave se ve en tercera persona (Y). La insignia de las alas se elige en «Escudos de armas».',
       fields: [{ id: 'model', label: 'Estilo de nave', type: 'select', value: SHIPS[localStorage.getItem('oge.shipModel')] ? localStorage.getItem('oge.shipModel') : 'dardo', options: Object.entries(SHIPS).map(([k, m]) => [k, m.name]) },
-        ...tintFields('wing', 'Color de las alas', 'Alas: código hex (con «Personalizado»)', skin(1)), ...tintFields('hull', 'Color del fuselaje', 'Fuselaje: código hex (con «Personalizado»)', hex(localStorage.getItem('oge.hull1'), '#c9cfd8'))] });
+        ...tintFields('wing', 'Color de las alas', 'Alas: código hex (con «Personalizado»)', skin(1)), ...tintFields('hull', 'Color del fuselaje', 'Fuselaje: código hex (con «Personalizado»)', hull1())] });
     if (on && !live) { paused = was; last = performance.now(); }
     if (!v) return;
     if (SHIPS[v.model]) localStorage.setItem('oge.shipModel', v.model);
-    localStorage.setItem('oge.skin1', tintOf(v, 'wing', skin(1))); localStorage.setItem('oge.hull1', tintOf(v, 'hull', hex(localStorage.getItem('oge.hull1'), '#c9cfd8')));
+    localStorage.setItem('oge.skin1', tintOf(v, 'wing', skin(1))); localStorage.setItem('oge.hull1', tintOf(v, 'hull', hull1()));
   }
   OGE.shipStyle = shipStyle;
   const showScores = () => OGE.showTable('🏆 Mejores puntajes', [T('Dificultad'), '#', 'Piloto', 'Puntos', 'Monedas', 'Banderas', 'Capitales', 'Jefes', 'Fecha'],
@@ -1453,7 +1468,7 @@
   const near = (a, b) => isHex(a) && isHex(b) && Math.hypot(...rgb(a).map((x, i) => x - rgb(b)[i])) < 90;
   const apart = (c, taken) => (taken.some((t) => near(c, t)) ? PAL.find((p) => !taken.some((t) => near(p, t))) || c : c); // a colour already taken gives way to the first free one
   const skin = (n) => { // the colour each player flies in: player 2 yields to player 1, and online whoever joined yields to the host
-    const own = (k) => localStorage.getItem('oge.skin' + k) || (k === 1 ? '#3fa9ff' : '#ff9f0a');
+    const own = (k) => localStorage.getItem('oge.skin' + k) || (k === 1 ? '#766b6b' : '#3fa9ff');
     if (n === 2) return apart(own(2), [skin(1)]);
     return ws && remote && remote.skin && mpMode !== 'host' ? apart(own(1), [remote.skin]) : own(1);
   };
@@ -1541,7 +1556,7 @@
   };
   const shipModel = (id) => SHIPS[id] || SHIPS[localStorage.getItem('oge.shipModel')] || SHIPS.dardo;
   const mixHex = (a, b, k) => '#' + [1, 3, 5].map((i) => Math.round(parseInt(a.slice(i, i + 2), 16) * (1 - k) + parseInt(b.slice(i, i + 2), 16) * k).toString(16).padStart(2, '0')).join('');
-  const hex = (c, d) => (/^#[0-9a-f]{6}$/i.test(c || '') ? c : d);
+  const hex = (c, d) => (/^#[0-9a-f]{6}$/i.test(c || '') ? c : d), hull1 = () => hex(localStorage.getItem('oge.hull1'), '#ff7300'); // the pilot's hull: orange unless chosen
   const shipCol = (sk, hl) => { const h = hex(hl, '#c9cfd8'); return { h, d: mixHex(h, '#10141c', 0.5), s: mixHex(hex(sk, '#3fa9ff'), '#565d6a', 0.3), w: '#c2901c', g: '#1b3a57', e: '#ffb300' }; }; // painted metal: the wing colour, a little worn, and the hull colour with its shaded side
   const insignia = (M, onHull) => { // where an air force paints its roundel: on top of each wing and on each side of the fuselage. These 'i' faces are drawn only when the pilot wears an image
     const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]], cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]], dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2], unit = (a) => { const l = Math.hypot(...a) || 1; return a.map((x) => x / l); };
@@ -1781,7 +1796,7 @@
   function drawShip3D(w, h) {
     const ax = shipAxes(), toWin = C.SceneTransforms.worldToWindowCoordinates || C.SceneTransforms.wgs84ToWindowCoordinates, cam = viewer.camera, md = shipModel();
     const px = (h / 2 / Math.tan((cam.frustum.fovy || rad(60)) / 2)) / Math.max(60, chase ? chase.d : 380); // pixels per metre at the ship
-    drawMesh(md.mesh, ax, { ...shipCol(skin(1), localStorage.getItem('oge.hull1')), i: insigniaImg() }, performance.now() - hit < 200, 1, null, true);
+    drawMesh(md.mesh, ax, { ...shipCol(skin(1), hull1()), i: insigniaImg() }, performance.now() - hit < 200, 1, null, true);
     const tail = toWin(scene, shipPoint(ax, 0, 1, md.tail));
     const drive = landing === 'parked', lv = drive ? GWARPS.indexOf(gWarp) * 2 : Math.max(0, [...WARPS, ...HYPER].indexOf(warp)), gas = drive ? Math.min(1, Math.abs(s.taxi || 0) / 300) : s.throttle; // the ground turbo has fewer levels: every other colour
     if (tail && (drive ? gas > 0.02 : !landing)) { const fr = px * (9 + 12 * gas + 3.5 * lv + (boost ? 8 : 0)) * (drive ? 0.6 : 1) * (0.9 + 0.1 * Math.sin(performance.now() / (40 - 2 * lv))); glow(g, tail.x, tail.y, fr, FLAME[lv]); if (lv > 2) glow(g, tail.x, tail.y, fr * (0.25 + 0.04 * lv), '#ffffff'); } // the engine flame: bigger with the gas, and bigger, hotter and with a white core as the turbo rises
@@ -1805,7 +1820,7 @@
   function shipBack(x, y, R, color, roll = 0, hurtT = 0, model, P) { // a starship flying ahead, in its model and colour: R pixels from the middle to a wing tip, at the world point P or 200 m into the screen at x, y
     if (!P) { const ray = viewer.camera.getPickRay(new C.Cartesian2(x, y)); if (!ray) return; P = C.Cartesian3.add(ray.origin, C.Cartesian3.multiplyByScalar(ray.direction, 200, new C.Cartesian3()), new C.Cartesian3()); }
     const md = shipModel(model), ax = backAxes(P, roll), sc = meshScale(P, R, hud.clientHeight);
-    drawMesh(md.mesh, ax, { ...shipCol(color, model ? null : localStorage.getItem('oge.hull1')), i: model ? null : insigniaImg() }, performance.now() - hurtT < 200, sc, null, true); // only the pilot's own ship wears the insignia
+    drawMesh(md.mesh, ax, { ...shipCol(color, model ? null : hull1()), i: model ? null : insigniaImg() }, performance.now() - hurtT < 200, sc, null, true); // only the pilot's own ship wears the insignia
     const t = (C.SceneTransforms.worldToWindowCoordinates || C.SceneTransforms.wgs84ToWindowCoordinates)(scene, shipPoint(ax, 0, sc, md.tail * sc));
     if (t) glow(g, t.x, t.y, R * 0.3, '#7fd4ff'); // its engine
   }
