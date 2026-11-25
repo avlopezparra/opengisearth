@@ -98,6 +98,7 @@
       const d = C.Cartesian3.magnitude(to);
       if (Math.acos(clamp(C.Cartesian3.dot(to, ray.direction) / d, -1, 1)) < rad(1.5)) { OGE.satHidden.add(sat.name); hp = Math.min(maxHp, hp + 25); sfx('heart'); booms.push({ p: sat.p, t: performance.now() }); OGE.toast(`🛰 ${sat.name}: +25 ${T('de vida')}`); return; }
     }
+    { const n0 = incoming.length; incoming = incoming.filter((b) => { if (!b.panel) return true; C.Cartesian3.subtract(b.p, ray.origin, to); const d = C.Cartesian3.magnitude(to); if (Math.acos(clamp(C.Cartesian3.dot(to, ray.direction) / d, -1, 1)) > Math.atan(140 / d) + rad(1.5)) return true; booms.push({ p: b.p, t: performance.now() }); gain(pts(20)); return false; }); if (incoming.length < n0) sfx('down'); } // the stone panels the face spits break when shot
     if (best && best.kind === 'boss') hitBoss(best, power > 1 ? power * 2.5 : power); // a charged shot hits a boss hardest: 10
     else if (best && best.kind === 'ship' && (best.hp -= power) > 0) { booms.push({ p: best.p, t: performance.now() }); sfx('bossHit'); }
     else if (best && best.kind === 'ship') { objs.splice(objs.indexOf(best), 1); if (best.mmsi) sunk.add(best.mmsi); gain(pts(250)); hp = Math.min(maxHp, hp + 15); booms.push({ p: best.p, t: performance.now() }); sfx('down'); sfx('heart'); OGE.toast(T('Barco hundido: +15 de vida')); }
@@ -538,6 +539,14 @@
     if (tune) { const BT = window.OGE_BOSS_THEME, near = BT && objs.some((o) => o.kind === 'boss' && C.Cartesian3.distance(o.p, viewer.camera.positionWC) < 1e5), base = (OGE.body === 'moon' && window.OGE_MOON_THEME) || (OGE.body === 'mars' && window.OGE_MARS_THEME) || (adv && window.OGE_ADV_THEME) || (race && window.OGE_RACE_THEME) || TH, want = near ? BT : base; if (want !== tune) music(true, want); } // Boss Fight OpenStarshipEarth while a boss is close
     const cam = viewer.camera, t = new C.Cartesian3(), far = reach() * 2.5, eff = s.v * warp, slack = eff * 0.03, now = performance.now(); // slack: distance covered in one frame
     const rolling = man && man.type === 'roll'; // a barrel roll deflects enemies and shots
+    for (const o of objs.filter((x) => x.kind === 'boss' && x.type === 'face')) for (const side of [-1, 1]) { // the stone face grows back a hand 25 s after losing it
+      const key = 'regen' + side;
+      if (objs.some((x) => x.from === o && x.mirror === side)) { o[key] = 0; continue; }
+      if (!o[key]) { o[key] = now + 25000; continue; }
+      if (now < o[key]) continue;
+      o[key] = 0; sfx('warpUp'); OGE.toast(T('La Cara gigante regenera una mano.'));
+      objs.push({ kind: 'boss', born: now, type: 'hand', cap: null, from: o, base: o.base, p: C.Cartesian3.add(o.p, C.Cartesian3.multiplyByScalar(o.east, side * 1500, new C.Cartesian3()), new C.Cartesian3()), east: o.east, size: 500, hp: 6, max: 6, next: now + 4000, pt: now, mirror: side });
+    }
     objs = objs.filter((o) => {
       C.Cartesian3.subtract(o.p, cam.positionWC, t);
       const d = C.Cartesian3.magnitude(t);
