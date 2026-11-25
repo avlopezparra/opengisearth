@@ -56,6 +56,7 @@
         const q = toW(scene, o.p); if (!q || q.x < 0 || q.y < 0 || q.x > cw || q.y > ch) continue;
         const sc = Math.hypot(q.x - acx, q.y - acy) + d / 200; if (sc < bestS) { bestS = sc; bestQ = q; }
       }
+      if (padLock) { const q = objs.includes(padLock) && C.Cartesian3.dot(C.Cartesian3.subtract(padLock.p, camP, new C.Cartesian3()), viewer.camera.directionWC) > 0 ? toW(scene, padLock.p) : null; if (q && q.x >= 0 && q.y >= 0 && q.x <= cw && q.y <= ch) bestQ = q; } // the enemy picked with the pad comes first
       if (bestQ) { ax = bestQ.x; ay = bestQ.y; lock = { x: ax, y: ay, t }; }
     }
     const ray = viewer.camera.getPickRay(new C.Cartesian2(ax, ay));
@@ -758,7 +759,7 @@
     loadCaps();
     loadRegs();
     if (A.ship) OGE.minimap.zoom(99); // the starship starts with the minimap zoomed all the way in
-    if (A.ship && OGE.minimap.open && !OGE.body) OGE.minimap.open(); // the minimap is a map of the Earth
+    if (A.ship && OGE.minimap.open) OGE.minimap.open(); // every world has its map
     arcade = !!A.ship && !!useArcade;
     autoOn = !arcade || OGE.body ? [] : ['layerSats', ...(window.__TAURI__ ? ['layerPlanes'] : [])].filter((id) => $(id) && !$(id).checked); // for this flight only: nearby satellites, region names to find the way, live aircraft (desktop)
     if (autoOn.includes('layerSats') && $('layerSatsNear')) { $('layerSatsNear').checked = true; $('layerSatsNear').dispatchEvent(new Event('change')); } // only the nearby ones: light
@@ -779,7 +780,7 @@
     s = { lon: c.longitude, lat: c.latitude, alt: ground + A.agl, heading: viewer.camera.heading, pitch: 0, roll: 0, v: A.v0, vs: 0,
       throttle: 0.7, flaps: 0, gear: false, brake: false, ail: 0, elev: 0, rud: 0, trim: 0, ground: false, agl: A.agl };
     setWarp(1);
-    auto = nav = null; on = true; paused = false; mouseCtl = !!useMouse && !aimMouse; stick.x = stick.y = 0; keys.clear(); last = performance.now();
+    auto = nav = padLock = null; pad.free = pad.menu = pad.held = false; on = true; paused = false; mouseCtl = !!useMouse && !aimMouse; stick.x = stick.y = 0; keys.clear(); last = performance.now();
     if (OGE.activate) OGE.activate(null);
     if (OGE.setEdit) OGE.setEdit(false);
     scene.screenSpaceCameraController.enableInputs = false;
@@ -1904,26 +1905,68 @@
   // Gamepad, Xbox 360 layout by default (browsers report XInput pads in the 'standard' mapping):
   // left stick steers, right stick aims; A fire · B bomb · X barrel roll · Y loop · LB / RB turbo − / + · LT stop · RT turbo burst
   // Back controls · Start pause · L3 turn back · R3 camera · D-pad ↑ climb · ↓ land · ← race item · → take off
-  const PAD = ['b', 'v', 'r', 'x', 'shift', ' ', 'q', 'e', 'k', 'enter', 'f', 'y', 't', 'z', 'u', 'c'];
-  const padPrev = [], pad = { x: 0, y: 0, on: false };
+  // XInput pad, standard layout. Buttons that stand for a key: A turbo burst · B turn back · X barrel roll · Y loop · LB race item · RB bomb · RT fire with auto-aim (held: charge)
+  // Start pause · L3 stop · d-pad up take off, down land, left / right turbo. By hand below: LT fire where it points, Back the options menu, R3 lock-on or free aim, the right stick.
+  const PAD = ['e', 'f', 'r', 'x', 'u', 'v', null, 'b', null, 'enter', 'q', null, 'c', 'z', 'g', ' '];
+  const padPrev = [], pad = { x: 0, y: 0, on: false, free: false, flick: false, menu: false, navT: 0, el: null };
+  let padLock = null; // the enemy the right stick picked: the auto-aim fires at it
+  const LOCKABLE = ['enemy', 'boss', 'airliner', 'aa', 'octo', 'ship'];
+  function pickLock(dx, dy) { // the right stick points at the enemy to lock on: the nearest one that way from the current target (or from the middle of the view)
+    const toW = C.SceneTransforms.worldToWindowCoordinates || C.SceneTransforms.wgs84ToWindowCoordinates, cw = hud.clientWidth, ch = hud.clientHeight, camP = viewer.camera.positionWC, t = new C.Cartesian3();
+    const seen = objs.filter((o) => LOCKABLE.includes(o.kind) && C.Cartesian3.dot(C.Cartesian3.subtract(o.p, camP, t), viewer.camera.directionWC) > 0).map((o) => ({ o, q: toW(scene, o.p) })).filter(({ q }) => q && q.x >= 0 && q.y >= 0 && q.x <= cw && q.y <= ch);
+    const cur = seen.find((c) => c.o === padLock), from = cur ? cur.q : { x: cw / 2, y: ch / 2 };
+    let best = null, bs = Infinity;
+    for (const c of seen) { if (c === cur) continue; const vx = c.q.x - from.x, vy = c.q.y - from.y, d = Math.hypot(vx, vy) || 1, al = (vx * dx + vy * dy) / d; if (al < 0.3) continue; const sc = d * (2 - al); if (sc < bs) { bs = sc; best = c; } } // near and well in line with the stick
+    if (best) { padLock = best.o; beep(900, 1300, 0.08); }
+  }
+  const padFocus = (e) => { if (pad.el) pad.el.classList.remove('padfocus'); pad.el = e || null; if (e) { e.classList.add('padfocus'); e.focus(); e.scrollIntoView({ block: 'nearest' }); } };
+  const desk = () => $('flyBtns').classList.contains('keyboard'); // with a keyboard the column of buttons is hidden: the options are in the K panel
+  function padMenu(open) { // Back: the options of the flight, chosen with the pad; alone, the game waits meanwhile
+    pad.menu = open; keys.clear(); padFocus(null);
+    if (desk()) { $('flyKeys').hidden = !open; $('flyRules').hidden = true; } else $('flyBtns').classList.toggle('more', open || !!localStorage.getItem('oge.flyMore'));
+    if (open && !paused && !(p2 || ws || remote)) { paused = pad.held = true; } else if (!open && pad.held) { pad.held = paused = false; last = performance.now(); }
+  }
+  function padUI(dlg, hit, lx, ly) { // the pad in a menu or a dialog: d-pad or left stick move the focus (left / right change a list or a number), A presses, B or Back close
+    const els = [...(dlg || (desk() ? $('flyKeys') : $('flyExtra'))).querySelectorAll('button, select, input, textarea')].filter((e) => !e.disabled && e.offsetParent), now = performance.now();
+    const tilt = now > pad.navT, dir = (i, v) => hit(i) || (tilt && v), up = dir(12, ly < -0.6), dn = dir(13, ly > 0.6), lf = dir(14, lx < -0.6), rt = dir(15, lx > 0.6);
+    if (up || dn || lf || rt) pad.navT = now + 220; // a held stick steps four times a second
+    const cur = els.includes(pad.el) ? pad.el : null, i = els.indexOf(cur);
+    if (!cur) { if (els[0]) padFocus(els[0]); }
+    else if ((lf || rt) && cur.tagName === 'SELECT') { cur.selectedIndex = clamp(cur.selectedIndex + (rt ? 1 : -1), 0, cur.options.length - 1); cur.dispatchEvent(new Event('change', { bubbles: true })); }
+    else if ((lf || rt) && (cur.type === 'range' || cur.type === 'number')) { try { if (rt) cur.stepUp(); else cur.stepDown(); cur.dispatchEvent(new Event('input', { bubbles: true })); } catch { /* a number without a step stays as it is */ } }
+    else if (up || dn || lf || rt) padFocus(els[(i + (dn || rt ? 1 : -1) + els.length) % els.length]);
+    if (hit(0) && cur) cur.click();
+    if (hit(1) || hit(8)) { padFocus(null); if (dlg) { dlg.dispatchEvent(new Event('cancel')); if (dlg.open) dlg.close(); } else padMenu(false); }
+  }
   function readPad() {
     const gp = [...(navigator.getGamepads ? navigator.getGamepads() : [])].find((p) => p && p.connected);
     pad.on = !!gp; if (!gp) return;
-    const dz = (v) => (Math.abs(v) < 0.15 ? 0 : v);
-    pad.x = dz(gp.axes[0] || 0); pad.y = dz(gp.axes[1] || 0);
-    const rx = dz(gp.axes[2] || 0), ry = dz(gp.axes[3] || 0);
-    if (aimMouse && (rx || ry)) { mouse.x = clamp(mouse.x + rx * 14, 0, hud.clientWidth); mouse.y = clamp(mouse.y + ry * 14, 0, hud.clientHeight); }
-    PAD.forEach((key, i) => {
-      const b = gp.buttons[i], down = !!b && (b.pressed || b.value > 0.5);
-      if (down && !padPrev[i]) document.dispatchEvent(new KeyboardEvent('keydown', { key, code: key === 'shift' ? 'ShiftLeft' : '' }));
-      if (!down && padPrev[i]) document.dispatchEvent(new KeyboardEvent('keyup', { key }));
-      padPrev[i] = down;
-    });
+    const dz = (v) => (Math.abs(v) < 0.15 ? 0 : v), down = (i) => { const b = gp.buttons[i]; return !!b && (b.pressed || b.value > 0.5); }, hit = (i) => down(i) && !padPrev[i];
+    const lx = dz(gp.axes[0] || 0), ly = dz(gp.axes[1] || 0), rx = dz(gp.axes[2] || 0), ry = dz(gp.axes[3] || 0), dlg = document.querySelector('dialog[open]');
+    if (dlg || pad.menu) { pad.x = pad.y = 0; padUI(dlg, hit, lx, ly); }
+    else if (hit(8)) padMenu(true);
+    else {
+      pad.x = lx; pad.y = ly;
+      if (hit(11)) { // R3: the right stick locks on enemies, or moves the crosshair freely
+        pad.free = !pad.free; padLock = null;
+        if (pad.free) { pad.aim0 = aimMouse; aimMouse = true; } else aimMouse = !!pad.aim0;
+        OGE.toast(T(pad.free ? 'Mando: apuntado libre con el stick derecho (R3 vuelve a fijar enemigos).' : 'Mando: el stick derecho elige el enemigo fijado.'));
+      }
+      if (pad.free) { if (rx || ry) { mouse.x = clamp(mouse.x + rx * 14, 0, hud.clientWidth); mouse.y = clamp(mouse.y + ry * 14, 0, hud.clientHeight); } }
+      else { const m = Math.hypot(rx, ry); if (m > 0.6 && !pad.flick) { pad.flick = true; pickLock(rx / m, ry / m); } else if (m < 0.3) pad.flick = false; } // one push of the stick, one change of target
+      if (hit(6)) trigger(false); // LT: fires where the ship (or the free crosshair) points; held, it charges
+      if (!down(6) && padPrev[6]) letGo();
+      PAD.forEach((key, i) => {
+        if (!key) return;
+        if (hit(i)) document.dispatchEvent(new KeyboardEvent('keydown', { key }));
+        if (!down(i) && padPrev[i]) document.dispatchEvent(new KeyboardEvent('keyup', { key }));
+      });
+    }
+    for (let i = 0; i < 17; i++) padPrev[i] = down(i);
   }
   window.addEventListener('gamepadconnected', (e) => { OGE.toast(`${T('Mando conectado')}: ${e.gamepad.id.slice(0, 40)}`); $('padMap').hidden = false; });
   window.addEventListener('gamepaddisconnected', () => { $('padMap').hidden = true; });
   function controls(dt) {
-    readPad();
     const k = (x) => keys.has(x), ease = Math.min(1, 12 * dt), shift = k('shift'); // quick response to the keys
     const lr = (k('arrowright') ? 1 : 0) - (k('arrowleft') ? 1 : 0), ud = (k('arrowdown') || k('s') ? 1 : 0) - (k('arrowup') || k('w') ? 1 : 0);
     const turnArrows = A.ship || touch.id !== null; // the ship (and the touch stick) turns left and right instead of banking
@@ -1963,7 +2006,7 @@
   function step(dt) {
     if (A && A.ship) engineHum(paused ? 0 : landing === 'parked' ? 0.2 + Math.min(0.8, Math.abs(s.taxi || 0) / 700) : stopped ? 0.15 : 0.45 + 0.55 * s.throttle, Math.log2(Math.max(1, landing === 'parked' ? gWarp : warp)) / 2 + (boost ? 1.5 : 0));
     scene.globe.maximumScreenSpaceError = warp >= 16 ? 5 : warp >= 4 ? 3 : 2; // fast: fewer, coarser tiles first
-    controls(dt); warpLabel(); if (auto && landing) auto = null;
+    controls(dt); warpLabel(); if (auto && landing) endAuto();
     let pe = s.pitch, rollOff = 0; // effective pitch and extra roll while a maneuver runs
     if (man) {
       const k = (performance.now() - man.t0) / man.dur;
@@ -2015,10 +2058,10 @@
       }
     }
     const horiz = s.v * Math.cos(pe) * dt * warp; // negative over the top of a loop: it flies backwards
-    if (A.ship && s.alt > SPACE && !spaceMsg) { spaceMsg = true; OGE.toast(`${T('Fuera de la atmósfera: hiperturbo disponible (Espacio).')} ${T('Piloto automático:')} ${DEST.map((d, i) => `${i + 1} ${T(PLACES[d])}`).join(' · ')}`); }
+    if (A.ship && s.alt > SPACE && !spaceMsg) { spaceMsg = true; OGE.toast(`${T('Fuera de la atmósfera.')} ${T('Piloto automático, con hiperturbo:')} ${DEST.map((d, i) => `${i + 1} ${T(PLACES[d])}`).join(' · ')}`); }
     if (deep) { if (auto) autoStep(dt); else spaceStep(dt, man ? pe : s.pitch); if (!man) pe = s.pitch; }
     else {
-      if (warp > 100 && !(A.ship && s.alt > SPACE && !landing)) setWarp(100); // back in the air: no hyper turbo
+      if (warp > 100) setWarp(100); // flown by hand: no hyper turbo
       glide(horiz);
     }
     s.heading = C.Math.zeroToTwoPi(s.heading);
@@ -2069,12 +2112,12 @@
     else if (s.v < A.vStall * (1 - 0.1 * s.flaps)) text(T('PÉRDIDA — baja la nariz y da gas'), cx, cy - r - 46, 16);
     const satOcc = new C.EllipsoidalOccluder(C.Ellipsoid.WGS84, viewer.camera.positionWC); // behind the Earth: not drawn
     if ($('layerSats').checked) for (const sat of OGE.satellites()) { // live satellites, as bright moving dots when they are in view
-      if (!sat.p || OGE.satHidden.has(sat.name) || C.Cartesian3.distance(sat.p, viewer.camera.positionWC) > 2.5e6 || !satOcc.isPointVisible(sat.p)) continue; // only the satellites near the ship, and not the ones shot down
+      if (!sat.p || OGE.satHidden.has(sat.name) || C.Cartesian3.distance(sat.p, viewer.camera.positionWC) > (A.ship ? 8e6 : 2.5e6) || !satOcc.isPointVisible(sat.p)) continue; // only the satellites near the ship, and not the ones shot down
       const q = (C.SceneTransforms.worldToWindowCoordinates || C.SceneTransforms.wgs84ToWindowCoordinates)(scene, sat.p);
       if (!q || q.x < 0 || q.y < 0 || q.x > w || q.y > h) continue;
       const sd = C.Cartesian3.distance(sat.p, viewer.camera.positionWC), iss = /ISS|ZARYA/.test(sat.name);
       if (C.Cartesian3.dot(C.Cartesian3.subtract(sat.p, viewer.camera.positionWC, new C.Cartesian3()), viewer.camera.directionWC) < 0) continue; // behind the view
-      const fy = h / 2 / Math.tan((viewer.camera.frustum.fovy || rad(60)) / 2), sr = clamp(((iss ? 3000 : 1800) * (A.ship ? 5 : 1) * fy) / sd, A.ship ? 18 : 3, 220); // from the ship they are magnified five times and never smaller than a full model, in the arcade or in free flight // drawn as if a couple of km wide: it grows as you fly up to it
+      const fy = h / 2 / Math.tan((viewer.camera.frustum.fovy || rad(60)) / 2), sr = clamp(((iss ? 3000 : 1800) * (A.ship ? 5 : 1) * fy) / sd, A.ship ? (sd > 2.5e6 ? 9 : 18) : 3, 220); // from the ship they are magnified five times and never smaller than a full model, in the arcade or in free flight // drawn as if a couple of km wide: it grows as you fly up to it
       g.save(); g.translate(q.x, q.y);
       if (sr < 7) { g.fillStyle = g.shadowColor = iss ? '#ffd60a' : '#bfe6ff'; g.shadowBlur = 10; g.beginPath(); g.arc(0, 0, sr, 0, 7); g.fill(); }
       else { // body, two solar wings with cells, an antenna dish
@@ -2099,6 +2142,7 @@
     if (caps && quest()) drawCaps();
     if (arcade) drawArcade(w, h, text);
     if (A.ship && !OGE.body) moonHud(w, h);
+    if (!auto && !nav && A.ship && s.alt > SPACE && !landing) text(`${T('Piloto automático:')} ${DEST.map((d, i) => `${i + 1} ${T(PLACES[d])}`).join(' · ')}`, cx, cy - r - 28, 12);
     if (nav) text(`${T('PILOTO AUTOMÁTICO AL PUNTO DEL MINIMAPA')} · ${Math.round(nav.left / 1000).toLocaleString(OGE_LANG)} km`, cx, cy - r - 28, 14);
     if (auto) text(`${T('PILOTO AUTOMÁTICO A')} ${T(PLACES[auto.to]).toUpperCase()} · ${T('esquiva con A D W S')}${auto.real ? '' : ' · ' + Math.max(0, Math.ceil((TRIP_MS - (performance.now() - auto.t0)) / 1000)) + ' s'}`, cx, cy - r - 28, 14);
     const tp3 = tps() ? drawShip3D(w, h) : null; // third person: the ship in 3D and its reticles
@@ -2119,6 +2163,8 @@
       const k = Math.min(1, (performance.now() - charge) / CHARGE_MS), at = tp3 && tp3.nose ? tp3.nose : { x: aimMouse ? mouse.x : cx, y: aimMouse ? mouse.y : h / 2 };
       glow(g, at.x, at.y, (6 + 20 * k) * (k < 1 ? 1 : 1 + 0.25 * Math.sin(performance.now() / 45)), k < 1 ? '#b6ff9a' : '#39ff14');
     }
+    if (padLock) { const q = objs.includes(padLock) ? (C.SceneTransforms.worldToWindowCoordinates || C.SceneTransforms.wgs84ToWindowCoordinates)(scene, padLock.p) : null; // the pad's lock-on: brackets round the enemy the auto-aim will fire at
+      if (!q) padLock = null; else { g.save(); g.strokeStyle = '#ff9f0a'; g.lineWidth = 2.5; for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { g.beginPath(); g.moveTo(q.x + sx * 22, q.y + sy * 12); g.lineTo(q.x + sx * 22, q.y + sy * 22); g.lineTo(q.x + sx * 12, q.y + sy * 22); g.stroke(); } g.restore(); } }
     if (lock && performance.now() - lock.t < 600) { g.save(); g.strokeStyle = '#39ff14'; g.lineWidth = 2; g.translate(lock.x, lock.y); g.rotate(Math.PI / 4); g.strokeRect(-11, -11, 22, 22); g.restore(); } // the auto-aim's own mark: a diamond on what it fired at
     if (aimMouse) { // crosshair on the cursor
       g.save(); g.strokeStyle = '#ff3b30'; g.lineWidth = 2; g.beginPath(); g.arc(mouse.x, mouse.y, 14, 0, 7); g.stroke();
@@ -2194,6 +2240,7 @@
     if (!on) return;
     const t = performance.now(), dt = Math.min(0.1, (t - last) / 1000);
     last = t;
+    readPad(); // every frame, paused or not: the pad can resume the game and work the menus
     if (!paused) step(dt);
     if (on) draw();
   });
@@ -2248,7 +2295,7 @@
     else if (k === 'c' && A.ship && landing) $('flyLift').click(); // C takes off again after landing
     else if (k === 'c') { stick.x = stick.y = 0; s.trim = 0; }
     else if (k === 'q' && A && A.ship && !e.repeat) { stopped = !stopped; if (!stopped) { s.v = Math.max(s.v, A.v0 || 300); s.throttle = Math.max(s.throttle, 0.5); } } // Q: stop and hover; Q again: fly on
-    else if (k === 'b') { if (!e.repeat) trigger(true); } // B fires, aiming by itself at the nearest enemy; held, it charges
+    else if (k === 'b' && A && A.ship) { if (!e.repeat) trigger(true); } // B fires, aiming by itself at the nearest enemy; held, it charges
     else if (k === 'v' && A.ship) bomb(); // V drops a bomb
     else if (k === 'g') nextWarp(-1);
     else if (k === '+' || k === '=' || k === '-') OGE.minimap.zoom(k === '-' ? -1 : 1);
@@ -2268,8 +2315,9 @@
   document.addEventListener('keyup', (e) => { const k = e.key.toLowerCase(); keys.delete(k); if (k === 'b') letGo(); }, true);
   window.addEventListener('blur', () => { keys.clear(); charge = 0; });
   const SPACE = 1e5, DEEP = 2e6, HYPER = [1000, 10000, 50000]; // DEEP: above it the flight is a straight line and the ship turns freely // out of the atmosphere: turbo levels only for space, enough to reach the Moon in under a minute
-  const levels = () => (on && A && A.ship && s.alt > SPACE && !race ? [...WARPS, ...HYPER] : WARPS);
-  const nextWarp = (d = 1) => { if (on && landing === 'parked') { const v = GWARPS[clamp(GWARPS.indexOf(gWarp) + d, 0, GWARPS.length - 1)]; if (v !== gWarp) sfx(v > gWarp ? 'warpUp' : 'warpDown'); gWarp = v; return warpLabel(); }
+  const levels = () => WARPS; // by hand the turbo ends at ×100 everywhere: the hyper turbo is the autopilot's
+  const nextWarp = (d = 1) => { if (auto) return; // the autopilot keeps its own turbo
+    if (on && landing === 'parked') { const v = GWARPS[clamp(GWARPS.indexOf(gWarp) + d, 0, GWARPS.length - 1)]; if (v !== gWarp) sfx(v > gWarp ? 'warpUp' : 'warpDown'); gWarp = v; return warpLabel(); }
     const L = levels(); setWarp(L[clamp(L.indexOf(warp) + d, 0, L.length - 1)]); }; // stops at both ends
   let moonAt = null, moonT = 0, spaceMsg = false, deepMsg = false;
   function moonPos() { // the Moon in the Earth's frame at the clock's time: the same place where it is drawn, in step with the sun's light
@@ -2285,7 +2333,7 @@
   }
   let nav = null; // autopilot to a point picked on the minimap { lon, lat, left: metres to go }
   OGE.minimap.pick = (lon, lat) => { // a click on the minimap in flight: the aircraft turns towards that point and holds the course
-    if (!on || OGE.body || paused) return false; // the minimap is a map of the Earth
+    if (!on || paused) return false;
     nav = { lon: rad(lon), lat: rad(lat), left: 0 }; OGE.toast(T('Piloto automático al punto del minimapa: A o D lo apagan.')); return true;
   };
   function navStep(dt) {
@@ -2330,12 +2378,13 @@
   const TRIP_MS = 45000;
   let auto = null; // { to, real: towards the real Moon, t0, ox, oy: the dodge, sideways and up from the path, next: when the next enemy comes, speed, dir }
   function cruising() { return !!auto; }
+  function endAuto() { if (auto) setWarp(Math.min(100, auto.warp0 || 1)); auto = null; objs = objs.filter((o) => !o.auto); } // the turbo it had comes back
   function autopilot(to) {
     if (!on || !A.ship || paused || !to) return;
-    if (auto) { auto = null; objs = objs.filter((o) => !o.auto); return OGE.toast(T('Piloto automático apagado.')); }
+    if (auto) { endAuto(); return OGE.toast(T('Piloto automático apagado.')); }
     if (s.alt <= SPACE || landing) return OGE.toast(T('El piloto automático se enciende fuera de la atmósfera.'));
     man = null; incoming = []; objs = objs.filter((o) => o.kind === 'boss' || o.kind === 'crest');
-    auto = { to, real: to === 'moon' && !OGE.body, t0: performance.now(), ox: 0, oy: 0, next: performance.now() + 3500 }; sfx('warpUp');
+    auto = { to, real: to === 'moon' && !OGE.body, t0: performance.now(), ox: 0, oy: 0, next: performance.now() + 3500, warp0: warp }; setWarp(HYPER[HYPER.length - 1]);
     OGE.toast(`${T('Piloto automático a')} ${T(PLACES[to])}: ${T('esquiva a los enemigos y asteroides (A D W S). La misma tecla lo apaga.')}`);
   }
   function autoStep(dt) {
@@ -2362,7 +2411,7 @@
     });
     const done = auto.real ? C.Cartesian3.distance(P1, moonPos()) < 2e7 : now - auto.t0 > TRIP_MS, dest = auto.to;
     if (hits) hurt(15 * hits);
-    if (done && on && !paused) { auto = null; objs = objs.filter((o) => !o.auto); arrive(dest); }
+    if (done && on && !paused) { endAuto(); arrive(dest); }
   }
   function moonHud(w, h) { // where the Moon is and how far, once the ship is high enough to go
     if (s.alt < 3e4) return;
@@ -2428,7 +2477,8 @@
   for (const b of document.querySelectorAll('#flyActs button')) b.addEventListener('pointerdown', (e) => { e.preventDefault(); const key = b.dataset.key, up = () => document.dispatchEvent(new KeyboardEvent('keyup', { key })); document.dispatchEvent(new KeyboardEvent('keydown', { key })); if (key === 'b') { b.addEventListener('pointerup', up, { once: true }); b.addEventListener('pointercancel', up, { once: true }); } else setTimeout(up, 80); }); // the fire button can be held to charge // the same as their keys
   if (!matchMedia('(pointer: coarse)').matches) { // with a keyboard the key buttons are not needed: only Controls and Scores stay at hand
     $('flyBtns').classList.add('keyboard');
-    $('flyKeys').append(Object.assign(document.createElement('li'), { className: 'keyBtns' })); $('flyKeys').lastChild.append($('flyScores'), $('flyFlags'), $('flyArms'), $('flyColors'), $('flyMp'), $('flyReset')); $('flyKeys').style.right = $('flyRules').style.right = '12px'; // no column of buttons beside them // the few actions without a key live in the K panel
+    $('flyKeys').append(Object.assign(document.createElement('li'), { className: 'keyBtns' })); $('flyKeys').lastChild.append($('flyScores'), $('flyFlags'), $('flyArms'), $('flyColors'), $('flyMp'), $('flyReset'), $('flyShip'), $('flySun'),
+      ...DEST.map((d) => Object.assign(document.createElement('button'), { type: 'button', textContent: `${T('Piloto automático')} → ${T(PLACES[d])}`, onclick: () => { if (pad.menu) padMenu(false); autopilot(d); } }))); // the autopilot can be chosen here as well as with 1, 2, 3 $('flyKeys').style.right = $('flyRules').style.right = '12px'; // no column of buttons beside them // the few actions without a key live in the K panel
   } else { $('flyBtns').classList.add('touch'); document.body.classList.add('touchdev'); } // on a phone the stick steers (left half of the screen): the right column keeps the touch actions and the speed
   $('flyThird').onclick = () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'y' }));
   $('flyMore').onclick = () => { const more = $('flyBtns').classList.toggle('more'); localStorage.setItem('oge.flyMore', more ? '1' : ''); }; // remembered
