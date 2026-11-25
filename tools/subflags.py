@@ -1,7 +1,7 @@
 """Builds web/data/subflags.json: the emblem of every first-level region (Natural Earth admin-1), from Wikidata.
 
 For each region the first of these that Wikidata has: its flag (P41), its coat of arms (P94), its logo (P154),
-or the flag or coat of arms of its capital (P36). Regions are matched by their Wikidata id (Natural Earth carries it),
+the flag or coat of arms of its capital (P36), or those of the most populous place inside it (P131). Regions are matched by their Wikidata id (Natural Earth carries it),
 or else by their ISO 3166-2 code, never by name. The game reads the table instead of asking Wikidata while flying.
 
 Run:  python -I tools/subflags.py [cache dir]      (prints the coverage; the regions left without emblem go to <cache>/subflags_missing.txt)
@@ -65,6 +65,23 @@ def best(rows):
     return by_q, by_iso
 
 
+def towns(qids):
+    """{qid: (5 flag | 6 arms, file)}: the most populous place located in each region (P131) that has a flag or a coat of arms; usually its capital."""
+    out, pop = {}, {}
+    for i in range(0, len(qids), 60):
+        try:
+            rows = sparql('SELECT ?c ?fl ?ca ?pop WHERE { VALUES ?c { ' + ' '.join('wd:' + q for q in qids[i:i + 60]) + ' } ?t wdt:P131 ?c. OPTIONAL { ?t wdt:P41 ?fl } OPTIONAL { ?t wdt:P94 ?ca } FILTER(BOUND(?fl) || BOUND(?ca)) OPTIONAL { ?t wdt:P1082 ?pop } }')
+        except SystemExit:
+            print('  towns: batch', i, 'skipped'); continue
+        for b in rows:
+            q, p = b['c']['value'].rsplit('/', 1)[-1], float(b.get('pop', {}).get('value', 0) or 0)
+            if q not in out or p > pop[q]:
+                kind = 'fl' if 'fl' in b else 'ca'
+                out[q], pop[q] = (5 if kind == 'fl' else 6, urllib.parse.unquote(b[kind]['value'].rsplit('/', 1)[-1])), p
+        time.sleep(3)
+    return out
+
+
 def main():
     regs = regions()
     print(len(regs), 'regions')
@@ -74,14 +91,17 @@ def main():
     for i in range(0, len(rest), 250):  # regions whose item has no ISO code in Wikidata: asked by id
         more, _ = best(sparql('SELECT ?c ?end ?fl ?ca ?lg ?cfl ?cca WHERE { VALUES ?c { ' + ' '.join('wd:' + q for q in rest[i:i + 250]) + ' } ' + EMBLEMS + ' }'))
         by_q.update(more); time.sleep(2)
-    table, kinds, missing = {}, [0] * len(KINDS), []
+    table, kinds, missing = {}, [0] * (len(KINDS) + 2), []
     for r in regs:
         got = by_q.get(r['q']) or by_iso.get(r['iso'])
         if got: table[r['code']] = got[1]; kinds[got[0] % 10] += 1
         else: missing.append(r)
+    town = towns(sorted({r['q'] for r in missing if r['q'].startswith('Q')}))  # last resort: the emblem of the biggest town inside the region
+    for r in missing[:]:
+        if r['q'] in town: table[r['code']] = town[r['q']][1]; kinds[town[r['q']][0]] += 1; missing.remove(r)
     out = os.path.join(ROOT, 'web', 'data', 'subflags.json')
     json.dump(dict(sorted(table.items())), open(out, 'w', encoding='utf-8', newline=''), ensure_ascii=False, separators=(',', ':'))
-    print(f'{len(table)}/{len(regs)} with an emblem:', dict(zip(['flag', 'arms', 'logo', 'capital flag', 'capital arms'], kinds)), '->', out, os.path.getsize(out), 'bytes')
+    print(f'{len(table)}/{len(regs)} with an emblem:', dict(zip(['flag', 'arms', 'logo', 'capital flag', 'capital arms', 'town flag', 'town arms'], kinds)), '->', out, os.path.getsize(out), 'bytes')
     per = {}
     for r in missing: per.setdefault(r['a2'], []).append(r['name'])
     with open(os.path.join(CACHE, 'subflags_missing.txt'), 'w', encoding='utf-8') as f:

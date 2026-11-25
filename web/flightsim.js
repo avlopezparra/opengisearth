@@ -36,6 +36,7 @@
   let shots = [], audio = null, aimMouse = false; // shots: { t, x, y } on the HUD; aimMouse: lasers follow the cursor
   const mouse = { x: 0, y: 0 };
   let lock = null; // where the last auto-aimed shot went { x, y, t }
+  let loading = 0; // until when the start of a flight may wait for the terrain and the flags (0: flying)
   let charge = 0, chargeAuto = false; // charge: when the fire key or button went down (0: not held); chargeAuto: the charged shot seeks its target (B) or goes where the mouse aims
   const trigger = (auto) => { fire(1, auto); if (on && A.ship && !paused) { charge = performance.now(); chargeAuto = auto; } }; // fires at once; held, it charges
   const letGo = () => { if (!charge) return; const held = performance.now() - charge; charge = 0; if (held >= CHARGE_MS) fire(1, chargeAuto, 4); }; // letting go of a full charge fires it
@@ -90,7 +91,7 @@
       const d = C.Cartesian3.magnitude(to);
       if (Math.acos(clamp(C.Cartesian3.dot(to, ray.direction) / d, -1, 1)) < rad(1.5)) { OGE.satHidden.add(sat.name); hp = Math.min(maxHp, hp + 25); sfx('heart'); booms.push({ p: sat.p, t: performance.now() }); OGE.toast(`🛰 ${sat.name}: +25 ${T('de vida')}`); return; }
     }
-    if (best && best.kind === 'boss') hitBoss(best, power);
+    if (best && best.kind === 'boss') hitBoss(best, power > 1 ? power * 2.5 : power); // a charged shot hits a boss hardest: 10
     else if (best && best.kind === 'ship' && (best.hp -= power) > 0) { booms.push({ p: best.p, t: performance.now() }); sfx('bossHit'); }
     else if (best && best.kind === 'ship') { objs.splice(objs.indexOf(best), 1); if (best.mmsi) sunk.add(best.mmsi); gain(pts(250)); hp = Math.min(maxHp, hp + 15); booms.push({ p: best.p, t: performance.now() }); sfx('down'); sfx('heart'); OGE.toast(T('Barco hundido: +15 de vida')); }
     else if (best && best.kind === 'octo' && (best.hp -= power) > 0) { booms.push({ p: best.p, t: performance.now() }); sfx('bossHit'); }
@@ -563,8 +564,8 @@
         }
       }
       else if (d < o.size * 1.6 + slack) { // touched
-        if (o.kind === 'enemy' || o.kind === 'airliner') { if (!rolling) hurt(25); }
-        else if (o.kind === 'wall') hurt(20); // obstacles always hurt
+        if (o.kind === 'enemy' || o.kind === 'airliner') { if (!rolling && landing !== 'parked') hurt(25); } // driving on the ground, what lies in the way does not hurt
+        else if (o.kind === 'wall') { if (landing !== 'parked') hurt(20); } // obstacles always hurt in the air
         else if (o.kind === 'heart') { hp = Math.min(maxHp, hp + 25); sfx('heart'); }
         else if (o.kind === 'life') { maxHp = Math.min(300, maxHp + 25); hp = maxHp; usedTowns.add(o.town); sfx('achieve'); OGE.toast(`${T('Vida máxima')}: ${maxHp}`); }
         else if (o.kind === 'crest') collect(o.cap); // the coat of arms wins the capital
@@ -637,7 +638,10 @@
         if (now - (o.spat || 0) < 250) glow(g, q.x, q.y - R * 0.3, R * 0.5, '#ffd60a'); // its guns firing
         if (o.mmsi) { g.shadowBlur = 0; g.fillStyle = '#cfe8ff'; g.textAlign = 'center'; g.font = '600 11px sans-serif'; g.fillText('AIS ' + o.mmsi, q.x, q.y + R + 12); }
       }
-      else if (o.kind === 'octo') drawMesh(octoMesh(now / 1000, now - (o.spat || 0) < 300), foeAxes(o.p, Math.sin(now / 1300) * 0.3), { h: '#6fe0d2', s: '#2fb8a8', d: '#155e58', e: '#ffffff', m: '#d0302a', k: '#0e3f3a' }, now - (o.hitT || 0) < 90, meshScale(o.p, Math.max(10, pr * 1.5) * 1.2, h), '#2fd3c4');
+      else if (o.kind === 'octo') { // a hill between the camera and the sea hides it: checked four times a second
+        if (now > (o.seeT || 0)) { o.seeT = now + 250; const cp = viewer.camera.positionWC, hitG = scene.globe.pick(new C.Ray(cp, C.Cartesian3.normalize(C.Cartesian3.subtract(o.p, cp, new C.Cartesian3()), new C.Cartesian3())), scene); o.hid = !!hitG && C.Cartesian3.distance(hitG, cp) < C.Cartesian3.distance(o.p, cp) - 300; }
+        if (!o.hid) drawMesh(octoMesh(now / 1000, now - (o.spat || 0) < 300), foeAxes(o.p, Math.sin(now / 1300) * 0.3), { h: '#6fe0d2', s: '#2fb8a8', d: '#155e58', e: '#ffffff', m: '#d0302a', k: '#0e3f3a' }, now - (o.hitT || 0) < 90, meshScale(o.p, Math.max(10, pr * 1.5) * 1.2, h), '#2fd3c4');
+      }
       else if (o.kind === 'aa') { // an anti-aircraft gun: a squat base, a turret and twin barrels raised towards the ship
         const R = Math.max(10, pr * 1.4); g.save();
         drawMesh(AAGUN, foeAxes(o.p, 0), { h: '#7d8c3a', s: '#5f6d2a', d: '#3a4219' }, false, meshScale(o.p, R * 1.3, h), null, true);
@@ -782,7 +786,7 @@
     s = { lon: c.longitude, lat: c.latitude, alt: ground + A.agl, heading: viewer.camera.heading, pitch: 0, roll: 0, v: A.v0, vs: 0,
       throttle: 0.7, flaps: 0, gear: false, brake: false, ail: 0, elev: 0, rud: 0, trim: 0, ground: false, agl: A.agl };
     setWarp(1);
-    auto = nav = padLock = null; pad.free = pad.menu = pad.held = false; on = true; paused = false; mouseCtl = !!useMouse && !aimMouse; stick.x = stick.y = 0; keys.clear(); last = performance.now();
+    auto = nav = padLock = null; pad.free = pad.menu = pad.held = false; loading = performance.now() + 6000; on = true; paused = false; mouseCtl = !!useMouse && !aimMouse; stick.x = stick.y = 0; keys.clear(); last = performance.now();
     if (OGE.activate) OGE.activate(null);
     if (OGE.setEdit) OGE.setEdit(false);
     scene.screenSpaceCameraController.enableInputs = false;
@@ -2107,7 +2111,8 @@
     g.textAlign = 'center'; g.textBaseline = 'middle';
     const text = (t, x, y, size = 13, align = 'center') => { g.font = `600 ${size}px ui-monospace, monospace`; g.textAlign = align; g.fillText(t, x, y); };
     const line = (x1, y1, x2, y2) => { g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke(); };
-    if (paused) text(T('PAUSA — Espacio para seguir'), cx, cy - r - 46, 16);
+    if (loading) text(T('Cargando el terreno y las banderas…'), cx, cy - r - 46, 16);
+    else if (paused) text(T('PAUSA — Espacio para seguir'), cx, cy - r - 46, 16);
     else if (s.ground) text(T('EN TIERRA'), cx, cy - r - 46, 16);
     else if (s.v < A.vStall * (1 - 0.1 * s.flaps)) text(T('PÉRDIDA — baja la nariz y da gas'), cx, cy - r - 46, 16);
     const satOcc = new C.EllipsoidalOccluder(C.Ellipsoid.WGS84, viewer.camera.positionWC); // behind the Earth: not drawn
@@ -2144,7 +2149,7 @@
     if (A.ship && !OGE.body) moonHud(w, h);
     if (nav) text(`${T('PILOTO AUTOMÁTICO AL PUNTO DEL MINIMAPA')} · ${Math.round(nav.left / 1000).toLocaleString(OGE_LANG)} km`, cx, cy - r - 28, 14);
     if (auto) text(`${T('PILOTO AUTOMÁTICO A')} ${T(PLACES[auto.to]).toUpperCase()} · ${T('dispara o esquiva (A D W S) · escudo contra asteroides')}${auto.real ? '' : ' · ' + Math.max(0, Math.ceil((TRIP_MS - (performance.now() - auto.t0)) / 1000)) + ' s'}`, cx, cy - r - 28, 14);
-    const tp3 = tps() ? drawShip3D(w, h) : null; // third person: the ship in 3D and its reticles
+    const tp3 = tps() && !loading ? drawShip3D(w, h) : null; // while loading the chase camera has not pulled back yet // third person: the ship in 3D and its reticles
     if (p2 || remote) mpDraw(w, h, text);
     if (tut) drawTutorial(w);
     if (touch.id !== null) { const r = Math.min(w, h) * 0.18; g.save(); g.strokeStyle = 'rgba(255,255,255,.6)'; g.lineWidth = 3; g.beginPath(); g.arc(touch.x0, touch.y0, r, 0, 7); g.stroke(); g.fillStyle = 'rgba(127,212,255,.7)'; g.beginPath(); g.arc(touch.x0 + stick.x * r, touch.y0 + stick.y * r, 18, 0, 7); g.fill(); g.restore(); } // the virtual stick
@@ -2241,7 +2246,8 @@
     const t = performance.now(), dt = Math.min(0.1, (t - last) / 1000);
     last = t;
     readPad(); // every frame, paused or not: the pad can resume the game and work the menus
-    if (!paused) step(dt);
+    if (loading && (race || tut || t > loading || (t > loading - 5200 && scene.globe.tilesLoaded && (regs || !arcade)))) loading = 0; // the start waits for the terrain in view and the flags: at least 0.8 s, at most 6 s (a race or the tutorial start at once)
+    if (!paused && !loading) step(dt);
     if (on) draw();
   });
 
