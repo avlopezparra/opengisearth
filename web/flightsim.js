@@ -2170,7 +2170,7 @@
   }
   function step(dt) {
     if (A && A.ship) engineHum(paused ? 0 : landing === 'parked' ? 0.2 + Math.min(0.8, Math.abs(s.taxi || 0) / 700) : stopped ? 0.15 : 0.45 + 0.55 * s.throttle, Math.log2(Math.max(1, landing === 'parked' ? gWarp : warp)) / 2 + (boost ? 1.5 : 0));
-    scene.globe.maximumScreenSpaceError = warp >= 16 ? 5 : warp >= 4 || s.alt > SPACE ? 3 : 2; // fast: fewer, coarser tiles first
+    scene.globe.maximumScreenSpaceError = warp >= 16 ? 5 : warp >= 4 ? 3 : 2; // fast: fewer, coarser tiles first
     controls(dt); warpLabel(); if (auto && landing) endAuto();
     if (A.gun) gunStep(dt, !s.ground && (keys.has('b') || gunHeld)); // in the air: on the ground B is the brakes
     let pe = s.pitch, rollOff = 0; // effective pitch and extra roll while a maneuver runs
