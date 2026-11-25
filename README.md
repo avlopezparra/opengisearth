@@ -22,3 +22,8 @@ Open-source 3D globe and GIS editor, designed as an alternative to the Google Ea
 The web app lives in `web/`; `src-tauri/` packages it as a Windows program (Tauri). Design notes: [DESIGN.md](DESIGN.md).
 
 Created by Alejandro Víctor López Parra ([avlopezparra](https://github.com/avlopezparra)). Donations: [PayPal](https://paypal.me/alopcl).
+
+## License
+
+Copyright (c) 2026 Alejandro Víctor López Parra. OpenGISEarth is free software under the [GNU Affero General Public License, version 3](LICENSE): anyone may use, study, share and change it, and whoever distributes it or offers a changed version over a network must publish that version's source under the same license. Versions published before this notice were under the MIT license and remain so.
+
