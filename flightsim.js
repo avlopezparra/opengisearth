@@ -974,10 +974,16 @@
 
   // ---------- Region flags: the country's flag over every state or province; countries, continents and the world are achievements ----------
   const REGS = 'oge.regions';
-  const moonFlags = () => { // the flags left on the Moon: the six Apollo landings, and the two Chang'e sample missions that unfurled one
-    const flag = (f) => Object.assign(new Image(), { src: 'https://commons.wikimedia.org/wiki/Special:FilePath/' + f + '?width=120' }), us = flag('Flag_of_the_United_States.svg'), cn = flag('Flag_of_the_People%27s_Republic_of_China.svg');
-    return [['Apolo 11 (1969)', 23.47297, 0.67408, us], ['Apolo 12 (1969)', -23.42157, -3.01239, us], ['Apolo 14 (1971)', -17.47136, -3.6453, us], ['Apolo 15 (1971)', 3.63386, 26.13222, us], ['Apolo 16 (1972)', 15.50019, -8.97301, us], ['Apolo 17 (1972)', 30.77168, 20.1908, us], ["Chang'e 5 (2020)", -51.916, 43.058, cn], ["Chang'e 6 (2024)", -153.986, -41.638, cn]]
+  const moonFlags = () => { // the flags left on the Moon: the six Apollo landings, and the two Chang'e sample missions that unfurled one, and Chile's for Jenaro Gajardo Vera, who registered the Moon as his property in Talca in 1954 (at the middle of the near side)
+    const flag = (f) => Object.assign(new Image(), { src: 'https://commons.wikimedia.org/wiki/Special:FilePath/' + f + '?width=120' }), us = flag('Flag_of_the_United_States.svg'), cn = flag('Flag_of_the_People%27s_Republic_of_China.svg'), cl = flag('Flag_of_Chile.svg');
+    return [['Apolo 11 (1969)', 23.47297, 0.67408, us], ['Apolo 12 (1969)', -23.42157, -3.01239, us], ['Apolo 14 (1971)', -17.47136, -3.6453, us], ['Apolo 15 (1971)', 3.63386, 26.13222, us], ['Apolo 16 (1972)', 15.50019, -8.97301, us], ['Apolo 17 (1972)', 30.77168, 20.1908, us], ["Chang'e 5 (2020)", -51.916, 43.058, cn], ["Chang'e 6 (2024)", -153.986, -41.638, cn], ['Jenaro Gajardo Vera (1954)', 0, 0, cl]]
       .map(([name, lon, lat, img], i) => ({ id: 'moon-' + i, lon, lat, lifted: true, name, a3: 'MOON', country: 'Luna', cont: 'Luna', p: C.Cartesian3.fromDegrees(lon, lat, 2000), img }));
+  };
+  const marsFlags = () => { // the missions that reached the ground of Mars in one piece: each one's flag over its landing site (none was planted there: it stands for the mission)
+    const flag = (f) => Object.assign(new Image(), { src: 'https://commons.wikimedia.org/wiki/Special:FilePath/' + f + '?width=120' }), us = flag('Flag_of_the_United_States.svg'), cn = flag('Flag_of_the_People%27s_Republic_of_China.svg'), su = flag('Flag_of_the_Soviet_Union.svg'), uk = flag('Flag_of_the_United_Kingdom.svg');
+    return [['Mars 3 (1971)', -158, -45, su], ['Viking 1 (1976)', -47.95, 22.27, us], ['Viking 2 (1976)', 134.29, 47.64, us], ['Mars Pathfinder (1997)', -33.22, 19.13, us], ['Beagle 2 (2003)', 90.4295, 11.5265, uk], ['Spirit (2004)', 175.4726, -14.5684, us],
+      ['Opportunity (2004)', -5.5266, -1.9462, us], ['Phoenix (2008)', -125.7492, 68.2188, us], ['Curiosity (2012)', 137.4417, -4.5895, us], ['InSight (2018)', 135.6234, 4.5024, us], ['Zhurong (2021)', 109.925, 25.066, cn], ['Perseverance (2021)', 77.4508, 18.4447, us]]
+      .map(([name, lon, lat, img], i) => ({ id: 'mars-' + i, lon, lat, lifted: true, name, a3: 'MARS', country: 'Marte', cont: 'Marte', p: C.Cartesian3.fromDegrees(lon, lat, 2000), img }));
   };
   let subMap = null, subAsked = false; // adm1_code -> Commons file of the region's own emblem (data/subflags.json, built from Wikidata by tools/subflags.py)
   const subImgs = new Map(), subImg = (f) => { if (!subImgs.has(f)) subImgs.set(f, Object.assign(new Image(), { src: 'https://commons.wikimedia.org/wiki/Special:FilePath/' + encodeURIComponent(f) + '?width=120' })); return subImgs.get(f); };
@@ -986,7 +992,7 @@
   let regKey = REGS; // where the flags are kept: the free game's collection, or the adventure's own
   const syncRegs = () => { const key = adv ? REGS + '.adv' : REGS; if (key === regKey) return; regKey = key; gotReg.clear(); try { for (const x of JSON.parse(localStorage.getItem(key)) || []) gotReg.add(x); } catch { /* an empty collection */ } };
   async function loadRegs() {
-    if (OGE.body) regs = regs || (OGE.body === 'moon' ? moonFlags() : []);
+    if (OGE.body) regs = regs || (OGE.body === 'moon' ? moonFlags() : OGE.body === 'mars' ? marsFlags() : []);
     if (regs || regsBusy) return;
     regsBusy = true;
     try {
@@ -2190,7 +2196,7 @@
       }
     }
     const horiz = s.v * Math.cos(pe) * dt * warp; // negative over the top of a loop: it flies backwards
-    if (A.ship && s.alt > SPACE && !spaceMsg) { spaceMsg = true; OGE.toast(`${T('Fuera de la atmósfera.')} ${T('Piloto automático, con hiperturbo:')} ${DEST.map((d, i) => `${i + 1} ${T(PLACES[d])}`).join(' · ')} · 4 ${T('la superficie')}`); }
+    if (A.ship && s.alt > SPACE && !spaceMsg) { spaceMsg = true; OGE.toast(`${T('Fuera de la atmósfera.')} ${T('Piloto automático, con hiperturbo:')} ${DEST.map((d, i) => `${i + 1} ${T(PLACES[d])}`).join(' · ')} · ${DEST.length + 1} ${T('la superficie')}`); }
     if (deep) { if (auto) autoStep(dt); else spaceStep(dt, man ? pe : s.pitch); if (!man) pe = s.pitch; }
     else {
       if (warp > 100) setWarp(100); // flown by hand: no hyper turbo
@@ -2449,7 +2455,7 @@
     else if (k === 'k') { $('flyKeys').hidden = !$('flyKeys').hidden; $('flyRules').hidden = true; }
     else if (k === 'i') showRules();
     else if (k === 'o') tutorial(true);
-    else if ('1234'.includes(k) && A && A.ship) autopilot(k === '4' ? 'down' : DEST[k - 1]); // 4: back down to the surface of this world
+    else if ('123'.includes(k) && A && A.ship) autopilot([...DEST, 'down'][k - 1]); // 4: back down to the surface of this world
     else keys.add(k);
     e.preventDefault(); e.stopPropagation();
   }, true);
@@ -2506,7 +2512,7 @@
       arrive('moon');
     }
   }
-  const PLACES = { earth: 'la Tierra', moon: 'la Luna', mars: 'Marte', sky: 'el espacio exterior' }, DEST = Object.keys(PLACES).filter((k) => k !== (OGE.body || 'earth')); // the autopilot keys 1, 2 and 3: every place but this one
+  const PLACES = { earth: 'la Tierra', moon: 'la Luna', mars: 'Marte' }, DEST = Object.keys(PLACES).filter((k) => k !== (OGE.body || 'earth')); // the autopilot keys 1, 2 and 3: every place but this one
   [...DEST, 'down'].forEach((d, i) => { const b = document.querySelector(`#flyTL button[data-key="${i + 1}"]`); if (b) b.textContent = '→ ' + T(PLACES[d] || 'la superficie'); });
   function arrive(to) { // the trip goes on over the other world itself; the outer space is the sky view
     paused = true; OGE.toast(`${T('Llegando a')} ${T(PLACES[to])}…`); const u = new URL(location.href);
