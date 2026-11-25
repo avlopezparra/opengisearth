@@ -1725,10 +1725,10 @@
       m.sym('s', [4, 1.5, 58], [50, -1, -34], [44, -1, -46], [7, 1, -44]); m.sym('w', [50, -1, -34], [44, -1, -46], [52, 9, -50]); m.sym('d', [14, -2.5, -10], [22, -2.5, -10], [22, -2.5, -48], [14, -2.5, -48]); }) },
     tridente: { name: 'Tridente', tip: [44, 0, 52], tail: -40, mesh: meshOf((m) => { m.hull(30, [[18, 7, 7, 6], [-6, 10, 10, 8], [-30, 9, 9, 7], [-40, 6, 6, 5]]); canopy(m, 22, -2, 7, 7, 5);
       m.sym('s', [9, 0, 10], [44, 0, 4], [44, 0, -28], [9, 0, -22]); m.sym('h', [40, 1.5, 4], [48, 1.5, 4], [46, 1.5, 52], [42, 1.5, 52]); m.sym('d', [40, -1.5, 4], [48, -1.5, 4], [46, -1.5, 52], [42, -1.5, 52]); m.sym('w', [48, -12, 2], [48, 12, 2], [48, 7, -30], [48, -7, -30]); }) },
-    // The Condor: broad straight wings ending in spread 'finger' feathers, and a fan for a tail. The wings rise towards their trailing edge, so that their top (roundel and flag) faces the camera behind
+    // The Condor: broad straight wings ending in spread 'finger' feathers, and a fan for a tail. It is drawn pitched a little nose-up about its tail (tilted, below), so that the top of its wings, with roundel and flag, faces the camera behind
     condor: { name: 'Cóndor', tip: [62, 9, 2], tail: -44, mesh: meshOf((m) => { m.hull(50, [[30, 5, 5, 3.5], [4, 9, 8.5, 6], [-26, 8, 7.5, 5], [-42, 5, 5, 3.5]]); canopy(m, 30, 6, 5.5, 8, 4.5);
-      m.sym('s', [8, 0, 14], [62, 9, 2], [62, 21, -18], [8, 14, -24]); m.sym('w', [62, 9, 2], [76, 16, -3], [62, 12.6, -4]); m.sym('w', [62, 13.8, -6], [79, 21, -12], [62, 16.8, -11]); m.sym('w', [62, 18, -13], [75, 26, -22], [62, 21, -18]);
-      m.sym('s', [3, 4, -34], [20, 16, -58], [3, 11, -54]); m.sym('w', [5, 4, 30], [16, 3, 22], [5, 4, 18]); }) },
+      m.sym('s', [8, 0, 14], [62, 9, 2], [62, 13, -18], [8, 5, -24]); m.sym('w', [62, 9, 2], [76, 15, -3], [62, 10, -4]); m.sym('w', [62, 10, -6], [79, 15, -12], [62, 12, -11]); m.sym('w', [62, 12, -13], [75, 15, -22], [62, 13, -18]);
+      m.sym('s', [3, 4, -34], [20, 9, -58], [3, 7, -54]); m.sym('w', [5, 4, 30], [16, 3, 22], [5, 4, 18]); }) },
     manta: { name: 'Manta', tip: [58, 3, -8], tail: -38, mesh: meshOf((m) => { m.hull(40, [[22, 6, 5, 3], [-8, 11, 7, 4], [-36, 8, 5, 3]]); canopy(m, 26, 2, 4.5, 6.5, 5);
       m.sym('s', [8, 5, 26], [40, -1, 2], [58, -7, -30], [9, 5, -34]); m.sym('w', [40, -1, 2], [60, -4, 8], [58, -7, -30]); m.sym('s', [10, 6, -18], [10, 6, -36], [19, 22, -44]); }) },
   };
@@ -1742,6 +1742,9 @@
     ['medusa', 'Medusa', 'Europa', [62, 9, 50, 18, 9, 12, 10]], ['anteo', 'Anteo', 'Magreb', [52, 12, 40, 12, 4, 16, 0]], ['bida', 'Bida', 'Sahel', [80, 6.5, 30, 38, 3, 10, 6]], ['mokele', 'Mokele-mbembe', 'África subsahariana', [56, 12, 52, 20, 7, 20, 0]],
     ['adamastor', 'Adamastor', 'África del Sur', [66, 10, 58, 30, 12, 14, 8]], ['tiamat', 'Tiamat', 'Medio Oriente', [70, 8, 48, 40, 6, 22, 0]], ['kempir', 'Zhalmauyz', 'Asia central', [50, 9, 38, 6, 14, 12, 12]], ['makara', 'Makara', 'Asia del Sur', [64, 11, 46, 26, -5, 16, 8]],
     ['orochi', 'Orochi', 'Asia oriental', [84, 7, 36, 44, 4, 12, 0]], ['bakunawa', 'Bakunawa', 'Sudeste asiático', [68, 8, 54, 36, 10, 0, 10]], ['bunyip', 'Bunyip', 'Oceanía', [48, 11, 44, 16, 6, 18, 6]], ['kraken', 'Kraken', 'Ultramar', [60, 9, 62, 28, -8, 14, 8]]]) SHIPS[k] = forged(name, lock, p);
+  // A ship drawn pitched nose-up by an angle about its tail, where the flame leaves: the camera behind sees more of its top. The same point may be shared by several faces: each is turned once.
+  const tilted = (md, a) => { const c = Math.cos(a), sn = Math.sin(a), seen = new Set(), rot = (p) => { if (seen.has(p)) return; seen.add(p); const y = p[1], z = p[2] - md.tail; p[1] = y * c + z * sn; p[2] = md.tail - y * sn + z * c; }; md.mesh.V.forEach(rot); rot(md.tip); };
+  tilted(SHIPS.condor, rad(10));
   const shipOpen = (m) => !m.lock || !!localStorage.getItem('oge.adventure.final.' + m.lock), shipOpts = () => Object.entries(SHIPS).filter(([, m]) => shipOpen(m)).map(([k, m]) => [k, m.name]); // a locked ship shows once its campaign's final boss has fallen
   const shipModel = (id) => SHIPS[id] || SHIPS[localStorage.getItem('oge.shipModel')] || SHIPS.dardo;
   const mixHex = (a, b, k) => '#' + [1, 3, 5].map((i) => Math.round(parseInt(a.slice(i, i + 2), 16) * (1 - k) + parseInt(b.slice(i, i + 2), 16) * k).toString(16).padStart(2, '0')).join('');
@@ -1766,7 +1769,7 @@
     // The wings carry both: the flag near the root and the roundel further out, where neither the engine flame nor the hull hides them from the camera behind the ship.
     // The Falcon is the exception (below): roundel and flag on the upper plates of its hull.
     const wings = quads.filter((q) => q.c === 's').slice(0, 2);
-    if (!onHull && wings.length === 2) { for (const q of wings) { onWing(q, 0.28, 0.36, 'j', 1.5); onWing(q, 0.68, 0.6, 'i'); } return; }
+    if (!onHull && wings.length === 2) { for (const q of wings) { onWing(q, 0.28, 0.36, 'j', 1.5); onWing(q, 0.68, 0.6, 'O'); onWing(q, 0.5, 0.62, 'I'); } return; } // 'O': the roundel beside a flag; 'I': the roundel alone, in the middle of the wing
     // On the upper plate of the hull, on each side, where the camera behind the ship sees it: lying along the fuselage, its top towards the top of the hull, and wholly inside the plate.
     // The Falcon wears its roundel on the biggest of those plates: its flag takes the next one towards the tail.
     for (const e of [-1, 1]) { const ups = quads.filter((q) => q.c === 'h' && q.mid[0] * e > 0 && Math.abs(q.n[1]) > 0.3 && Math.abs(q.n[0]) > 0.3 && q.mid[1] > 0), rnd = onHull && quads.filter((q) => q.c === 'h' && q.mid[0] * e > 0 && Math.abs(q.n[1]) > 0.3 && Math.abs(q.n[0]) > 0.3).sort((x, y) => y.area - x.area)[0];
@@ -1930,6 +1933,10 @@
     m.sym('h', CR, MR, JR); m.sym('d', MR, LL, JR); m.sym('h', JR, LL, CH); m.poly('m', [-16, -26, 10], UL, MR, LL);
   });
   const shade = (hex, k) => { const n = parseInt(hex.slice(1), 16); return `rgb(${Math.min(255, Math.round(((n >> 16) & 255) * k))},${Math.min(255, Math.round(((n >> 8) & 255) * k))},${Math.min(255, Math.round((n & 255) * k))})`; };
+  // An image the ship wears, lit as the plate it is painted on: in the shade it darkens with it. One copy per image and step of light is kept.
+  const painted = (im, lum) => { const key = Math.round(Math.min(1.2, lum) * 10), lit = im.ogeLit || (im.ogeLit = {});
+    if (!lit[key]) { const cv = Object.assign(document.createElement('canvas'), { width: im.naturalWidth, height: im.naturalHeight }), x = cv.getContext('2d'), k = key / 10; x.drawImage(im, 0, 0, cv.width, cv.height); x.globalCompositeOperation = 'source-atop'; x.fillStyle = k < 1 ? `rgba(0,0,0,${((1 - k) * 0.85).toFixed(2)})` : `rgba(255,255,255,${((k - 1) * 0.5).toFixed(2)})`; x.fillRect(0, 0, cv.width, cv.height); lit[key] = cv; }
+    return lit[key]; };
   // Draws a mesh placed with axes { P, F, R, U }: far faces first, each one lit, shaded from top to bottom and with a glossy highlight where it catches the light.
   function drawMesh(M, ax, COL, white = false, scale = 1, aura = null, real = false) { // real: harder light and panel lines (ships, satellites)
     const toWin = C.SceneTransforms.worldToWindowCoordinates || C.SceneTransforms.wgs84ToWindowCoordinates, cam = viewer.camera, cp = cam.positionWC;
@@ -1939,8 +1946,9 @@
     const dist = []; let fi = -1;
     for (const [idx, c, par, side] of M.F) {
       fi++;
-      const im = c === 'i' || c === 'j' ? [side > 0 && COL[c + 'R'], COL[c]].find((x) => x && x.complete && x.naturalWidth) : null; // the insignia or the tail flag of that side, once its image has arrived
-      if ((c === 'i' || c === 'j') && !im) continue;
+      const mark = 'ijOI'.includes(c), worn = (k) => [side > 0 && COL[k + 'R'], COL[k]].find((x) => x && x.complete && x.naturalWidth), flag = mark && worn('j'); // the insignia or the flag of that side, once its image has arrived
+      const im = !mark ? null : c === 'j' ? flag : c === 'i' ? worn('i') : c === 'O' ? (flag ? worn('i') : null) : flag ? null : worn('i'); // on a wing the roundel takes the middle ('I') unless a flag shares the wing ('O')
+      if (mark && !im) continue;
       if (idx.some((k) => !S[k])) continue; // a corner behind the camera
       C.Cartesian3.cross(C.Cartesian3.subtract(W[idx[1]], W[idx[0]], a), C.Cartesian3.subtract(W[idx[2]], W[idx[0]], b), n);
       if (C.Cartesian3.magnitudeSquared(n) < 1e-12) continue;
@@ -1953,7 +1961,7 @@
     g.save(); g.lineJoin = 'round'; g.lineWidth = 0.8;
     for (const f of faces) {
       if (f.im) { // painted on: the image stretched over its square
-        if (!white) { const o = S[f.idx[0]], u = S[f.idx[1]], v = S[f.idx[3]], im = f.im, k = Math.max(im.naturalWidth, im.naturalHeight), iw = im.naturalWidth / k, ih = im.naturalHeight / k; g.save(); g.transform(u.x - o.x, u.y - o.y, v.x - o.x, v.y - o.y, o.x, o.y); g.drawImage(im, (1 - iw) / 2, (1 - ih) / 2, iw, ih); g.restore(); }
+        if (!white) { const o = S[f.idx[0]], u = S[f.idx[1]], v = S[f.idx[3]], im = f.im, k = Math.max(im.naturalWidth, im.naturalHeight), iw = im.naturalWidth / k, ih = im.naturalHeight / k; g.save(); g.transform(u.x - o.x, u.y - o.y, v.x - o.x, v.y - o.y, o.x, o.y); g.drawImage(painted(im, f.lum), (1 - iw) / 2, (1 - ih) / 2, iw, ih); g.restore(); }
         continue;
       }
       let y0 = Infinity, y1 = -Infinity;
