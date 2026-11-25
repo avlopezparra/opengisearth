@@ -266,7 +266,7 @@
   const pts = (n) => Math.round(n * DIFF[diff].pts); // points earned scale with the difficulty
   let third = localStorage.getItem('oge.third') === '1'; // third-person camera: behind and above the ship (Y switches)
   let stopped = false, airports = null, airBusy = false, refuelMsg = false; // stopped: Q toggles a hover; airports: [[lon, lat]] (Natural Earth) where landing heals
-  let relaunch = null; // starts the last game again (same mode, stage or race)
+  let relaunch = null, lostAsk = false; // relaunch: starts the last game again (same mode, stage or race); lostAsk: the "try again?" dialog is up
   let thrT = 0, boost = null, boostCd = 0, eHeld = false, landing = null; // boost: the ship's single burst on E { t0, base } // landing: 'down' while dropping, 'parked' on the ground, 'up' while lifting off
   let calm = false; // free flight chosen from the mode menu: nothing to collect
   const quest = () => !calm && localStorage.getItem('oge.quest') !== '0';
@@ -499,7 +499,15 @@
     if (hp <= 0) {
       mpSend({ t: 'dead' });
       [520, 390, 290, 200, 110].forEach((f, i) => setTimeout(() => beep(f, f * 0.55, 0.35), i * 190)); // falling notes: the ship is lost
-      stop(`Nave destruida: ${score} puntos y ${coins} monedas.`, true);
+      const msg = `Nave destruida: ${score} puntos y ${coins} monedas.`;
+      if (!race && mpMode === 'solo' && !p2) { // alone and not racing: the flight waits, paused, and trying again goes on from here, with no new start and no map to load again
+        if (lostAsk) return; lostAsk = true; paused = true; if (score || coins) saveScore(score, coins);
+        const ask = () => { if (document.querySelector('dialog[open]')) return setTimeout(ask, 300); OGE.ask({ title: T('Nave destruida'), ok: T('Reintentar'), help: `${score} ${T('puntos')} · ${coins} ${T('monedas')}. ${T('¿Lo intentas otra vez?')}` }).then((v) => { lostAsk = false; if (!on) return;
+          score = coins = 0; if (!v) return stop(msg, true);
+          hp = maxHp; shields = 0; bombs = 2; incoming = []; objs = objs.filter((o) => o.kind !== 'enemy'); graceT = performance.now() + 5000; paused = false; last = performance.now(); }); };
+        return setTimeout(ask, 600);
+      }
+      stop(msg, true);
       const again = relaunch, offer = () => { if (document.querySelector('dialog[open]')) return setTimeout(offer, 300); OGE.ask({ title: T('Nave destruida'), ok: T('Reintentar'), help: T('¿Lo intentas otra vez?') }).then((v) => { if (v && again && !on) again(); }); };
       if (again) setTimeout(offer, 600);
     }
@@ -1028,7 +1036,7 @@
       const clean = (v) => String(v ?? '').replace(/\0/g, '').trim(), cand = new Map(), imgs = new Map(), out = [];
       for (const f of shp.combine([shp.parseShp(ps), shp.parseDbf(pd)]).features) { // a point for every part of a region (each island too)
         const p = f.properties, id = clean(p.adm1_code), fl = flags.get(clean(p.sr_adm0_a3));
-        if (!f.geometry || !id || !fl) continue;
+        if (!f.geometry || !id || !fl || /minor island/i.test(clean(p.name))) continue; // also the filler rows of the source ("ESP-99 (Spain minor island)")
         if (OGE.malvinasAR && ['FLK', 'SGS'].includes(clean(p.sr_adm0_a3))) continue; // part of Argentina from that point of view: no flag of their own, nor in any mission
         const big = grp[id], key = big ? fl.a3 + ':' + big : id; // the flag stands for the largest subdivision: one per region, not one per province inside it
         if (!cand.has(key)) cand.set(key, { p, fl, pts: [], name: big || clean(p.name), ids: new Set() });
@@ -1490,11 +1498,15 @@
     const pick = (c, u) => Object.assign(document.createElement('button'), { type: 'button', textContent: T('Elegir bandera'), onclick: async () => {
       if (!subMap) try { subMap = await (await fetch('data/subflags.json')).json(); subAsked = true; } catch { /* only the national flag, then */ }
       const own = regs.filter((r) => r.country === c && gotReg.has(r.id) && subMap && subMap[r.id]).map((r) => ['https://commons.wikimedia.org/wiki/Special:FilePath/' + encodeURIComponent(subMap[r.id]) + '?width=250', r.name]).sort((x, y) => x[1].localeCompare(y[1]));
-      let url = u; // with regions of its own collected, the pilot chooses between them and the national flag
-      if (own.length) { const v = await OGE.ask({ title: `${T('Bandera en la nave')}: ${c}`, ok: 'Elegir', fields: [{ id: 'f', label: 'Bandera nacional o de una región recolectada', type: 'select', value: u, options: [[u, 'Bandera nacional'], ...own] }] }); if (!v) return; url = v.f; }
-      localStorage.setItem('oge.finFlag', url); localStorage.removeItem('oge.finFlagR'); OGE.toast(`${T('Bandera en la nave')}: ${c}.`); } });
+      const v = await OGE.ask({ title: `${T('Bandera en la nave')}: ${c}`, ok: 'Elegir', fields: [{ id: 'f', label: 'Bandera nacional o de una región recolectada', type: 'select', value: u, options: [[u, 'Bandera nacional'], ...own] },
+        { id: 'side', label: 'Lado de la nave', type: 'select', value: 'both', options: [['both', 'Los dos lados'], ['left', 'Lado izquierdo'], ['right', 'Lado derecho']] }] });
+      if (!v) return;
+      const L = 'oge.finFlag', R = 'oge.finFlagR', old = localStorage.getItem(L); // R: the right side's own flag, when it differs from the left
+      if (v.side === 'right') localStorage.setItem(R, v.f);
+      else { if (v.side === 'left' && old && !localStorage.getItem(R)) localStorage.setItem(R, old); if (v.side === 'both') localStorage.removeItem(R); localStorage.setItem(L, v.f); } // left alone: the right keeps the flag both sides shared
+      OGE.toast(`${T('Bandera en la nave')}: ${c}.`); } });
     const rows = [...per].filter(([, [n]]) => n).sort((a, b) => b[1][0] - a[1][0]).map(([c, [n, all, u]]) => [c, `${n}/${all}`, u ? pick(c, u) : '']);
-    OGE.showTable(`${T('Banderas recolectadas')}: ${gotReg.size}/${regs.length}`, [T('País'), T('Banderas'), T('Nave')], rows.length ? rows : [[T('Aún ninguna'), '', '']]);
+    OGE.showTable(`${T('Banderas recolectadas')}: ${regs.filter((r) => gotReg.has(r.id)).length}/${regs.length}`, [T('País'), T('Banderas'), T('Nave')], rows.length ? rows : [[T('Aún ninguna'), '', '']]);
   }
   OGE.showFlags = showFlags;
   function showArms() { // the coats of arms won from the bosses, one per capital
@@ -1691,11 +1703,11 @@
     };
     // The tail flag ('j' faces): on each fin, that is, the biggest wing or accent plate standing more upright than flat on that side; a single middle fin carries one on each face; a ship without fins wears it on the sides of the hull.
     const plates = M.F.map(([idx, c], fi) => { const P = idx.map((k) => M.V[k]), nn = cross(sub(P[1], P[0]), sub(P[2], P[0])); return { fi, c, P, n: unit(nn), area: Math.hypot(...nn) / (P.length === 3 ? 2 : 1), mid: [0, 1, 2].map((k) => P.reduce((s, p) => s + p[k], 0) / P.length) }; }).filter((q) => q.P.length <= 4 && 'sw'.includes(q.c) && Math.abs(q.n[0]) > 0.5).sort((x, y) => y.area - x.area);
-    // On the upper plate of the hull, on each side, where the camera behind the ship sees it: top towards the nose and stretched that way, since the plate is seen almost edge-on.
+    // On the upper plate of the hull, on each side, where the camera behind the ship sees it: lying along the fuselage, its top towards the top of the hull, and wholly inside the plate.
     // The Falcon wears its roundel on the biggest of those plates: its flag takes the next one towards the tail.
     for (const e of [-1, 1]) { const ups = quads.filter((q) => q.c === 'h' && q.mid[0] * e > 0 && Math.abs(q.n[1]) > 0.3 && Math.abs(q.n[0]) > 0.3 && q.mid[1] > 0), rnd = onHull && quads.filter((q) => q.c === 'h' && q.mid[0] * e > 0 && Math.abs(q.n[1]) > 0.3 && Math.abs(q.n[0]) > 0.3).sort((x, y) => y.area - x.area)[0];
       const top = rnd ? ups.filter((q) => q.mid[2] < rnd.mid[2] - 1).sort((x, y) => y.mid[2] - x.mid[2])[0] : ups.filter((q) => q.mid[2] < 0).sort((x, y) => y.area - x.area)[0];
-      if (top) { put(top, top.n[1] < 0 ? top.n.map((x) => -x) : top.n, [0, 0, 1], 1.3, 2.4, 'j', e, 1.3); continue; }
+      if (top) { put(top, top.n[1] < 0 ? top.n.map((x) => -x) : top.n, [0, 1, 0], 0.9, 1, 'j', e, 1.5); continue; }
       const fin = plates.find((q) => q.mid[0] * e > 1) || plates.find((q) => Math.abs(q.mid[0]) <= 1), side = fin || quads.filter((q) => 'hd'.includes(q.c) && Math.abs(q.n[0]) > 0.9 && q.mid[0] * e > 0).sort((x, y) => y.area - x.area)[0]; if (side) put(side, fin && Math.abs(fin.mid[0]) > 1 ? (fin.n[0] * e < 0 ? fin.n.map((x) => -x) : fin.n) : [e, 0, 0], [0, 1, 0], fin ? 0.55 : 1.1, 1, 'j', e, 1.5); } // lying on the fin itself, facing outwards
     if (onHull) { for (const e of [-1, 1]) { const q = quads.filter((q) => q.c === 'h' && q.mid[0] * e > 0 && Math.abs(q.n[1]) > 0.3 && Math.abs(q.n[0]) > 0.3).sort((x, y) => y.area - x.area)[0]; if (q) put(q, q.n[1] < 0 ? q.n.map((x) => -x) : q.n, [0, 0, 1], 1.6, 2.7); } return; } // the biggest plate on each upper side of the hull: a little proud of it and longer towards the nose, because the camera sees that plate almost edge-on
     for (const q of quads.filter((q) => q.c === 's').slice(0, 2)) put(q, q.n[1] < 0 ? q.n.map((x) => -x) : q.n, [0, 0, 1], 0.62); // the wings: the first mirrored pair, the image's top towards the nose
