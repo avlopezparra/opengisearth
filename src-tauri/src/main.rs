@@ -146,6 +146,30 @@ fn find(targets: &[(Ipv4Addr, u16)], wait: Duration) -> std::io::Result<Vec<Stri
     Ok(found)
 }
 
+/// The three numbers of a version such as "v1.2.3": a missing or unreadable part counts as 0.
+fn version(v: &str) -> [u32; 3] {
+    let mut out = [0; 3];
+    for (i, part) in v.trim().trim_start_matches(['v', 'V']).split('.').take(3).enumerate() {
+        out[i] = part.chars().take_while(|c| c.is_ascii_digit()).collect::<String>().parse().unwrap_or(0);
+    }
+    out
+}
+
+/// Update check: this app's version when the given release tag is newer than it; nothing otherwise.
+#[tauri::command]
+fn newer_than_mine(tag: String) -> Option<&'static str> {
+    let mine = env!("CARGO_PKG_VERSION");
+    (version(&tag) > version(mine)).then_some(mine)
+}
+
+/// Opens the downloads page in the system browser. The address is fixed: nothing the page says is run.
+#[tauri::command]
+fn open_release() -> Result<(), String> {
+    const URL: &str = "https://github.com/avlopezparra/opengisearth/releases/latest";
+    let opener = if cfg!(windows) { "explorer" } else if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
+    std::process::Command::new(opener).arg(URL).spawn().map(|_| ()).map_err(|e| e.to_string())
+}
+
 fn client(id: usize, stream: std::net::TcpStream, peers: Peers) {
     let Ok(mut ws) = tungstenite::accept(stream) else { return };
     // A short read timeout lets this one thread both read the socket and write what the others relay.
@@ -177,7 +201,7 @@ fn client(id: usize, stream: std::net::TcpStream, peers: Peers) {
 fn main() {
     tauri::Builder::default()
         .manage(Mutex::new(Host::default()))
-        .invoke_handler(tauri::generate_handler![fetch_text, mp_host, mp_find])
+        .invoke_handler(tauri::generate_handler![fetch_text, mp_host, mp_find, newer_than_mine, open_release])
         .run(tauri::generate_context!())
         .expect("no se pudo iniciar OpenGISEarth");
 }
@@ -196,5 +220,14 @@ mod tests {
         let found = find(&[(Ipv4Addr::LOCALHOST, port)], Duration::from_millis(500)).unwrap();
         assert_eq!(found.len(), 1);
         assert!(found[0].starts_with("127.0.0.1:7777|AnaLuz y un"));
+    }
+
+    #[test]
+    fn versions_compare_by_number() {
+        assert_eq!(version("v1.10.2"), [1, 10, 2]);
+        assert!(version("v0.2") > version("0.1.9"));
+        assert!(version("0.10.0") > version("0.9.9"));
+        assert_eq!(version("V0.1.0-beta"), version("0.1.0"));
+        assert!(newer_than_mine("v0.0.1".into()).is_none() && newer_than_mine("v999.0.0".into()).is_some());
     }
 }

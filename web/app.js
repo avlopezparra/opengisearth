@@ -95,6 +95,13 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
     if (/-IN$/i.test(l) || /^Asia\/(Kolkata|Calcutta)$/.test(tz)) return 'IN';
     return /-CL$/i.test(l) || /America\/(Santiago|Punta_Arenas)|Pacific\/Easter/.test(tz) ? 'CL' : /-AR$/i.test(l) || /Argentina|Buenos_Aires/.test(tz) ? 'AR' : /-ES$/i.test(l) || tz === 'Europe/Madrid' ? 'ES' : ''; })();
   if (window.__TAURI__) $('dlBtn').hidden = true; // already the desktop program
+  if (window.__TAURI__) setTimeout(async () => { // update check: only the tag of the latest public release is read; nothing about this computer is sent
+    try {
+      const inv = window.__TAURI__.core.invoke, tag = String((await (await fetch('https://api.github.com/repos/avlopezparra/opengisearth/releases/latest')).json()).tag_name || '').slice(0, 30);
+      const mine = tag && await inv('newer_than_mine', { tag });
+      if (mine && await OGE.ask({ title: `Hay una versión nueva: ${tag}`, ok: 'Descargar', help: `Esta es la ${mine}. Se abrirá la página de descargas en tu navegador.` })) inv('open_release');
+    } catch { /* offline, or no release published yet: nothing to say */ }
+  }, 8000);
   // Full screen on phones and tablets (where the browser bars take room); the same button leaves it
   const fsOk = document.fullscreenEnabled || document.webkitFullscreenEnabled, touchDev = matchMedia('(pointer: coarse)').matches;
   const fsToggle = () => { const on = document.fullscreenElement || document.webkitFullscreenElement;
