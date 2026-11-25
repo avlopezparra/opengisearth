@@ -113,6 +113,7 @@ body.flying #flyBtns { display: flex; }
 
 /* Map compass, under Cesium's home/help buttons */
 #compass { position: absolute; top: 46px; right: 8px; z-index: 3; width: 44px; height: 44px; padding: 0; border-radius: 50%; background: var(--bg); border: 1px solid #777; }
+.padfocus { outline: 3px solid #ffd60a !important; outline-offset: 1px; }
 #gpsBtn { position: absolute; top: 96px; right: 8px; z-index: 3; width: 44px; height: 28px; padding: 0; border-radius: 14px; background: var(--bg); border: 1px solid #777; font: 700 11px sans-serif; }
 body.flying #gpsBtn { display: none; }
 #compass span { display: block; width: 100%; height: 100%; position: relative; font: 700 11px sans-serif; color: #ff453a; line-height: 13px; }
@@ -226,7 +227,7 @@ body.flying #flyBtns.touch { display: grid; grid-template-columns: auto 48px 48p
 
 /* With a keyboard the right column is not shown at all: K opens the controls (reminded on the HUD) */
 #flyBtns.keyboard { display: none !important; }
-#flyKeys li.keyBtns { list-style: none; display: flex; gap: 6px; margin-top: 6px; pointer-events: auto; }
+#flyKeys li.keyBtns { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; pointer-events: auto; }
 
 /* "heavy" tag beside layers that can slow the app down */
 .layers .heavy { margin-left: 6px; padding: 0 6px; border-radius: 8px; font-size: 11px; color: #7a4a00; background: #ffe9b3; border: 1px solid #f0c060; white-space: nowrap; }

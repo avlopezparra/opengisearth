@@ -17,8 +17,12 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
     mars: { name: 'Marte', max: 7, url: 'https://trek.nasa.gov/tiles/Mars/EQ/Mars_Viking_MDIM21_ClrMosaic_global_232m/1.0.0/default/default028mm/{z}/{y}/{x}.jpg', credit: 'Marte: NASA / JPL / USGS (Viking MDIM 2.1) · NASA Solar System Treks' },
   };
   const BODY = BODIES[new URLSearchParams(location.search).get('body')] ? new URLSearchParams(location.search).get('body') : null;
+  if (!matchMedia('(pointer: coarse)').matches) { // with a mouse the live satellites are on unless switched off by hand (once: the arcade used to leave them saved as off)
+    if (!localStorage.getItem('oge.fix.satsOn')) { localStorage.removeItem('oge.ui.layerSats'); localStorage.setItem('oge.fix.satsOn', '1'); }
+    if (localStorage.getItem('oge.ui.layerSats') === null) document.getElementById('layerSats').checked = true;
+  }
   document.querySelectorAll('.layers input[type=checkbox], .layers select').forEach((c) => {
-    if (BODY) { if (c.type === 'checkbox') c.checked = false; c.disabled = true; return; }
+    if (BODY && c.id !== 'layerMinimap') { if (c.type === 'checkbox') c.checked = false; c.disabled = true; return; } // the minimap serves every world
     const key = 'oge.ui.' + c.id, saved = localStorage.getItem(key);
     if (saved !== null) { if (c.type === 'checkbox') c.checked = saved === '1'; else c.value = saved; }
     c.addEventListener('change', () => localStorage.setItem(key, c.type === 'checkbox' ? (c.checked ? '1' : '0') : c.value));
@@ -312,7 +316,7 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
 
   // ---------- World minimap: where the camera (or the aircraft) is; other modules add their marks through OGE.minimap.extra ----------
   const mm = $('minimap'), mg = mm.getContext('2d'), mmTiles = new Map(); // Natural Earth II level 2 (8 × 4 tiles of 45°), loaded when first needed
-  const mmTile = (i, j) => { const k = i + '/' + j; if (!mmTiles.has(k)) mmTiles.set(k, Object.assign(new Image(), { src: `cesium/Assets/Textures/NaturalEarthII/2/${i}/${3 - j}.jpg` })); return mmTiles.get(k); }; // TMS rows count from the south
+  const mmTile = (i, j, L) => { const k = (L || '') + '/' + i + '/' + j; if (!mmTiles.has(k)) mmTiles.set(k, Object.assign(new Image(), { src: L ? BODIES[BODY].url.replace('{z}', L).replace('{y}', j).replace('{x}', i) : `cesium/Assets/Textures/NaturalEarthII/2/${i}/${3 - j}.jpg` })); return mmTiles.get(k); }; // Natural Earth: TMS rows count from the south; with L, the tile of another world at that level (rows from the north)
   const MMZ = [1, 2, 4, 8, 16, 32, 64, 128, 256]; // from 16× up, Esri satellite imagery is drawn on top (Natural Earth is too coarse)
   let mmImg = null, mmBusy = false; // mmImg: { img, w, s, e, n, z }
   let mmZoom = +localStorage.getItem('oge.mmZoom') || 4, mmLon = 0, mmLat = 0, mmLast = 0; // the map is centered on the camera
@@ -328,7 +332,15 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
     mmLon = deg(c.longitude);
     mmLat = C.Math.clamp(deg(c.latitude), -90 + 90 / mmZoom, 90 - 90 / mmZoom); // do not scroll past the poles
     mg.fillStyle = '#0b1a2b'; mg.fillRect(0, 0, W, H);
-    for (let i = 0; i < 8; i++) for (let j = 0; j < 4; j++) {
+    const world = BODY && BODIES[BODY].url; // the Moon and Mars: their own imagery, a finer level as the map zooms in
+    if (world) {
+      const L = Math.min(BODIES[BODY].max, 2 + Math.max(0, Math.round(Math.log2(mmZoom / 2)))), n = 2 ** L, span = 180 / n; // 2n × n tiles of span degrees
+      const i0 = Math.floor((mmLon - 180 / mmZoom + 180) / span), i1 = Math.floor((mmLon + 180 / mmZoom + 180) / span), j0 = Math.max(0, Math.floor((90 - mmLat - 90 / mmZoom) / span)), j1 = Math.min(n - 1, Math.floor((90 - mmLat + 90 / mmZoom) / span));
+      for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) { // only the tiles in the window; the columns wrap round the world
+        const im = mmTile(((i % (2 * n)) + 2 * n) % (2 * n), j, L);
+        if (im.complete && im.naturalWidth) mg.drawImage(im, W / 2 + ((span * i - 180 - mmLon) / 360) * W * mmZoom, H / 2 - ((90 - span * j - mmLat) / 180) * H * mmZoom, (span / 360) * W * mmZoom + 0.5, (span / 180) * H * mmZoom + 0.5);
+      }
+    } else for (let i = 0; i < 8; i++) for (let j = 0; j < 4; j++) {
       const y = H / 2 - ((90 - 45 * j - mmLat) / 180) * H * mmZoom;
       for (const x of [W / 2 + mmDx(-180 + 45 * i) * W * mmZoom, W / 2 + (mmDx(-180 + 45 * i) - 1) * W * mmZoom]) { // second copy: a tile cut by the wrap also shows at the other edge
         if (x > W || x + tw < 0 || y > H || y + th < 0) continue;
@@ -336,7 +348,7 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
         if (im.complete && im.naturalWidth) mg.drawImage(im, x, y, tw + 0.5, th + 0.5);
       }
     }
-    if (mmZoom >= 16) { // a sharper picture for the close zooms: one Esri export covering twice the window, fetched again when the view leaves it
+    if (mmZoom >= 16 && !world) { // a sharper picture for the close zooms: one Esri export covering twice the window, fetched again when the view leaves it
       const hw = 180 / mmZoom, hh = 90 / mmZoom, fits = mmImg && mmImg.z === mmZoom && mmLon - hw > mmImg.w && mmLon + hw < mmImg.e && mmLat - hh > mmImg.s && mmLat + hh < mmImg.n;
       if (!fits && !mmBusy) {
         mmBusy = true;
