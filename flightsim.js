@@ -6,7 +6,8 @@
   const C = Cesium, { viewer, $ } = OGE;
   const scene = viewer.scene, rad = C.Math.toRadians, deg = C.Math.toDegrees, clamp = C.Math.clamp;
   const G = 9.81, R = 6371000, KT = 1.94384, FT = 3.28084, GEAR_H = 1.8;
-  const IMPERIAL = /-(US|LR|MM)$/i.test(navigator.language || ''); // knots and feet only where feet are the everyday unit; the rest of the world reads km/h and metres
+  const IMPERIAL = (() => { const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; // by the time zone of the device; its language says little (phones in Latin America often come as es-US)
+    return tz ? /^(America\/(New_York|Chicago|Denver|Los_Angeles|Phoenix|Anchorage|Detroit|Boise|Juneau|Sitka|Nome|Adak|Yakutat|Metlakatla|Menominee|Indiana|Kentucky|North_Dakota)|Pacific\/Honolulu|US\/|Africa\/Monrovia|Asia\/(Yangon|Rangoon))/.test(tz) : /-(US|LR|MM)$/i.test(navigator.language || ''); })(); // knots and feet only where feet are the everyday unit; the rest of the world reads km/h and metres
   const num = (v) => String(Math.round(v)), spd = (v) => (IMPERIAL ? Math.round(v * KT) + ' KT' : v * 3.6 < 1e5 ? num(v * 3.6) + ' km/h' : num((v * 3.6) / 1000) + 'k km/h'), high = (m) => (IMPERIAL ? Math.round(m * FT) + ' FT' : Math.abs(m) < 1e5 ? num(m) + ' m' : num(m / 1000) + ' km');
   // vStall/vMax in m/s; thrust: acceleration at full throttle (m/s²); roll/pitch/yaw: maximum angular rates; agl and v0: start
   const PLANES = {
@@ -36,6 +37,7 @@
   let shots = [], audio = null, aimMouse = false; // shots: { t, x, y } on the HUD; aimMouse: lasers follow the cursor
   const mouse = { x: 0, y: 0 };
   let lock = null; // where the last auto-aimed shot went { x, y, t }
+  const LOADMS = matchMedia('(pointer: coarse)').matches ? 12000 : 6000; // the longest wait at the start of a flight: a phone loads the map more slowly
   let loading = 0; // until when the start of a flight may wait for the terrain and the flags (0: flying)
   let charge = 0, chargeAuto = false; // charge: when the fire key or button went down (0: not held); chargeAuto: the charged shot seeks its target (B) or goes where the mouse aims
   const trigger = (auto) => { fire(1, auto); if (on && A.ship && !paused) { charge = performance.now(); chargeAuto = auto; } }; // fires at once; held, it charges
@@ -60,6 +62,11 @@
         const q = toW(scene, o.p); if (!q || q.x < 0 || q.y < 0 || q.x > cw || q.y > ch) continue;
         const sc = Math.hypot(q.x - acx, q.y - acy) + d / 200 + (wall ? 400 : 0); if (sc < bestS) { bestS = sc; bestQ = q; }
       }
+      if ($('layerSats').checked) { const occ = new C.EllipsoidalOccluder(C.Ellipsoid.WGS84, camP); // satellites too (shooting one gives life back): those near and in sight, after an enemy as close to the middle
+        for (const sat of OGE.satellites()) { if (!sat.p || OGE.satHidden.has(sat.name) || C.Cartesian3.distance(sat.p, camP) > 2.5e6 || !occ.isPointVisible(sat.p)) continue;
+          if (C.Cartesian3.dot(C.Cartesian3.subtract(sat.p, camP, new C.Cartesian3()), viewer.camera.directionWC) <= 0) continue;
+          const q = toW(scene, sat.p); if (!q || q.x < 0 || q.y < 0 || q.x > cw || q.y > ch) continue;
+          const sc = Math.hypot(q.x - acx, q.y - acy) + 200; if (sc < bestS) { bestS = sc; bestQ = q; } } }
       if (padLock) { const q = objs.includes(padLock) && C.Cartesian3.dot(C.Cartesian3.subtract(padLock.p, camP, new C.Cartesian3()), viewer.camera.directionWC) > 0 ? toW(scene, padLock.p) : null; if (q && q.x >= 0 && q.y >= 0 && q.x <= cw && q.y <= ch) bestQ = q; } // the enemy picked with the pad comes first
       if (bestQ) { ax = bestQ.x; ay = bestQ.y; lock = { x: ax, y: ay, t }; }
     }
@@ -264,7 +271,7 @@
     hard: { name: 'Difícil', hurt: 1.6, fire: 0.6, shot: 1.4, boss: 1.6, pts: 2 }, ace: { name: 'As', hurt: 2.5, fire: 0.4, shot: 1.8, boss: 2.5, pts: 4 } };
   let diff = DIFF[localStorage.getItem('oge.diff')] ? localStorage.getItem('oge.diff') : 'normal';
   const pts = (n) => Math.round(n * DIFF[diff].pts); // points earned scale with the difficulty
-  let third = localStorage.getItem('oge.third') === '1'; // third-person camera: behind and above the ship (Y switches)
+  let third = localStorage.getItem('oge.third') !== '0'; // third-person camera: behind and above the ship (Y switches)
   let stopped = false, airports = null, airBusy = false, refuelMsg = false; // stopped: Q toggles a hover; airports: [[lon, lat]] (Natural Earth) where landing heals
   let relaunch = null, lostAsk = false; // relaunch: starts the last game again (same mode, stage or race); lostAsk: the "try again?" dialog is up
   let thrT = 0, boost = null, boostCd = 0, eHeld = false, landing = null; // boost: the ship's single burst on E { t0, base } // landing: 'down' while dropping, 'parked' on the ground, 'up' while lifting off
@@ -879,11 +886,11 @@
     s = { lon: c.longitude, lat: c.latitude, alt: ground + A.agl, heading: viewer.camera.heading, pitch: 0, roll: 0, v: A.v0, vs: 0,
       throttle: 0.7, flaps: 0, gear: false, brake: false, ail: 0, elev: 0, rud: 0, trim: 0, ground: false, agl: A.agl };
     setWarp(1);
-    auto = nav = padLock = null; pad.free = pad.menu = pad.held = false; rounds = []; gunHeld = false; loading = performance.now() + 6000; on = true; paused = false; mouseCtl = !!useMouse && !aimMouse; stick.x = stick.y = 0; keys.clear(); last = performance.now();
+    auto = nav = padLock = null; pad.free = pad.menu = pad.held = false; rounds = []; gunHeld = false; loading = performance.now() + LOADMS; on = true; paused = false; mouseCtl = !!useMouse && !aimMouse; stick.x = stick.y = 0; keys.clear(); last = performance.now();
     if (OGE.activate) OGE.activate(null);
     if (OGE.setEdit) OGE.setEdit(false);
     scene.screenSpaceCameraController.enableInputs = false;
-    document.body.classList.add('flying');
+    document.body.classList.add('flying'); VP.content = VP0 + ', maximum-scale=1, user-scalable=no'; // while playing, two fingers are two controls: the browser must not take them for a zoom of the page
     hud.hidden = false;
     $('flyBtn').classList.add('active');
     if (A.ship && useTut) { localStorage.setItem('oge.tutorial', '1'); tutorial(true); music(true); } // once the ship exists
@@ -1583,7 +1590,7 @@
     if (arcade && (score || coins)) saveScore(score, coins);
     if (p2) { const n = p2.score; setTimeout(() => OGE.toast(`Jugador 2: ${n} puntos.`), 3500); p2 = null; }
     scene.screenSpaceCameraController.enableInputs = true;
-    document.body.classList.remove('flying');
+    document.body.classList.remove('flying'); VP.content = VP0;
     hud.hidden = true;
     $('flyKeys').hidden = true; $('flyRules').hidden = true;
     $('flyBtn').classList.remove('active');
@@ -2459,19 +2466,20 @@
     const t = performance.now(), dt = Math.min(0.1, (t - last) / 1000);
     last = t;
     readPad(); // every frame, paused or not: the pad can resume the game and work the menus
-    if (loading && (race || tut || t > loading || (t > loading - 5200 && scene.globe.tilesLoaded && (regs || !arcade)))) loading = 0; // the start waits for the terrain in view and the flags: at least 0.8 s, at most 6 s (a race or the tutorial start at once)
+    if (loading && (race || tut || t > loading || (t > loading - LOADMS + 800 && scene.globe.tilesLoaded && (regs || !arcade)))) { loading = 0; graceT = Math.max(graceT, t + 3000); } // the start waits for the terrain in view and the flags: at least 0.8 s, at most 6 s (a race or the tutorial start at once)
     if (!paused && !loading) step(dt);
     if (on) draw();
   });
 
   // ---------- Inputs ----------
-  // ---------- Touch: the left half of the screen is a virtual stick (drag from where the finger lands); a tap on the right half fires ----------
-  const touch = { id: null, x0: 0, y0: 0 };
+  // ---------- Touch: the lower left of the screen is a virtual stick (drag from where the finger lands); a touch anywhere else fires there ----------
+  const VP = document.querySelector('meta[name="viewport"]'), VP0 = VP.content; // the page's own viewport, put back when the flight ends
+  const touch = { id: null, x0: 0, y0: 0 }, fireTouch = new Set(); // several fingers at once: one holds the stick, the others fire
   hud.addEventListener('touchstart', (e) => {
     for (const t of e.changedTouches) {
       const b = hud.getBoundingClientRect(), x = t.clientX - b.left, y = t.clientY - b.top;
-      if (x < b.width / 2 && touch.id === null) { Object.assign(touch, { id: t.identifier, x0: x, y0: y }); mouseCtl = true; stick.x = stick.y = 0; }
-      else if (x >= b.width / 2 && A && A.ship) { if (aimMouse) { mouse.x = x; mouse.y = y; } fire(); }
+      if (x < b.width * 0.42 && y > b.height * 0.4 && touch.id === null) { Object.assign(touch, { id: t.identifier, x0: x, y0: y }); mouseCtl = true; stick.x = stick.y = 0; }
+      else if (A && A.ship) { if (aimMouse) { mouse.x = x; mouse.y = y; } fireTouch.add(t.identifier); trigger(false); } // fires at once; held, it charges, while another finger keeps steering
     }
     e.preventDefault();
   }, { passive: false });
@@ -2483,7 +2491,7 @@
     }
     e.preventDefault();
   }, { passive: false });
-  const touchEnd = (e) => { for (const t of e.changedTouches) if (t.identifier === touch.id) { touch.id = null; stick.x = stick.y = 0; } };
+  const touchEnd = (e) => { for (const t of e.changedTouches) { if (t.identifier === touch.id) { touch.id = null; stick.x = stick.y = 0; } if (fireTouch.delete(t.identifier) && !fireTouch.size) letGo(); } }; // the last firing finger lifted: a full charge goes off
   hud.addEventListener('touchend', touchEnd); hud.addEventListener('touchcancel', touchEnd);
   hud.addEventListener('mousemove', (e) => {
     const b = hud.getBoundingClientRect();
@@ -2508,7 +2516,7 @@
     else if (k === ' ') { nextWarp(1); e.preventDefault(); } // on the ship Space raises the turbo
     else if (k === 'shift' && e.code !== 'ShiftRight' && A && A.ship) nextWarp(-1); // left Shift lowers it
     else if (k === 'h') showHud = !showHud;
-    else if (k === 'y' && A && A.ship) { third = !third; localStorage.setItem('oge.third', third ? '1' : ''); chase = null; OGE.toast(third ? T('Cámara en tercera persona (Y)') : T('Cámara en primera persona (Y)')); }
+    else if (k === 'y' && A && A.ship) { third = !third; localStorage.setItem('oge.third', third ? '1' : '0'); chase = null; OGE.toast(third ? T('Cámara en tercera persona (Y)') : T('Cámara en primera persona (Y)')); }
     else if (k === 'l') s.gear = !s.gear;
     else if (k === 'u' && race && A.ship) useItem(); // U uses the race item
     else if (k === 'f' && A && A.ship) maneuver('uturn'); // F: turn back (on the ship F has no flaps)

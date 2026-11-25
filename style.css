@@ -67,7 +67,7 @@ body.noside #panel, body.noside #splitter { display: none; }
 
 /* Flight simulator: full-screen HUD and no bars */
 .askPreview { display: block; max-height: 72px; max-width: 170px; margin: 4px 0 8px; border: 1px solid rgba(128,128,128,.5); background: #fff; }
-#hud { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 2; cursor: crosshair; }
+#hud { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 2; cursor: crosshair; touch-action: none; }
 /* CRT filter: the picture seen through a tube's phosphors. A staggered mask of red, green and blue cells with dark gaps between the rows (the scan lines) is laid over the game
    as an overlay: it shows in the mid tones and fades in the highlights, which bloom as on a tube. The game itself is softened a little; the corners darken. */
 #crt { position: absolute; inset: 0; z-index: 2; pointer-events: none; display: none; mix-blend-mode: overlay; image-rendering: pixelated; box-shadow: inset 0 0 140px 40px rgba(0,0,0,.6);
@@ -112,6 +112,8 @@ dialog [hidden] { display: none; }
 /* Flight buttons: only while flying, above the HUD canvas */
 #flyBtns { display: none; position: absolute; right: 12px; bottom: 60px; z-index: 4; flex-direction: column; gap: 8px; }
 body.flying #flyBtns { display: flex; }
+/* While playing every finger is a control (stick, fire, buttons): no gesture of the browser on the game's surfaces. The menus that scroll (#flyExtra, #flyRules) keep theirs. */
+body.flying #globe, body.flying #mmBox, body.flying #flyTL, body.flying #flyActs, body.flying #rotateNote { touch-action: none; }
 #flyBtns button { padding: 10px 14px; font-size: 14px; opacity: .85; touch-action: none; user-select: none; }
 #flyBtns > div { display: flex; gap: 8px; }
 #flyBtns > div button { flex: 1; }
@@ -235,7 +237,11 @@ body.flying #flyBtns.touch { display: grid; grid-template-columns: auto 48px 48p
 #flyBtns.touch #flyActs button:nth-child(2) { grid-area: 3 / 2; } #flyBtns.touch #flyActs button:nth-child(3) { grid-area: 3 / 3; }
 #flyBtns.touch #flyActs button:nth-child(4) { grid-area: 4 / 2; } #flyBtns.touch #flyActs button:nth-child(5) { grid-area: 4 / 3; }
 #flyBtns.touch > #flyExtra { grid-column: 1 / 4; grid-row: 6; }
-#flyBtns.touch.more > #flyExtra { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; max-height: 40vh; overflow: auto; }
+/* Open, the menu takes the place of the controls (the rows are 36 px high: under them it ran off the screen) and "Más" stays below it to close it */
+#flyBtns.touch.more { grid-template-rows: auto 36px; }
+#flyBtns.touch.more > #flyUp, #flyBtns.touch.more > #flyDown, #flyBtns.touch.more > #flyWarp, #flyBtns.touch.more > #flyWarpDown, #flyBtns.touch.more #flyActs button { display: none; }
+#flyBtns.touch.more > #flyMore { grid-area: 2 / 1 / 3 / 4; }
+#flyBtns.touch.more > #flyExtra { display: grid; grid-row: 1; grid-template-columns: 1fr 1fr; gap: 5px; max-height: calc(100vh - 120px); max-height: calc(100dvh - 120px); overflow: auto; }
 #flyBtns.touch #flyExtra button { padding: 6px; }
 
 /* With a keyboard the right column is not shown at all: K opens the controls (reminded on the HUD) */
