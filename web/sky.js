@@ -49,10 +49,5 @@
   });
   for (const ev of ['pointerup', 'pointercancel']) cv.addEventListener(ev, (e) => touch.delete(e.pointerId));
   cv.addEventListener('wheel', (e) => { e.preventDefault(); zoom(e.deltaY > 0 ? 1.1 : 0.9); }, { passive: false });
-  // From the outer space the trip goes on to a world. Nothing flies here, so the autopilot takes the ship straight there.
-  const bar = Object.assign(document.createElement('div'), { style: 'position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:5;display:flex;gap:8px' });
-  for (const [to, name] of [['', 'la Tierra'], ['moon', 'la Luna'], ['mars', 'Marte']]) bar.append(Object.assign(document.createElement('button'), { type: 'button', textContent: `${T('Piloto automático a')} ${T(name)}`,
-    onclick: () => { const u = new URL(location.href); if (to) u.searchParams.set('body', to); else u.searchParams.delete('body'); u.searchParams.set('land', '1'); location.href = u; } }));
-  cv.parentElement.append(bar);
   OGE.toast('Cielo: arrastra para mirar alrededor y usa la rueda para acercar. El Sol y la Luna están donde se ven ahora.');
 })();

@@ -307,6 +307,17 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
     if (BODY === 'sky' || document.body.classList.contains('flying') || h < 3e6 || c.pitch < -1.56) return;
     c.setView({ destination: c.positionWC, orientation: { heading: c.heading, pitch: c.pitch + (-Math.PI / 2 - c.pitch) * Math.min(1, (h - 3e6) / 7e6) * 0.15, roll: 0 } }); // the further out, the firmer; from 10,000 km up it looks straight down within a second
   });
+  // Navigation pad, as Google Earth has: four arrows that slide the view over the globe (held: they keep going) and a zoom bar with + and −
+  if (BODY === 'sky') $('navPad').hidden = true;
+  const camH = () => viewer.camera.positionCartographic.height, panBy = () => C.Math.clamp(camH() / 6.4e6, 0.00002, 0.5) * 0.12; // radians a step: finer the closer the view
+  const PAN = { up: (a) => viewer.camera.rotateDown(a), down: (a) => viewer.camera.rotateUp(a), left: (a) => viewer.camera.rotateLeft(a), right: (a) => viewer.camera.rotateRight(a) };
+  for (const b of document.querySelectorAll('#navPad button[data-pan]')) { let timer = null; const stop = () => { clearInterval(timer); timer = null; };
+    b.addEventListener('pointerdown', (e) => { e.preventDefault(); const go = () => PAN[b.dataset.pan](panBy()); go(); timer = setInterval(go, 60); });
+    for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, stop); }
+  const setH = (h) => { const c = viewer.camera, g = c.positionCartographic; c.setView({ destination: C.Cartesian3.fromRadians(g.longitude, g.latitude, C.Math.clamp(h, 100, 5e7)), orientation: { heading: c.heading, pitch: c.pitch, roll: c.roll } }); };
+  $('zoomIn').onclick = () => setH(camH() * 0.6); $('zoomOut').onclick = () => setH(camH() * 1.6);
+  $('zoomBar').oninput = () => setH(10 ** (9.7 - +$('zoomBar').value)); // the bar runs on the logarithm of the height: top of the bar, close to the ground
+  let barT = 0; scene.postRender.addEventListener(() => { const now = performance.now(); if (now - barT < 300 || document.activeElement === $('zoomBar')) return; barT = now; $('zoomBar').value = 9.7 - Math.log10(Math.max(100, camH())); });
   // GPS: the location service of the browser itself; the position stays on this device
   let gpsDot = null;
   $('gpsBtn').hidden = !!BODY || !navigator.geolocation;
