@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- OpenStarshipEarth icon: the ship climbing over the curve of the Earth, in a deep-space tile -->
+  <defs>
+    <radialGradient id="space" cx="0.5" cy="0.35" r="0.8"><stop offset="0" stop-color="#2a2f7a"/><stop offset="0.6" stop-color="#0d1238"/><stop offset="1" stop-color="#05071a"/></radialGradient>
+    <linearGradient id="earth" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5fd0ff"/><stop offset="0.25" stop-color="#1f7fd6"/><stop offset="1" stop-color="#0a2f6b"/></linearGradient>
+    <linearGradient id="hull" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="0.6" stop-color="#cfd8e6"/><stop offset="1" stop-color="#8794ad"/></linearGradient>
+    <linearGradient id="wing" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#1e6fe0"/><stop offset="1" stop-color="#7fd4ff"/></linearGradient>
+    <radialGradient id="flame" cx="0.5" cy="0.2" r="0.8"><stop offset="0" stop-color="#fff6c0"/><stop offset="0.4" stop-color="#ffb300"/><stop offset="1" stop-color="#ff3d00" stop-opacity="0"/></radialGradient>
+    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0.35"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+    <clipPath id="tile"><rect x="32" y="32" width="960" height="960" rx="220"/></clipPath>
+  </defs>
+  <g clip-path="url(#tile)">
+    <rect x="32" y="32" width="960" height="960" fill="url(#space)"/>
+    <g fill="#fff">
+      <circle cx="160" cy="180" r="4"/><circle cx="300" cy="120" r="3"/><circle cx="820" cy="160" r="5"/><circle cx="900" cy="330" r="3"/><circle cx="120" cy="420" r="3"/>
+      <circle cx="700" cy="90" r="3"/><circle cx="560" cy="200" r="2.5"/><circle cx="230" cy="300" r="2.5"/><circle cx="880" cy="520" r="2.5"/><circle cx="420" cy="80" r="2"/>
+    </g>
+    <circle cx="512" cy="1500" r="900" fill="#7fd4ff" opacity="0.35"/>
+    <circle cx="512" cy="1520" r="880" fill="url(#earth)"/>
+    <path d="M120 790 C 220 700 330 690 420 705 C 520 720 560 680 650 690 C 760 700 820 740 920 800 C 760 860 300 860 120 790 Z" fill="#3fbf5a" opacity="0.8"/>
+    <g transform="translate(512 500) rotate(-20) scale(1.15)">
+      <ellipse cx="0" cy="190" rx="38" ry="110" fill="url(#flame)"/>
+      <path d="M -34 -70 L -300 130 L -270 160 L -40 90 Z" fill="url(#wing)" stroke="#0b1a3a" stroke-width="10" stroke-linejoin="round"/>
+      <path d="M 34 -70 L 300 130 L 270 160 L 40 90 Z" fill="url(#wing)" stroke="#0b1a3a" stroke-width="10" stroke-linejoin="round"/>
+      <path d="M -300 130 L -320 20 L -270 120 Z" fill="#ffd60a" stroke="#0b1a3a" stroke-width="8" stroke-linejoin="round"/>
+      <path d="M 300 130 L 320 20 L 270 120 Z" fill="#ffd60a" stroke="#0b1a3a" stroke-width="8" stroke-linejoin="round"/>
+      <path d="M 0 -280 L 62 70 L 30 100 L -30 100 L -62 70 Z" fill="url(#hull)" stroke="#0b1a3a" stroke-width="10" stroke-linejoin="round"/>
+      <ellipse cx="0" cy="-90" rx="24" ry="62" fill="#7fe6ff" stroke="#0b1a3a" stroke-width="8"/>
+    </g>
+    <rect x="32" y="32" width="960" height="420" fill="url(#gloss)"/>
+  </g>
+</svg>

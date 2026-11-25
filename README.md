@@ -14,6 +14,8 @@ Open-source 3D globe and GIS editor, designed as an alternative to the Google Ea
 - Watersheds by clicking a point, mountain ranges, graticule.
 - Print layout (PDF, PNG, SVG) and flight simulator.
 - Live satellites, country cards with Wikidata and World Bank data, points of view for disputed territories.
+<p align="center"><img src="assets/starship-banner.png" alt="OpenStarshipEarth" width="100%"></p>
+
 - OpenStarshipEarth: an arcade flight game over the real Earth (adventure, city races, bosses, local and online multiplayer).
 - Interface in Spanish and English.
 
