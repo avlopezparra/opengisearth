@@ -779,7 +779,7 @@
     s = { lon: c.longitude, lat: c.latitude, alt: ground + A.agl, heading: viewer.camera.heading, pitch: 0, roll: 0, v: A.v0, vs: 0,
       throttle: 0.7, flaps: 0, gear: false, brake: false, ail: 0, elev: 0, rud: 0, trim: 0, ground: false, agl: A.agl };
     setWarp(1);
-    auto = null; on = true; paused = false; mouseCtl = !!useMouse && !aimMouse; stick.x = stick.y = 0; keys.clear(); last = performance.now();
+    auto = nav = null; on = true; paused = false; mouseCtl = !!useMouse && !aimMouse; stick.x = stick.y = 0; keys.clear(); last = performance.now();
     if (OGE.activate) OGE.activate(null);
     if (OGE.setEdit) OGE.setEdit(false);
     scene.screenSpaceCameraController.enableInputs = false;
@@ -886,6 +886,7 @@
       mg.save(); mg.translate(ex, ey); mg.rotate(a); mg.fillStyle = color; mg.strokeStyle = '#000'; mg.lineWidth = 1; mg.beginPath(); mg.moveTo(7, 0); mg.lineTo(-5, -5); mg.lineTo(-5, 5); mg.closePath(); mg.fill(); mg.stroke(); mg.restore();
     };
     if (adv) for (const gl of adv.goals) if (!gl.done) edge(...OGE.minimap.xy(gl.lon, gl.lat), '#40e0ff');
+    if (nav) edge(...OGE.minimap.xy(deg(nav.lon), deg(nav.lat)), '#ff2d55'); // where the autopilot is going
     if (adv && regs) for (const r of regs) if (r.a3 === adv.a3 && !gotReg.has(r.id)) edge(...OGE.minimap.xy(r.lon, r.lat), '#ffd60a'); // the stage's flags still to collect // collected capitals in green, the rest in yellow; the race goal, kept at the edge when it is outside
     if (remote && remote.to) { const c = C.Cartographic.fromCartesian(remote.to), [x, y] = OGE.minimap.xy(deg(c.longitude), deg(c.latitude)); mg.fillStyle = remote.skin; mg.beginPath(); mg.arc(x, y, 4, 0, 7); mg.fill(); } // the other online player
     if (race) {
@@ -1443,7 +1444,7 @@
   const shipPoint = (ax, x, y, z) => new C.Cartesian3(ax.P.x + ax.R.x * x + ax.U.x * y + ax.F.x * z, ax.P.y + ax.R.y * x + ax.U.y * y + ax.F.y * z, ax.P.z + ax.R.z * x + ax.U.z * y + ax.F.z * z);
   function chaseCam(dt) {
     if (!chase) chase = { h: s.heading, p: s.pitch, bank: 0, d: 380 };
-    const deep = (s.alt > DEEP || !!auto) && !landing; // no horizon there: the camera keeps the ship's own attitude
+    const deep = (s.alt > DEEP || !!auto || Math.abs(s.lat) > rad(88)) && !landing; // no horizon there (and over a pole the heading spins): the camera keeps the ship's own attitude
     if (deep) { chase.h = s.heading; chase.p = s.pitch; }
     else { chase.h += C.Math.negativePiToPi(s.heading - chase.h) * Math.min(1, 3.5 * dt); chase.p += (s.pitch - chase.p) * Math.min(1, 3 * dt); } // the camera turns after the ship: the ship swings across the view
     chase.bank += ((landing ? 0 : s.rud * 1.05) - chase.bank) * Math.min(1, 6 * dt); // it banks into the turn
@@ -1977,6 +1978,7 @@
       s.heading += pr * Math.sin(s.roll) + ((G * Math.sin(s.roll)) / Math.max(s.v, 20)) * dt + s.rud * A.yaw * q * dt * turn * (chase ? 1 + 0.4 * Math.min(1, Math.abs(chase.bank) / 1.05) : A.ship ? 1.4 : 1); // the ship in first person turns at the full rate at once
       if (s.v < stallV) s.pitch -= rad(18) * dt; // stall
       s.pitch = clamp(s.pitch, rad(-89), rad(89));
+      if (nav) navStep(dt);
       if (A.ship && !mouseCtl) s.roll *= 1 - Math.min(1, 3 * dt); // back from deep space: the keys cannot level the wings, so they level by themselves
       }
       s.v = clamp(s.v + (s.throttle * A.thrust - drag - airbrake - grav * Math.sin(s.pitch)) * dt, 0, A.vMax * 1.3);
@@ -2001,8 +2003,7 @@
     if (deep) { if (auto) autoStep(dt); else spaceStep(dt, man ? pe : s.pitch); if (!man) pe = s.pitch; }
     else {
       if (warp > 100 && !(A.ship && s.alt > SPACE && !landing)) setWarp(100); // back in the air: no hyper turbo
-      s.lat = clamp(s.lat + (horiz * Math.cos(s.heading)) / R, rad(-89), rad(89));
-      s.lon = C.Math.negativePiToPi(s.lon + (horiz * Math.sin(s.heading)) / (R * Math.cos(s.lat)));
+      glide(horiz);
     }
     s.heading = C.Math.zeroToTwoPi(s.heading);
     s.agl = s.alt - ground;
@@ -2021,7 +2022,7 @@
         let v = s.taxi || 0;
         if (gas) v += (v < 0 ? 60 : 60 + v * 0.25) * dt; else if (brake) v -= (v > 0 ? 50 : 12) * dt; else v -= Math.sign(v) * Math.min(Math.abs(v), 4 * dt); // engine braking when nothing is pressed
         s.taxi = v = clamp(v, -25, 1000); // ground speed: up to ~3600 km/h, separate from the flight speed
-        s.lat = clamp(s.lat + (v * gWarp * dt * Math.cos(s.heading)) / R, rad(-89), rad(89)); s.lon = C.Math.negativePiToPi(s.lon + (v * gWarp * dt * Math.sin(s.heading)) / (R * Math.cos(s.lat)));
+        glide(v * gWarp * dt);
         s.heading = C.Math.zeroToTwoPi(s.heading + s.rud * clamp(v / 12, -1, 1) * 0.9 * dt);
         s.alt = gnd + 12; // closer to the ground, like a car
       }
@@ -2057,7 +2058,7 @@
       if (!q || q.x < 0 || q.y < 0 || q.x > w || q.y > h) continue;
       const sd = C.Cartesian3.distance(sat.p, viewer.camera.positionWC), iss = /ISS|ZARYA/.test(sat.name);
       if (C.Cartesian3.dot(C.Cartesian3.subtract(sat.p, viewer.camera.positionWC, new C.Cartesian3()), viewer.camera.directionWC) < 0) continue; // behind the view
-      const fy = h / 2 / Math.tan((viewer.camera.frustum.fovy || rad(60)) / 2), sr = clamp(((iss ? 3000 : 1800) * (arcade ? 5 : 1) * fy) / sd, arcade ? 14 : 3, 220); // in the arcade they are never smaller than a full sprite // drawn as if a couple of km wide: it grows as you fly up to it
+      const fy = h / 2 / Math.tan((viewer.camera.frustum.fovy || rad(60)) / 2), sr = clamp(((iss ? 3000 : 1800) * (A.ship ? 5 : 1) * fy) / sd, A.ship ? 18 : 3, 220); // from the ship they are magnified five times and never smaller than a full model, in the arcade or in free flight // drawn as if a couple of km wide: it grows as you fly up to it
       g.save(); g.translate(q.x, q.y);
       if (sr < 7) { g.fillStyle = g.shadowColor = iss ? '#ffd60a' : '#bfe6ff'; g.shadowBlur = 10; g.beginPath(); g.arc(0, 0, sr, 0, 7); g.fill(); }
       else { // body, two solar wings with cells, an antenna dish
@@ -2082,6 +2083,7 @@
     if (caps && quest()) drawCaps();
     if (arcade) drawArcade(w, h, text);
     if (A.ship && !OGE.body) moonHud(w, h);
+    if (nav) text(`${T('PILOTO AUTOMÁTICO AL PUNTO DEL MINIMAPA')} · ${Math.round(nav.left / 1000).toLocaleString(OGE_LANG)} km`, cx, cy - r - 28, 14);
     if (auto) text(`${T('PILOTO AUTOMÁTICO A')} ${T(PLACES[auto.to]).toUpperCase()} · ${T('esquiva con A D W S')}${auto.real ? '' : ' · ' + Math.max(0, Math.ceil((TRIP_MS - (performance.now() - auto.t0)) / 1000)) + ' s'}`, cx, cy - r - 28, 14);
     const tp3 = tps() ? drawShip3D(w, h) : null; // third person: the ship in 3D and its reticles
     if (p2 || remote) mpDraw(w, h, text);
@@ -2261,6 +2263,22 @@
     return moonAt;
   }
   const lin = (a, ka, b, kb) => new C.Cartesian3(a.x * ka + b.x * kb, a.y * ka + b.y * kb, a.z * ka + b.z * kb);
+  function glide(d) { // d metres along the heading, as a straight line over the globe. Past a pole the same line goes on down the opposite meridian (70° W becomes 110° E) and the heading turns round by itself
+    const P0 = C.Cartesian3.fromRadians(s.lon, s.lat, s.alt), F = axesAt(P0, s.heading, 0, 0).F, P1 = lin(P0, 1, F, d), cg = C.Cartographic.fromCartesian(P1), m = C.Transforms.eastNorthUpToFixedFrame(P1);
+    s.lon = cg.longitude; s.lat = cg.latitude; s.heading = Math.atan2(F.x * m[0] + F.y * m[1] + F.z * m[2], F.x * m[4] + F.y * m[5] + F.z * m[6]); // the same direction, read against the east and north of the new place
+  }
+  let nav = null; // autopilot to a point picked on the minimap { lon, lat, left: metres to go }
+  OGE.minimap.pick = (lon, lat) => { // a click on the minimap in flight: the aircraft turns towards that point and holds the course
+    if (!on || OGE.body || paused) return false; // the minimap is a map of the Earth
+    nav = { lon: rad(lon), lat: rad(lat), left: 0 }; OGE.toast(T('Piloto automático al punto del minimapa: A o D lo apagan.')); return true;
+  };
+  function navStep(dt) {
+    const dl = nav.lon - s.lon, brg = Math.atan2(Math.sin(dl) * Math.cos(nav.lat), Math.cos(s.lat) * Math.sin(nav.lat) - Math.sin(s.lat) * Math.cos(nav.lat) * Math.cos(dl));
+    nav.left = R * Math.acos(clamp(Math.sin(s.lat) * Math.sin(nav.lat) + Math.cos(s.lat) * Math.cos(nav.lat) * Math.cos(dl), -1, 1));
+    const there = nav.left < Math.max(3000, s.v * warp * 0.3);
+    if (there || Math.abs(s.rud) > 0.5) { nav = null; return OGE.toast(T(there ? 'Llegaste al punto del minimapa.' : 'Piloto automático apagado.')); } // steering by hand takes the ship back
+    s.heading += clamp(C.Math.negativePiToPi(brg - s.heading) * 3, -1, 1) * A.yaw * turn * dt;
+  }
   function setAttitude(P, F, U) { // the heading, pitch and roll that put the nose along F and the roof along U at the place P
     const m = C.Transforms.eastNorthUpToFixedFrame(P), along = (i) => F.x * m[i * 4] + F.y * m[i * 4 + 1] + F.z * m[i * 4 + 2]; // the nose along east (0), north (1) and up (2) there
     s.heading = Math.atan2(along(0), along(1)); s.pitch = Math.asin(clamp(along(2), -1, 1));
@@ -2276,7 +2294,7 @@
     if (!deepMsg) { deepMsg = true; OGE.toast(T(OGE.body ? 'Espacio profundo: la nave gira libremente.' : 'Espacio profundo: la nave gira libremente. Apunta a la Luna para viajar a ella.')); }
     const P0 = C.Cartesian3.fromRadians(s.lon, s.lat, s.alt), a = axesAt(P0, s.heading, pe, s.roll), P1 = C.Cartesian3.add(P0, C.Cartesian3.multiplyByScalar(a.F, s.v * dt * warp, new C.Cartesian3()), new C.Cartesian3());
     const cg = C.Cartographic.fromCartesian(P1);
-    s.lon = cg.longitude; s.lat = clamp(cg.latitude, rad(-89), rad(89)); s.alt = cg.height;
+    s.lon = cg.longitude; s.lat = cg.latitude; s.alt = cg.height;
     if (!man) setAttitude(P1, a.F, a.U); // a maneuver keeps its own attitude until it ends
     const mv = C.Cartesian3.subtract(moonPos(), P0, new C.Cartesian3()), md = C.Cartesian3.dot(mv, a.F), mt = clamp(md, 0, s.v * dt * warp); // the nearest point of this frame's path: at hyper turbo a frame is as long as the Moon is wide
     if (!OGE.body && !paused && C.Cartesian3.magnitudeSquared(mv) - 2 * mt * md + mt * mt < 2e7 ** 2) { // within 20,000 km: the trip goes on over the Moon itself
@@ -2313,7 +2331,7 @@
     const F = unit(lin(a.F, 1, to, Math.min(1, 2.5 * dt))), go = auto.speed * clamp(C.Cartesian3.dot(F, to), 0, 1) ** 4 * Math.min(1, (now - auto.t0) / 3000) * dt; // it turns to its course first, then gathers speed
     const ox = clamp(auto.ox + clamp(s.rud + s.ail, -1, 1) * 1100 * dt, -1400, 1400), oy = clamp(auto.oy + s.elev * 1100 * dt, -900, 900); // the dodge: A D sideways, S up, W down
     const P1 = lin(lin(P, 1, F, go), 1, lin(a.R, ox - auto.ox, a.U, oy - auto.oy), 1), cg = C.Cartographic.fromCartesian(P1);
-    auto.ox = ox; auto.oy = oy; s.lon = cg.longitude; s.lat = clamp(cg.latitude, rad(-89), rad(89)); s.alt = cg.height; setAttitude(P1, F, a.U);
+    auto.ox = ox; auto.oy = oy; s.lon = cg.longitude; s.lat = cg.latitude; s.alt = cg.height; setAttitude(P1, F, a.U);
     if (arcade && now > auto.next) { // they come straight at where the ship is: staying still gets hit
       const rock = Math.random() < 0.4; auto.next = now + 600 + Math.random() * 500;
       objs.push({ kind: rock ? 'wall' : 'enemy', rock, auto: [ox + (Math.random() - 0.5) * 900, oy + (Math.random() - 0.5) * 600, 9000], p: P1, size: 260, look: Math.floor(Math.random() * ENEMY.length), next: Infinity });

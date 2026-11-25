@@ -351,9 +351,10 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
     mg.save(); mg.translate(x, y); mg.rotate(viewer.camera.heading); mg.fillStyle = '#ff3b30'; mg.strokeStyle = '#fff'; mg.lineWidth = 1.5;
     mg.beginPath(); mg.moveTo(0, -8); mg.lineTo(5, 6); mg.lineTo(0, 3); mg.lineTo(-5, 6); mg.closePath(); mg.fill(); mg.stroke(); mg.restore();
   });
-  mm.onclick = (e) => { // fly to the clicked place
-    const b = mm.getBoundingClientRect(), fx = (e.clientX - b.left) / b.width - 0.5, fy = (e.clientY - b.top) / b.height - 0.5;
-    viewer.camera.flyTo({ destination: C.Cartesian3.fromDegrees(mmLon + (fx * 360) / mmZoom, C.Math.clamp(mmLat - (fy * 180) / mmZoom, -89, 89), Math.max(2e6, viewer.camera.positionCartographic.height)) });
+  mm.onclick = (e) => { // fly to the clicked place; in flight the aircraft's autopilot takes it there (OGE.minimap.pick)
+    const b = mm.getBoundingClientRect(), fx = (e.clientX - b.left) / b.width - 0.5, fy = (e.clientY - b.top) / b.height - 0.5, lon = mmLon + (fx * 360) / mmZoom, lat = C.Math.clamp(mmLat - (fy * 180) / mmZoom, -89, 89);
+    if (OGE.minimap.pick && OGE.minimap.pick(lon, lat)) return;
+    viewer.camera.flyTo({ destination: C.Cartesian3.fromDegrees(lon, lat, Math.max(2e6, viewer.camera.positionCartographic.height)) });
   };
   const mmMin = (v) => { $('mmBox').classList.toggle('min', v); $('mmMin').textContent = v ? '🗺' : '▾'; localStorage.setItem('oge.mmMin', v ? '1' : ''); mmLast = 0; };
   $('mmMin').onclick = () => mmMin(!$('mmBox').classList.contains('min'));
