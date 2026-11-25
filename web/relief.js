@@ -194,7 +194,7 @@
   let fxKind = null, fxLevel = 0, fxAt = null, fxT = 0, flashT = 0; const drops = [];
   async function askWeatherHere() {
     const c = viewer.camera.positionCartographic, lon = C.Math.toDegrees(c.longitude), lat = C.Math.toDegrees(c.latitude);
-    if (!cbW.checked || c.height > 6e4) { fxKind = null; return; } // only close to the ground
+    if (!(cbW.checked || OGE.fxForce) || c.height > 6e4) { fxKind = null; return; } // only close to the ground; the game shows the weather without the layer
     if (fxAt && performance.now() - fxT < 3e5 && Math.hypot(lon - fxAt[0], lat - fxAt[1]) < 0.3) return;
     fxAt = [lon, lat]; fxT = performance.now();
     try {
@@ -209,7 +209,7 @@
     requestAnimationFrame(frame);
     const g = fx.getContext('2d'), W = fx.clientWidth, H = fx.clientHeight, low = viewer.camera.positionCartographic.height < 6e4;
     if (fx.width !== W || fx.height !== H) { fx.width = W; fx.height = H; }
-    if (!fxKind || !low || !cbW.checked) { if (drops.length) { g.clearRect(0, 0, W, H); drops.length = 0; } return; }
+    if (!fxKind || !low || !(cbW.checked || OGE.fxForce)) { if (drops.length) { g.clearRect(0, 0, W, H); drops.length = 0; } return; }
     g.clearRect(0, 0, W, H);
     const snow = fxKind === 'snow', want = Math.round((snow ? 220 : 380) * fxLevel);
     while (drops.length < want) drops.push({ x: Math.random() * W, y: Math.random() * H, v: snow ? 40 + Math.random() * 50 : 700 + Math.random() * 500, r: snow ? 1.5 + Math.random() * 2.5 : 0, ph: Math.random() * 6 });
@@ -225,7 +225,7 @@
     snow ? g.fill() : g.stroke();
     if (fxKind === 'storm') { // lightning: a white flash and a jagged bolt now and then
       const now = performance.now();
-      if (now > flashT && Math.random() < 0.004) flashT = now + 180;
+      if (now > flashT && Math.random() < 0.004) { flashT = now + 180; if (OGE.onLightning) OGE.onLightning(); }
       if (flashT - now > 0) {
         g.fillStyle = `rgba(255,255,255,${(flashT - now) / 180 * 0.5})`; g.fillRect(0, 0, W, H);
         g.strokeStyle = 'rgba(255,255,240,.95)'; g.lineWidth = 3; g.beginPath(); let x = W * (0.2 + Math.random() * 0.6), y = 0; g.moveTo(x, y);
