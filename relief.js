@@ -651,8 +651,11 @@
     const groups = ['stations', 'visual', 'weather', 'gnss'], recs = [];
     for (const g of groups) {
       const key = 'oge.tle.' + g, old = JSON.parse(localStorage.getItem(key) || 'null');
-      const txt = old && Date.now() - old.t < 6 * 3600e3 ? old.txt : await (await fetch(`https://celestrak.org/NORAD/elements/gp.php?GROUP=${g}&FORMAT=tle`)).text(), L = txt.split(/\r?\n/);
-      if (!old || old.txt !== txt) try { localStorage.setItem(key, JSON.stringify({ t: Date.now(), txt })); } catch { /* storage full: not cached */ }
+      const good = (x) => /^1 \d{5}/m.test(x), live = async () => { const r = await fetch(`https://celestrak.org/NORAD/elements/gp.php?GROUP=${g}&FORMAT=tle`), x = r.ok ? await r.text() : ''; if (!good(x)) throw new Error('CelesTrak ' + r.status); return x; };
+      let txt = old && Date.now() - old.t < 6 * 3600e3 ? old.txt : null, fresh = false;
+      if (!txt) try { txt = await live(); fresh = true; } catch { txt = old ? old.txt : await (await fetch(`data/tle/${g}.txt`)).text(); } // CelesTrak down or refusing: the last copy kept here, or else the one that ships with the app (orbits drift slowly: fine for weeks)
+      const L = txt.split(/\r?\n/);
+      if (fresh) try { localStorage.setItem(key, JSON.stringify({ t: Date.now(), txt })); } catch { /* storage full: not cached */ }
       for (let i = 0; i + 2 < L.length; i += 3) if (L[i + 1].startsWith('1 ')) recs.push({ name: L[i].trim(), group: g, rec: satellite.twoline2satrec(L[i + 1], L[i + 2]) });
     }
     return recs;
