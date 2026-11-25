@@ -615,25 +615,18 @@
       else if (o.kind === 'scoin') { const R = Math.max(5, pr), turn = Math.abs(Math.cos(now / 250)); g.save(); g.fillStyle = g.shadowColor = '#d7d7e0'; g.shadowBlur = 10; g.beginPath(); g.ellipse(q.x, q.y, R * turn + 1, R, 0, 0, 7); g.fill(); g.fillStyle = '#9aa0b0'; g.beginPath(); g.ellipse(q.x, q.y, (R * turn + 1) * 0.6, R * 0.6, 0, 0, 7); g.fill(); g.restore(); }
       else if (o.kind === 'itembox' && o.item) { const R = Math.max(8, pr), c = BALLOON[o.item], bob = Math.sin(now / 400 + o.lon * 100) * R * 0.15; g.save(); g.strokeStyle = '#ddd'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(q.x, q.y + R + bob); g.quadraticCurveTo(q.x + R * 0.3, q.y + R * 1.6, q.x, q.y + R * 2.2); g.stroke(); const gr = g.createRadialGradient(q.x - R * 0.35, q.y - R * 0.4 + bob, R * 0.1, q.x, q.y + bob, R); gr.addColorStop(0, '#fff'); gr.addColorStop(0.25, c); gr.addColorStop(1, '#222'); g.fillStyle = gr; g.shadowColor = c; g.shadowBlur = 12; g.beginPath(); g.ellipse(q.x, q.y + bob, R * 0.85, R, 0, 0, 7); g.fill(); g.restore(); } // a balloon in the colour of its item
       else if (o.kind === 'itembox') { const R = Math.max(8, pr), t = now / 400; g.save(); g.translate(q.x, q.y); g.rotate(t); const gr = g.createLinearGradient(-R, -R, R, R); ['#ff453a', '#ffd60a', '#34c759', '#0a84ff', '#bf5af2'].forEach((c, i) => gr.addColorStop(i / 4, c)); g.fillStyle = gr; g.globalAlpha = 0.85; g.fillRect(-R, -R, R * 2, R * 2); g.globalAlpha = 1; g.strokeStyle = '#fff'; g.lineWidth = 2; g.strokeRect(-R, -R, R * 2, R * 2); g.rotate(-t); g.fillStyle = '#fff'; g.font = `700 ${Math.round(R * 1.3)}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('?', 0, 2); g.restore(); }
-      else if (o.kind === 'mine') { const R = Math.max(6, pr); g.fillStyle = '#222'; g.strokeStyle = '#888'; g.lineWidth = 2; g.beginPath(); g.arc(q.x, q.y, R, 0, 7); g.fill(); g.stroke(); g.fillStyle = g.shadowColor = (now / 300) % 2 < 1 ? '#ff453a' : '#600'; g.shadowBlur = 10; g.beginPath(); g.arc(q.x, q.y, R * 0.3, 0, 7); g.fill(); }
+      else if (o.kind === 'mine') drawMesh(MINE, foeAxes(o.p, now / 1100), { h: '#3d424e', s: '#23262e', w: '#8b93a5', e: (now / 300) % 2 < 1 ? '#ff453a' : '#5a0d0a' }, false, meshScale(o.p, Math.max(6, pr) * 1.3, h), null, true); // a spiked sea mine, its light blinking
       else if (o.kind === 'ship') { // a grey warship on the water, pointing where it sails
         if (o.sog) { const dd = (o.sog * 0.5144 * (now - o.t0)) / 1000 / 6371000; o.p = C.Cartesian3.fromRadians(o.lon0 + (dd * Math.sin(o.cog)) / Math.cos(o.lat0), o.lat0 + dd * Math.cos(o.cog), 15); } // a live one keeps its course and speed between reports
         const R = Math.max(12, pr * 1.6); drawMesh(WARSHIP, axesAt(o.p, o.cog || 0, 0, 0), { h: '#b8c0cc', s: '#8a93a2', d: '#59616f', e: '#7a2f28' }, now - (o.hitT || 0) < 90, meshScale(o.p, R, h), null, true);
         if (now - (o.spat || 0) < 250) glow(g, q.x, q.y - R * 0.3, R * 0.5, '#ffd60a'); // its guns firing
         if (o.mmsi) { g.shadowBlur = 0; g.fillStyle = '#cfe8ff'; g.textAlign = 'center'; g.font = '600 11px sans-serif'; g.fillText('AIS ' + o.mmsi, q.x, q.y + R + 12); }
       }
-      else if (o.kind === 'octo') { const R = Math.max(10, pr * 1.5), t = now / 300; g.save(); g.translate(q.x, q.y); g.shadowColor = '#2fd3c4'; g.shadowBlur = 10;
-        g.strokeStyle = '#1f8a80'; g.lineCap = 'round'; for (let k = 0; k < 6; k++) { const ax = (k - 2.5) * R * 0.3; g.lineWidth = R * 0.2; g.beginPath(); g.moveTo(ax, R * 0.3); g.bezierCurveTo(ax + Math.sin(t + k) * R * 0.4, R * 0.9, ax - Math.sin(t + k) * R * 0.3, R * 1.2, ax + Math.sin(t * 1.3 + k) * R * 0.35, R * 1.5); g.stroke(); } // arms waving in the water
-        const gr = g.createRadialGradient(-R * 0.3, -R * 0.4, R * 0.1, 0, 0, R); gr.addColorStop(0, '#9ff5ea'); gr.addColorStop(0.5, '#2fb8a8'); gr.addColorStop(1, '#155e58'); g.fillStyle = gr; g.beginPath(); g.ellipse(0, -R * 0.1, R * 0.85, R * 0.75, 0, 0, 7); g.fill();
-        g.fillStyle = 'rgba(10,60,55,.45)'; for (const [x, y, r] of [[-0.4, -0.45, 0.14], [0.3, -0.5, 0.1], [0.45, -0.1, 0.12]]) { g.beginPath(); g.arc(x * R, y * R, r * R, 0, 7); g.fill(); } // spots
-        g.fillStyle = '#fff'; for (const e of [-1, 1]) { g.beginPath(); g.arc(e * R * 0.28, 0, R * 0.17, 0, 7); g.fill(); } g.fillStyle = '#d0302a'; for (const e of [-1, 1]) { g.beginPath(); g.arc(e * R * 0.28, R * 0.02, R * 0.08, 0, 7); g.fill(); }
-        g.fillStyle = '#0e3f3a'; g.beginPath(); g.ellipse(0, R * 0.32, R * 0.14, R * (now - (o.spat || 0) < 300 ? 0.16 : 0.08), 0, 0, 7); g.fill(); g.restore(); } // its mouth opens when it spits
+      else if (o.kind === 'octo') drawMesh(octoMesh(now / 1000, now - (o.spat || 0) < 300), foeAxes(o.p, Math.sin(now / 1300) * 0.3), { h: '#6fe0d2', s: '#2fb8a8', d: '#155e58', e: '#ffffff', m: '#d0302a', k: '#0e3f3a' }, now - (o.hitT || 0) < 90, meshScale(o.p, Math.max(10, pr * 1.5) * 1.2, h), '#2fd3c4');
       else if (o.kind === 'aa') { // an anti-aircraft gun: a squat base, a turret and twin barrels raised towards the ship
-        const R = Math.max(10, pr * 1.4); g.save(); g.translate(q.x, q.y); g.shadowColor = '#ff453a'; g.shadowBlur = 8;
-        g.fillStyle = '#4b5320'; g.beginPath(); g.moveTo(-R, R * 0.5); g.lineTo(R, R * 0.5); g.lineTo(R * 0.7, 0); g.lineTo(-R * 0.7, 0); g.closePath(); g.fill();
-        g.fillStyle = '#6b7a2e'; g.beginPath(); g.arc(0, 0, R * 0.5, Math.PI, 0); g.fill(); g.strokeStyle = '#2f3514'; g.lineWidth = Math.max(2, R * 0.14);
-        for (const e of [-1, 1]) { g.beginPath(); g.moveTo(e * R * 0.15, -R * 0.3); g.lineTo(e * R * 0.15 + R * 0.35, -R * 1.25); g.stroke(); }
-        if (now - (o.spat || 0) < 250) { g.fillStyle = '#ffd60a'; g.beginPath(); g.arc(R * 0.5, -R * 1.35, R * 0.25, 0, 7); g.fill(); } // muzzle flash
+        const R = Math.max(10, pr * 1.4); g.save();
+        drawMesh(AAGUN, foeAxes(o.p, 0), { h: '#7d8c3a', s: '#5f6d2a', d: '#3a4219' }, false, meshScale(o.p, R * 1.3, h), null, true);
+        if (now - (o.spat || 0) < 250) glow(g, q.x, q.y - R * 0.9, R * 0.45, '#ffd60a'); // muzzle flash
         g.restore(); g.fillStyle = '#ffb3a8'; g.textAlign = 'center'; g.font = '600 11px sans-serif'; g.fillText(o.label, q.x, q.y + R + 12);
       }
       else if (o.kind === 'ring') { // it always faces the ship, so it is shaded as a torus rather than built as a mesh
@@ -649,12 +642,9 @@
         drawMesh(GEM, foeAxes(o.p, Math.sin(now / 600) * 0.9), { h: '#8fd0ff', s: '#2f8df0', d: '#0b4fb0', g: '#e6f6ff' }, false, meshScale(o.p, R * 1.1, h)); }
       else if (o.kind === 'bomb') drawMesh(BOMB, foeAxes(o.p, now / 700), { h: '#3d424e', s: '#262a33', w: '#9aa2ae', e: '#ffb300' }, false, meshScale(o.p, Math.max(8, pr) * 1.2, h), '#ff9f0a');
       else if (o.kind === 'heart' || o.kind === 'life') { // glossy heart; the life booster is green and bigger
-        const R = Math.max(10, pr) * (o.kind === 'life' ? 1.5 : 1), gr = g.createLinearGradient(0, q.y - R, 0, q.y + R), life = o.kind === 'life';
-        gr.addColorStop(0, life ? '#c9ffb0' : '#ffb3c4'); gr.addColorStop(0.5, life ? '#4fd12e' : '#ff2d55'); gr.addColorStop(1, life ? '#1f7a10' : '#b00030');
-        g.shadowColor = life ? '#7dff5a' : '#ff5c7c'; g.shadowBlur = 16; g.fillStyle = gr; g.strokeStyle = '#fff'; g.lineWidth = 2;
-        g.moveTo(q.x, q.y + R * 0.9); g.bezierCurveTo(q.x - R * 1.6, q.y - R * 0.2, q.x - R * 0.7, q.y - R * 1.3, q.x, q.y - R * 0.45); g.bezierCurveTo(q.x + R * 0.7, q.y - R * 1.3, q.x + R * 1.6, q.y - R * 0.2, q.x, q.y + R * 0.9); g.fill(); g.stroke();
-        g.shadowBlur = 0; g.fillStyle = 'rgba(255,255,255,.55)'; g.beginPath(); g.ellipse(q.x - R * 0.42, q.y - R * 0.5, R * 0.26, R * 0.16, -0.6, 0, 7); g.fill();
-        if (life) { g.fillStyle = '#fff'; g.fillRect(q.x - R * 0.42, q.y - R * 0.12, R * 0.84, R * 0.22); g.fillRect(q.x - R * 0.11, q.y - R * 0.42, R * 0.22, R * 0.84); } // a white cross: more life
+        const life = o.kind === 'life', R = Math.max(10, pr) * (life ? 1.5 : 1);
+        drawMesh(HEART, foeAxes(o.p, Math.sin(now / 450 + (o.p.x % 5)) * 1.1), life ? { h: '#5fe03a', s: '#2f9a1c', d: '#1f7a10', x: '#ffffff' } : { h: '#ff3b62', s: '#c4103a', d: '#8f0028', x: '#ff3b62' }, false, meshScale(o.p, R * 1.15, h), life ? '#7dff5a' : '#ff5c7c');
+        g.shadowBlur = 0;
         if (life) { g.fillStyle = '#fff'; g.textAlign = 'center'; g.font = '600 11px sans-serif'; g.fillText(T('Más vida') + (o.town ? ' · ' + o.town.name : ''), q.x, q.y + R + 14); }
       }
       else if (o.kind === 'wall') drawMesh(CRATE, foeAxes(o.p, now / 900 + (o.p.x % 6)), { h: '#c3c9d2', d: '#4e5561', s: '#8d95a1', w: '#6a727e', f: '#a3abb7', r: '#e6eaf0', y: '#e3b21c', k: '#22252b' }, false, meshScale(o.p, pr * 1.15, h), null, true); // a steel crate, turning
@@ -672,7 +662,7 @@
         g.fillStyle = '#fff'; g.textAlign = 'center'; g.font = '600 12px sans-serif'; g.fillText(`${T(BOSSES[o.type].name)} · ${o.cap ? o.cap.name : T('práctica')} · ${o.hp}/${o.max}`, q.x, q.y - R * 1.5 - 22);
       }
       else if (o.kind === 'airliner') { // a real flight: the airliner icon turned along its track, with its callsign
-        const R = Math.max(14, pr * 2); g.save(); g.translate(q.x, q.y); g.rotate(C.Math.toRadians((o.a.track || 0)) - viewer.camera.heading); g.shadowColor = '#ffd60a'; g.shadowBlur = 16; g.drawImage(OGE.planeIcon, -R, -R, R * 2, R * 2); g.restore();
+        const R = Math.max(14, pr * 2); drawMesh(AIRLINER, axesAt(o.p, rad(o.a.track || 0), 0, 0), { h: '#f4f6f9', s: '#d5dae3', d: '#9aa3b2', w: '#ffd60a' }, now - (o.hitT || 0) < 90, meshScale(o.p, R, h), '#ffd60a', true);
         g.fillStyle = '#ffd60a'; g.textAlign = 'center'; g.font = '700 11px sans-serif'; g.fillText(`${(o.a.flight || o.a.r || '').trim()} · ${'●'.repeat(o.hp)}`, q.x, q.y + R + 12);
       }
       else { const R = Math.max(12, pr * 1.6), fo = FOES[(o.look || 0) % FOES.length]; drawMesh(fo.mesh, foeAxes(o.p, Math.sin(now / 700 + o.p.x) * 0.35), fo.col, false, meshScale(o.p, R, h), ['#ff6b5e', '#7fe3ff', '#e08bff'][(o.look || 0) % 3]); } // enemy craft, in 3D
@@ -1466,6 +1456,24 @@
   const WARSHIP = meshOf((m) => { m.hull(62, [[34, 9, 7, 6], [-40, 12, 7, 6], [-58, 9, 7, 5]], 6, 'e'); // the hull, bow forward
     boxM(m, -6, 7, -26, 6, 19, 4); boxM(m, -3, 19, -18, 3, 28, -10, 'ddd'); boxM(m, -0.8, 19, -4, 0.8, 38, -2, 'ddd'); // the bridge, the funnel, the mast
     boxM(m, -4, 7, 16, 4, 11, 27, 'sdd'); boxM(m, -1, 8.5, 27, 1, 10.5, 46, 'ddd'); boxM(m, -4, 7, -46, 4, 11, -36, 'sdd'); boxM(m, -1, 8.5, -58, 1, 10.5, -46, 'ddd'); }); // a turret and its gun, fore and aft
+  const HEART = meshOf((m) => { // a thick heart; the cross on it is only painted white on the life booster
+    const pts = (z) => Array.from({ length: 18 }, (_, k) => { const t = (2 * Math.PI * k) / 18; return [2.3 * 16 * Math.sin(t) ** 3, 2.3 * (13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t)) + 6, z]; }), f = pts(9), b = pts(-9);
+    for (let k = 0; k < 18; k++) m.poly('s', f[k], f[(k + 1) % 18], b[(k + 1) % 18], b[k]);
+    for (const [face, z] of [[m.poly('h', ...f), 9.6], [m.poly('d', ...b), -9.6]]) { m.on(face, 'x', [-16, 3, z], [16, 3, z], [16, 11, z], [-16, 11, z]); m.on(face, 'x', [-4, -9, z], [4, -9, z], [4, 23, z], [-4, 23, z]); } });
+  const AIRLINER = meshOf((m) => { m.hull(60, [[46, 5, 5, 5], [-38, 5, 5, 5], [-58, 2, 4, 0]], 8, 'd'); // fuselage, nose forward
+    m.sym('s', [5, -2, 14], [60, 1, -16], [60, 1, -24], [5, -2, -10]); m.sym('s', [3, 2, -42], [22, 3, -56], [22, 3, -61], [3, 2, -54]); m.poly('w', [0, 5, -38], [0, 24, -61], [0, 5, -57]); // wings, tailplane, fin
+    for (const e of [-1, 1]) boxM(m, e * 22 - 3, -7, -8, e * 22 + 3, -2, 8, 'ddd'); }); // an engine under each wing
+  const AAGUN = meshOf((m) => { lathe(m, [[8, 22], [0, 27], [-10, 30]], 8, 'sd'); lathe(m, [[22, 6], [15, 15], [8, 17]], 8, 'hs'); // the base and the turret
+    for (const e of [-1, 1]) { m.poly('d', [e * 5 - 1.6, 15, 4], [e * 5 + 1.6, 15, 4], [e * 5 + 1.6, 46, 36], [e * 5 - 1.6, 46, 36]); m.poly('d', [e * 5, 13.4, 5.6], [e * 5, 16.6, 2.4], [e * 5, 47.6, 34.4], [e * 5, 44.4, 37.6]); } }); // twin barrels raised at the ship
+  const MINE = meshOf((m) => { ballAt(m, 0, 0, 0, 22, 'hs');
+    for (const [x, y, z] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]) { const u = [y, z, x], v = [z, x, y], P = (k, a, c) => [x * k + u[0] * a + v[0] * c, y * k + u[1] * a + v[1] * c, z * k + u[2] * a + v[2] * c]; m.poly('w', P(19, -5, 0), P(36, 0, 0), P(19, 5, 0)); m.poly('w', P(19, 0, -5), P(36, 0, 0), P(19, 0, 5)); } // a spike on each side
+    m.poly('e', [-4, -4, 20.5], [4, -4, 20.5], [4, 4, 20.5], [-4, 4, 20.5]); }); // its warning light
+  const octoMesh = (t, spit) => meshOf((m) => { // a round head over six waving arms; its mouth opens when it spits
+    ballAt(m, 0, 14, 0, 24, 'hs');
+    for (let k = 0; k < 6; k++) { const a = (k * Math.PI) / 3 + 0.3, c = Math.cos(a), sn = Math.sin(a), w = Math.sin(t * 3 + k * 1.3) * 5, at = (r, y, half) => [[c * r - sn * half, y, sn * r + c * half], [c * r + sn * half, y, sn * r - c * half]];
+      const [a0, a1] = at(12, -4, 5), [b0, b1] = at(24 + w * 0.4, -20, 3.5), tip = [c * (32 + w), -34 + Math.abs(w) * 0.5, sn * (32 + w)]; m.poly('s', a0, a1, b1, b0); m.poly('d', b0, b1, tip); }
+    for (const e of [-1, 1]) { m.poly('e', [e * 9 - 5, 14, 22.5], [e * 9 + 5, 14, 22.5], [e * 9 + 5, 24, 22.5], [e * 9 - 5, 24, 22.5]); m.poly('m', [e * 9 - 2, 16, 23.2], [e * 9 + 2, 16, 23.2], [e * 9 + 2, 21, 23.2], [e * 9 - 2, 21, 23.2]); } // eyes
+    const o = spit ? 5 : 2; m.poly('k', [-5, 6 - o, 22.6], [5, 6 - o, 22.6], [5, 6 + o, 22.6], [-5, 6 + o, 22.6]); });
   const BOMB = meshOf((m) => { lathe(m, [[30, 5], [24, 19], [9, 30], [-9, 30], [-24, 19], [-30, 5]], 8, 'hs'); lathe(m, [[40, 7, 'w'], [29, 7, 'w']], 6, 'w'); m.poly('e', [-3, 40, 0], [3, 40, 0], [7, 51, 0], [0, 46, 0], [-7, 51, 0]); }); // the bomb pickup: a ball, its neck and a spark
   const HIVE = meshOf((m) => { // seven hexagonal cells; the middle one is the core
     const hex = (cx, cy, r, z) => Array.from({ length: 6 }, (_, j) => [cx + r * Math.cos((j * Math.PI) / 3 + Math.PI / 6), cy + r * Math.sin((j * Math.PI) / 3 + Math.PI / 6), z]);
