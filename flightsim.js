@@ -1783,7 +1783,7 @@
     const mid = toWin(scene, ax.P);
     if (mid && man && man.type === 'roll') { const k = (performance.now() - man.t0) / man.dur; g.save(); g.globalAlpha = 0.35; glow(g, mid.x, mid.y, px * 58, '#7fd4ff'); g.globalAlpha = 1; g.strokeStyle = 'rgba(225,245,255,.85)'; g.lineWidth = 3; g.lineCap = 'round';
       for (const n of [0, 1, 2]) { const a = k * 5 * Math.PI * man.dir + n * 2.09; g.beginPath(); g.arc(mid.x, mid.y, px * (50 + 7 * n), a, a + 1.2); g.stroke(); } g.restore(); }
-    if (mid && (shields || auto)) { g.save(); g.strokeStyle = 'rgba(10,132,255,.7)'; g.fillStyle = 'rgba(10,132,255,.12)'; g.lineWidth = 2 + shields; g.beginPath(); g.arc(mid.x, mid.y, px * 62, 0, 7); g.fill(); g.stroke(); g.restore(); } // the shield around it
+    if (mid && (shields || auto)) { g.save(); g.strokeStyle = shields ? 'rgba(10,132,255,.7)' : 'rgba(48,209,88,.75)'; g.fillStyle = shields ? 'rgba(10,132,255,.12)' : 'rgba(48,209,88,.14)'; g.lineWidth = 2 + shields; g.beginPath(); g.arc(mid.x, mid.y, px * 62, 0, 7); g.fill(); g.stroke(); g.restore(); } // the shield around it
     // twin reticles on the line of the nose: what is under the far one gets hit
     const near = toWin(scene, shipPoint(ax, 0, 0, 1800)), far = toWin(scene, shipPoint(ax, 0, 0, 5200));
     g.save(); g.strokeStyle = '#39ff14'; g.shadowColor = '#000'; g.shadowBlur = 3; g.lineWidth = 2;
