@@ -312,6 +312,8 @@
     'La nave se ve en tercera persona (Y). La insignia de las alas se elige en «Escudos de armas».': 'The ship shows in third person (Y). The wing insignia is chosen in «Coats of arms».',
     'Palanca táctil': 'Touch stick', 'Sensibilidad de la palanca táctil: cuánto responde al mismo arrastre': 'Touch stick sensitivity: how much it answers to the same drag',
     'Descargar': 'Download', 'Piloto automático': 'Autopilot',
+    'Azul': 'Blue', 'Rojo': 'Red', 'Verde': 'Green', 'Amarillo': 'Yellow', 'Naranja': 'Orange', 'Morado': 'Purple', 'Blanco': 'White', 'Negro': 'Black', 'Gris': 'Grey', 'Plateado': 'Silver', 'Personalizado (código hex)': 'Custom (hex code)',
+    'Alas: código hex (con «Personalizado»)': 'Wings: hex code (with «Custom»)', 'Fuselaje: código hex (con «Personalizado»)': 'Hull: hex code (with «Custom»)', 'Tu nave: código hex (con «Personalizado»)': 'Your ship: hex code (with «Custom»)', 'Jugador 2: código hex (con «Personalizado»)': 'Player 2: hex code (with «Custom»)',
     'Día y noche': 'Day and night', 'sí': 'yes', 'Día y noche: no': 'Day and night: no', 'Ilumina el mundo según la posición real del sol: día de un lado, noche del otro': 'Lights the world by the real position of the sun: day on one side, night on the other',
     'Ruta de la carrera': 'Race course', 'Por carreteras y ferris (OpenStreetMap)': 'By roads and ferries (OpenStreetMap)', 'Línea recta entre las ciudades': 'Straight line between the cities', 'La línea recta sale de': 'The straight line leaves', 'se usa la ruta por carreteras.': 'the road route is used.',
     'Piloto automático al punto del minimapa: A o D lo apagan.': 'Autopilot to the point on the minimap: A or D switch it off.', 'Llegaste al punto del minimapa.': 'You reached the point on the minimap.', 'PILOTO AUTOMÁTICO AL PUNTO DEL MINIMAPA': 'AUTOPILOT TO THE POINT ON THE MINIMAP',
@@ -1202,6 +1204,8 @@
     // ----- flightsim.js / print.js -----
     [/^Accidente a (\d+) nudos\. El tren estaba arriba \(L lo baja\)\.$/, 'Crashed at $1 knots. The gear was up (L lowers it).'],
     [/^Accidente a (\d+) nudos\.$/, 'Crashed at $1 knots.'],
+    [/^Accidente a (\d+) km\/h\. El tren estaba arriba \(L lo baja\)\.$/, 'Crashed at $1 km/h. The gear was up (L lowers it).'],
+    [/^Accidente a (\d+) km\/h\.$/, 'Crashed at $1 km/h.'],
     [/^No se pudo crear el mapa: ([\s\S]*)$/, (m, a) => 'Could not create the map: ' + t(a)],
     [/^SVG importado: (\d+) trazados\.$/, 'SVG imported: $1 paths.'],
 

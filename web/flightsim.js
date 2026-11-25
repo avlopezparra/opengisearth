@@ -6,6 +6,8 @@
   const C = Cesium, { viewer, $ } = OGE;
   const scene = viewer.scene, rad = C.Math.toRadians, deg = C.Math.toDegrees, clamp = C.Math.clamp;
   const G = 9.81, R = 6371000, KT = 1.94384, FT = 3.28084, GEAR_H = 1.8;
+  const IMPERIAL = /-(US|LR|MM)$/i.test(navigator.language || ''); // knots and feet only where feet are the everyday unit; the rest of the world reads km/h and metres
+  const num = (v) => Math.round(v).toLocaleString(OGE_LANG), spd = (v) => (IMPERIAL ? Math.round(v * KT) + ' KT' : v * 3.6 < 1e5 ? num(v * 3.6) + ' km/h' : num((v * 3.6) / 1000) + 'k km/h'), high = (m) => (IMPERIAL ? Math.round(m * FT) + ' FT' : Math.abs(m) < 1e5 ? num(m) + ' m' : num(m / 1000) + ' km');
   // vStall/vMax in m/s; thrust: acceleration at full throttle (m/s²); roll/pitch/yaw: maximum angular rates; agl and v0: start
   const PLANES = {
     sr22: { name: 'SR22 — avioneta de hélice, lenta y dócil', vStall: 31, vMax: 95, thrust: 3.2, roll: rad(45), pitch: rad(22), yaw: rad(20), agl: 600, v0: 70 },
@@ -293,7 +295,7 @@
     return cv;
   }
   const poly = (c, pts, fill, stroke) => { c.beginPath(); pts.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y))); c.closePath(); c.fillStyle = fill; c.fill(); if (stroke) { c.strokeStyle = stroke; c.lineWidth = 4; c.stroke(); } };
-  const glow = (c, x, y, r, color) => { const gr = c.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, '#fff'); gr.addColorStop(0.4, color); gr.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = gr; c.beginPath(); c.arc(x, y, r, 0, 7); c.fill(); };
+  const glow = (c, x, y, r, color) => { const was = c.fillStyle, gr = c.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, '#fff'); gr.addColorStop(0.4, color); gr.addColorStop(1, /^#[0-9a-f]{6}$/i.test(color) ? color + '00' : 'rgba(0,0,0,0)'); c.fillStyle = gr; c.beginPath(); c.arc(x, y, r, 0, 7); c.fill(); c.fillStyle = was; }; // the fill colour goes back: the HUD texts drawn afterwards use it // fading to the same colour: through black it left a dark ring
   const ENEMY = [
     sprite(128, (c) => { // dart: swept wings, seen head-on
       poly(c, [[-95, 10], [-30, -8], [0, -38], [30, -8], [95, 10], [40, 22], [0, 40], [-40, 22]], '#8e1b1b', '#ff6b5e');
@@ -475,18 +477,18 @@
   async function aaSites() {
     if (OGE.body) return;
     const lo = deg(s.lon), la = deg(s.lat);
-    if (aaBusy || (aaAt && Math.hypot(lo - aaAt[0], la - aaAt[1]) < 0.35) || performance.now() < aaT) return;
+    if (aaBusy || (aaAt && Math.hypot(lo - aaAt[0], la - aaAt[1]) < 0.15) || performance.now() < aaT) return;
     aaBusy = true; aaT = performance.now() + 20000; aaAt = [lo, la];
     try {
-      const r = 0.25, bb = `${la - r},${lo - r},${la + r},${lo + r}`;
-      const q = `[out:json][timeout:15];(node[amenity=police](${bb});node[amenity=fuel](${bb});way[landuse=military](${bb});node[military](${bb});nwr[aeroway=aerodrome](${bb}););out center 40;`;
-      const j = await (await fetch('https://overpass-api.de/api/interpreter', { method: 'POST', body: 'data=' + encodeURIComponent(q) })).json();
-      objs = objs.filter((o) => o.kind !== 'aa' || C.Cartesian3.distance(o.p, viewer.camera.positionWC) < 4e4); // the far ones go
+      const r = 0.12, bb = `${la - r},${lo - r},${la + r},${lo + r}`; // about 13 km around: only the nearby ones, and few, to keep the game light
+      const q = `[out:json][timeout:20];(way[landuse=military](${bb});node[military](${bb});)->.m;node[amenity=police](${bb})->.p;node[amenity=fuel](${bb})->.f;nwr[aeroway=aerodrome](${bb})->.a;.m out center 4;.p out center 4;.f out center 2;.a out center 8;`; // military and police first: a big city has hundreds of fuel stations
+      const j = await OGE.overpass(q, 25000); // several mirrors at once: the main server is often full
+      objs = objs.filter((o) => o.kind !== 'aa' || C.Cartesian3.distance(o.p, viewer.camera.positionWC) < 2e4); // the far ones go
       for (const e of j.elements || []) { // airfields: places to land and heal
         const lon = e.lon ?? (e.center && e.center.lon), lat = e.lat ?? (e.center && e.center.lat);
         if (lon != null && e.tags && e.tags.aeroway === 'aerodrome' && airports && !airports.some(([x, y]) => Math.abs(x - lon) < 0.02 && Math.abs(y - lat) < 0.02)) airports.push([lon, lat]);
       }
-      for (const e of (j.elements || []).filter((x) => !(x.tags && x.tags.aeroway)).slice(0, 14)) {
+      for (const e of (j.elements || []).filter((x) => !(x.tags && x.tags.aeroway)).slice(0, 8)) {
         const lon = e.lon ?? (e.center && e.center.lon), lat = e.lat ?? (e.center && e.center.lat);
         if (lon == null || objs.some((o) => o.kind === 'aa' && o.osm === e.id)) continue;
         const gh = scene.globe.getHeight(C.Cartographic.fromDegrees(lon, lat)) || 0, t = e.tags || {};
@@ -915,17 +917,8 @@
     return [['Apolo 11 (1969)', 23.47297, 0.67408, us], ['Apolo 12 (1969)', -23.42157, -3.01239, us], ['Apolo 14 (1971)', -17.47136, -3.6453, us], ['Apolo 15 (1971)', 3.63386, 26.13222, us], ['Apolo 16 (1972)', 15.50019, -8.97301, us], ['Apolo 17 (1972)', 30.77168, 20.1908, us], ["Chang'e 5 (2020)", -51.916, 43.058, cn], ["Chang'e 6 (2024)", -153.986, -41.638, cn]]
       .map(([name, lon, lat, img], i) => ({ id: 'moon-' + i, lon, lat, lifted: true, name, a3: 'MOON', country: 'Luna', cont: 'Luna', p: C.Cartesian3.fromDegrees(lon, lat, 2000), img }));
   };
-  const subBusy = new Set(); // countries whose regional flags were already asked for
-  function loadSubFlags(iso) { // the regions' own emblems (Wikidata, by ISO 3166-2 code), matched to our regions by name: the flag, or else the coat of arms, the logo, or the flag or arms of the capital
-    subBusy.add(iso);
-    const norm = (t) => t.normalize('NFD').replace(/[^a-z0-9]/gi, '').toLowerCase();
-    const bare = (t) => t.replace(/\b(provincia|province|distrito|district|departamento|department|región|region|estado|state|county|condado|prefecture|prefectura|governorate|oblast|canton|cantón|voivodeship|municipality)\b( (de|do|da|del|of))?/gi, ''); // "provincia de La Coruña" is our "La Coruña"
-    fetch('https://query.wikidata.org/sparql?format=json&query=' + encodeURIComponent(`SELECT DISTINCT ?f (STR(?l) AS ?n) WHERE { ?c wdt:P300 ?iso. FILTER(STRSTARTS(?iso, "${iso}-")) OPTIONAL { ?c wdt:P41 ?fl } OPTIONAL { ?c wdt:P94 ?ca } OPTIONAL { ?c wdt:P154 ?lg } OPTIONAL { ?c wdt:P36 ?cap. OPTIONAL { ?cap wdt:P41 ?cfl } OPTIONAL { ?cap wdt:P94 ?cca } } BIND(COALESCE(?fl, ?ca, ?lg, ?cfl, ?cca) AS ?f) FILTER(BOUND(?f)) { ?c rdfs:label ?l } UNION { ?c skos:altLabel ?l. FILTER(LANG(?l) IN ("es", "en")) } }`)).then((r) => r.json()).then((j) => {
-      const by = new Map(), imgs = new Map();
-      for (const key of [(t) => norm(t), (t) => norm(bare(t))]) for (const b of j.results.bindings) { const k = key(b.n.value); if (k && !by.has(k)) by.set(k, b.f.value); } // the exact names first
-      for (const r of regs || []) { const u = r.iso === iso && by.get(norm(r.name)); if (!u) continue; if (!imgs.has(u)) imgs.set(u, Object.assign(new Image(), { src: u.replace(/^http:/, 'https:') + '?width=120' })); r.sub = imgs.get(u); }
-    }).catch(() => { /* no regional flags: the national one stays alone */ });
-  }
+  let subMap = null, subAsked = false; // adm1_code -> Commons file of the region's own emblem (data/subflags.json, built from Wikidata by tools/subflags.py)
+  const subImgs = new Map(), subImg = (f) => { if (!subImgs.has(f)) subImgs.set(f, Object.assign(new Image(), { src: 'https://commons.wikimedia.org/wiki/Special:FilePath/' + encodeURIComponent(f) + '?width=120' })); return subImgs.get(f); };
   let regs = null, regsBusy = false; // [{ id, name, a3, country, cont, p, img }]
   const gotReg = new Set((() => { try { return JSON.parse(localStorage.getItem(REGS)) || []; } catch { return []; } })());
   async function loadRegs() {
@@ -985,7 +978,10 @@
       if (d > 6e5 || !capOcc.isPointVisible(r.p) || !r.img.complete || !r.img.naturalWidth) continue;
       const q = toWin(scene, r.p);
       if (!q) continue;
-      if (/^[A-Z]{2}$/.test(r.iso) && !subBusy.has(r.iso)) loadSubFlags(r.iso);
+      if (r.sub === undefined) { // the region's own flag or arms, fetched only once it is near
+        if (subMap) r.sub = subMap[r.id] ? subImg(subMap[r.id]) : null;
+        else if (!subAsked) { subAsked = true; fetch('data/subflags.json').then((x) => x.json()).then((j) => { subMap = j; }).catch(() => { subMap = {}; }); } // without the table the national flag stays alone
+      }
       const w = d < 1.5e5 ? 44 : 26, h = (w * r.img.naturalHeight) / r.img.naturalWidth, sub = r.sub && r.sub.complete && r.sub.naturalWidth ? r.sub : null, sh = sub ? Math.min(w, (w * sub.naturalHeight) / sub.naturalWidth) : 0;
       g.save(); g.shadowColor = '#000'; g.shadowBlur = 6; g.drawImage(r.img, q.x - w / 2, q.y - h / 2, w, h);
       if (sub) g.drawImage(sub, q.x - w / 2, q.y + h / 2 + 2, w, sh); // the region's own flag under the national one
@@ -1366,16 +1362,19 @@
     OGE.showTable(`${T('Escudos de armas')}: ${mine.length}/${caps.length}`, [], [], { content: box, note: mine.length ? T('Imágenes: Wikimedia Commons. Elige un escudo, o la escarapela de la fuerza aérea de ese país (Wikidata), para llevarlo en la nave.') : T('Aún ninguno: vence al jefe de una capital y recoge su escudo.') });
   }
   OGE.showArms = showArms;
+  const TINTS = [['#3fa9ff', 'Azul'], ['#ff375f', 'Rojo'], ['#30d158', 'Verde'], ['#ffd60a', 'Amarillo'], ['#ff9f0a', 'Naranja'], ['#bf5af2', 'Morado'], ['#f2f2f7', 'Blanco'], ['#1c1c1e', 'Negro'], ['#8e8e93', 'Gris'], ['#c9cfd8', 'Plateado']];
+  const tintFields = (id, label, hexLabel, value) => { const v = String(value || '').toLowerCase(), known = TINTS.some(([c]) => c === v); // a list of named colours, and a hex code for any other
+    return [{ id, label, type: 'select', value: known ? v : 'custom', options: [...TINTS, ['custom', 'Personalizado (código hex)']] }, { id: id + 'Hex', label: hexLabel, type: 'text', value: v, placeholder: '#3fa9ff' }]; };
+  const tintOf = (v, id, old) => (v[id] !== 'custom' ? v[id] : hex('#' + String(v[id + 'Hex'] || '').trim().replace(/^#/, ''), old)); // a wrong code keeps the colour it had
   async function shipStyle() { // the pilot's ship: its model, the colour of its wings and of its hull
     const live = !!(p2 || ws || remote), was = paused; if (on && !live) paused = true; // in a multiplayer game the others keep flying: no pause
     const v = await OGE.ask({ title: 'Nave: estilo y colores', ok: 'Aplicar', help: 'La nave se ve en tercera persona (Y). La insignia de las alas se elige en «Escudos de armas».',
       fields: [{ id: 'model', label: 'Estilo de nave', type: 'select', value: SHIPS[localStorage.getItem('oge.shipModel')] ? localStorage.getItem('oge.shipModel') : 'dardo', options: Object.entries(SHIPS).map(([k, m]) => [k, m.name]) },
-        { id: 'wing', label: 'Color de las alas', type: 'color', value: skin(1) },
-        { id: 'hull', label: 'Color del fuselaje', type: 'color', value: hex(localStorage.getItem('oge.hull1'), '#c9cfd8') }] });
+        ...tintFields('wing', 'Color de las alas', 'Alas: código hex (con «Personalizado»)', skin(1)), ...tintFields('hull', 'Color del fuselaje', 'Fuselaje: código hex (con «Personalizado»)', hex(localStorage.getItem('oge.hull1'), '#c9cfd8'))] });
     if (on && !live) { paused = was; last = performance.now(); }
     if (!v) return;
     if (SHIPS[v.model]) localStorage.setItem('oge.shipModel', v.model);
-    localStorage.setItem('oge.skin1', v.wing); localStorage.setItem('oge.hull1', v.hull);
+    localStorage.setItem('oge.skin1', tintOf(v, 'wing', skin(1))); localStorage.setItem('oge.hull1', tintOf(v, 'hull', hex(localStorage.getItem('oge.hull1'), '#c9cfd8')));
   }
   OGE.shipStyle = shipStyle;
   const showScores = () => OGE.showTable('🏆 Mejores puntajes', [T('Dificultad'), '#', 'Piloto', 'Puntos', 'Monedas', 'Banderas', 'Capitales', 'Jefes', 'Fecha'],
@@ -1503,25 +1502,26 @@
     tridente: { name: 'Tridente', tip: [44, 0, 52], tail: -40, mesh: meshOf((m) => { m.hull(30, [[18, 7, 7, 6], [-6, 10, 10, 8], [-30, 9, 9, 7], [-40, 6, 6, 5]]); canopy(m, 22, -2, 7, 7, 5);
       m.sym('s', [9, 0, 10], [44, 0, 4], [44, 0, -28], [9, 0, -22]); m.sym('h', [40, 1.5, 4], [48, 1.5, 4], [46, 1.5, 52], [42, 1.5, 52]); m.sym('d', [40, -1.5, 4], [48, -1.5, 4], [46, -1.5, 52], [42, -1.5, 52]); m.sym('w', [48, -12, 2], [48, 12, 2], [48, 7, -30], [48, -7, -30]); }) },
     manta: { name: 'Manta', tip: [58, 3, -8], tail: -38, mesh: meshOf((m) => { m.hull(40, [[22, 6, 5, 3], [-8, 11, 7, 4], [-36, 8, 5, 3]]); canopy(m, 26, 2, 4.5, 6.5, 5);
-      m.sym('s', [8, 1, 26], [40, 1, 2], [58, 3, -30], [9, 1, -34]); m.sym('w', [40, 1, 2], [60, 4, 8], [58, 3, -30]); m.sym('s', [10, 3, -20], [10, 3, -36], [16, 16, -42]); }) },
+      m.sym('s', [8, 5, 26], [40, -1, 2], [58, -7, -30], [9, 5, -34]); m.sym('w', [40, -1, 2], [60, -4, 8], [58, -7, -30]); m.sym('s', [10, 6, -18], [10, 6, -36], [19, 22, -44]); }) },
   };
   const shipModel = (id) => SHIPS[id] || SHIPS[localStorage.getItem('oge.shipModel')] || SHIPS.dardo;
   const mixHex = (a, b, k) => '#' + [1, 3, 5].map((i) => Math.round(parseInt(a.slice(i, i + 2), 16) * (1 - k) + parseInt(b.slice(i, i + 2), 16) * k).toString(16).padStart(2, '0')).join('');
   const hex = (c, d) => (/^#[0-9a-f]{6}$/i.test(c || '') ? c : d);
   const shipCol = (sk, hl) => { const h = hex(hl, '#c9cfd8'); return { h, d: mixHex(h, '#10141c', 0.5), s: mixHex(hex(sk, '#3fa9ff'), '#565d6a', 0.3), w: '#c2901c', g: '#1b3a57', e: '#ffb300' }; }; // painted metal: the wing colour, a little worn, and the hull colour with its shaded side
-  const insignia = (M) => { // where an air force paints its roundel: on top of each wing and on each side of the fuselage. These 'i' faces are drawn only when the pilot wears an image
+  const insignia = (M, onHull) => { // where an air force paints its roundel: on top of each wing and on each side of the fuselage. These 'i' faces are drawn only when the pilot wears an image
     const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]], cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]], dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2], unit = (a) => { const l = Math.hypot(...a) || 1; return a.map((x) => x / l); };
     const quads = M.F.map(([idx, c], fi) => { if (idx.length !== 4) return null; const P = idx.map((k) => M.V[k]), nn = cross(sub(P[1], P[0]), sub(P[2], P[0])); return { fi, c, P, n: unit(nn), area: Math.hypot(...nn), mid: [0, 1, 2].map((k) => (P[0][k] + P[1][k] + P[2][k] + P[3][k]) / 4) }; }).filter(Boolean);
-    const put = (q, n, up, k) => { // a square lying on face q, its top towards up, read the right way round from the side n points to; k times the room to the nearest edge
+    const put = (q, n, up, k, len = 1) => { // len: stretched along its top-to-bottom axis, for a face seen almost edge-on // a square lying on face q, its top towards up, read the right way round from the side n points to; k times the room to the nearest edge
       const a = unit(sub(up, n.map((x) => x * dot(n, up)))), b = cross(n, a);
       const r = k * Math.min(...q.P.map((p, j) => { const e = unit(sub(q.P[(j + 1) % 4], p)), d = sub(q.mid, p); return Math.hypot(...sub(d, e.map((x) => x * dot(d, e)))); }));
-      const at = (ka, kb) => q.mid.map((x, j) => x + (a[j] * ka + b[j] * kb) * r);
+      const at = (ka, kb) => q.mid.map((x, j) => x + (a[j] * ka * len + b[j] * kb) * r);
       M.F.push([[at(1, -1), at(1, 1), at(-1, 1), at(-1, -1)].map((p) => M.V.push(p) - 1), 'i', q.fi]); // top left, top right, bottom right, bottom left
     };
+    if (onHull) { for (const e of [-1, 1]) { const q = quads.filter((q) => q.c === 'h' && q.mid[0] * e > 0 && Math.abs(q.n[1]) > 0.3 && Math.abs(q.n[0]) > 0.3).sort((x, y) => y.area - x.area)[0]; if (q) put(q, q.n[1] < 0 ? q.n.map((x) => -x) : q.n, [0, 0, 1], 1.6, 2.7); } return; } // the biggest plate on each upper side of the hull: a little proud of it and longer towards the nose, because the camera sees that plate almost edge-on
     for (const q of quads.filter((q) => q.c === 's').slice(0, 2)) put(q, q.n[1] < 0 ? q.n.map((x) => -x) : q.n, [0, 0, 1], 0.62); // the wings: the first mirrored pair, the image's top towards the nose
     for (const e of [-1, 1]) { const q = quads.filter((q) => 'hd'.includes(q.c) && Math.abs(q.n[0]) > 0.9 && q.mid[0] * e > 0).sort((x, y) => y.area - x.area)[0]; if (q) put(q, [e, 0, 0], [0, 1, 0], 1.6); } // the biggest plate on each side of the hull (the square stands a little proud of it)
   };
-  for (const k in SHIPS) insignia(SHIPS[k].mesh);
+  for (const k in SHIPS) insignia(SHIPS[k].mesh, k === 'halcon');
   let badge = null;
   const insigniaImg = () => { // the image the pilot chose (localStorage oge.insignia), only from Wikimedia
     const u = localStorage.getItem('oge.insignia') || '';
@@ -1864,11 +1864,10 @@
         { id: 'model', label: 'Modelo de tu nave', type: 'select', value: SHIPS[localStorage.getItem('oge.shipModel')] ? localStorage.getItem('oge.shipModel') : 'dardo', options: Object.entries(SHIPS).map(([k, m]) => [k, m.name]) },
         { id: 'model2', label: 'Modelo de la nave del jugador 2 (modo local)', type: 'select', value: SHIPS[localStorage.getItem('oge.shipModel2')] ? localStorage.getItem('oge.shipModel2') : 'delta', options: Object.entries(SHIPS).map(([k, m]) => [k, m.name]) },
         { id: 'pvp', label: 'Los jugadores pueden dañarse entre sí con sus disparos', type: 'checkbox', value: pvp() },
-        { id: 'c1', label: 'Color de tu nave', type: 'color', value: skin(1) },
-        { id: 'c2', label: 'Color de la nave del jugador 2 (modo local)', type: 'color', value: skin(2) }] });
+        ...tintFields('c1', 'Color de tu nave', 'Tu nave: código hex (con «Personalizado»)', skin(1)), ...tintFields('c2', 'Color de la nave del jugador 2 (modo local)', 'Jugador 2: código hex (con «Personalizado»)', skin(2))] });
     if (!live) { paused = false; last = performance.now(); }
     if (!v) return;
-    localStorage.setItem('oge.skin1', v.c1); localStorage.setItem('oge.skin2', v.c2); localStorage.setItem('oge.pvp', v.pvp ? '1' : '0'); if (SHIPS[v.model]) localStorage.setItem('oge.shipModel', v.model); if (SHIPS[v.model2]) localStorage.setItem('oge.shipModel2', v.model2);
+    localStorage.setItem('oge.skin1', tintOf(v, 'c1', skin(1))); localStorage.setItem('oge.skin2', tintOf(v, 'c2', skin(2))); localStorage.setItem('oge.pvp', v.pvp ? '1' : '0'); if (SHIPS[v.model]) localStorage.setItem('oge.shipModel', v.model); if (SHIPS[v.model2]) localStorage.setItem('oge.shipModel2', v.model2);
     mpMode = v.mode;
     if (!['host', 'join', 'lan'].includes(v.mode)) mpClose();
     try {
@@ -2051,7 +2050,7 @@
       }
       else if (s.alt <= ground + GEAR_H) { // soft touchdown with the gear down, or crash
         if (!(s.gear && s.vs > -4 && Math.abs(s.roll) < rad(12) && s.pitch > rad(-6))) {
-          return stop(`Accidente a ${Math.round(s.v * KT)} nudos.` + (s.gear ? '' : ' El tren estaba arriba (L lo baja).'), true);
+          return stop((IMPERIAL ? `Accidente a ${Math.round(s.v * KT)} nudos.` : `Accidente a ${Math.round(s.v * 3.6)} km/h.`) + (s.gear ? '' : ' El tren estaba arriba (L lo baja).'), true);
         }
         s.ground = true; s.alt = ground + GEAR_H; s.pitch = Math.max(0, s.pitch);
       }
@@ -2076,9 +2075,10 @@
         if (field && hp < maxHp) { hp = Math.min(maxHp, hp + 8 * dt); if (!refuelMsg) { refuelMsg = true; OGE.toast(T('🛬 Aeródromo: recuperando vida…')); sfx('heart'); } }
         s.v = 0; s.throttle = 0; s.pitch = 0; stopped = false;
         // like a car: W / ↑ / E accelerate up to ~3600 km/h, S / ↓ / Q brake and then reverse; the steering only turns while it rolls (and reverses backwards)
-        const kd = (x) => keys.has(x), gas = kd('w') || kd('arrowup') || kd('e') || kd('pageup') || stick.y < -0.2, brake = kd('s') || kd('arrowdown') || kd('q') || kd('pagedown') || stick.y > 0.2;
+        const kd = (x) => keys.has(x), gas = kd('w') || kd('arrowup') || kd('e') || kd('pageup') || stick.y < -0.2, brake = kd('s') || kd('arrowdown') || stick.y > 0.2, halt = kd('q') || kd('pagedown'); // Q only stops: down to zero, never into reverse, and W drives on
         let v = s.taxi || 0;
-        if (gas) v += (v < 0 ? 60 : 60 + v * 0.25) * dt; else if (brake) v -= (v > 0 ? 50 : 12) * dt; else v -= Math.sign(v) * Math.min(Math.abs(v), 4 * dt); // engine braking when nothing is pressed
+        if (halt) v -= Math.sign(v) * Math.min(Math.abs(v), Math.max(150, Math.abs(v) * 1.5) * dt);
+        else if (gas) v += (v < 0 ? 60 : 60 + v * 0.25) * dt; else if (brake) v -= (v > 0 ? 50 : 12) * dt; else v -= Math.sign(v) * Math.min(Math.abs(v), 4 * dt); // engine braking when nothing is pressed
         s.taxi = v = clamp(v, -25, 1000); // ground speed: up to ~3600 km/h, separate from the flight speed
         glide(v * gWarp * dt);
         s.heading = C.Math.zeroToTwoPi(s.heading + s.rud * clamp(v / 12, -1, 1) * 0.9 * dt);
@@ -2111,12 +2111,12 @@
     else if (s.v < A.vStall * (1 - 0.1 * s.flaps)) text(T('PÉRDIDA — baja la nariz y da gas'), cx, cy - r - 46, 16);
     const satOcc = new C.EllipsoidalOccluder(C.Ellipsoid.WGS84, viewer.camera.positionWC); // behind the Earth: not drawn
     if ($('layerSats').checked) for (const sat of OGE.satellites()) { // live satellites, as bright moving dots when they are in view
-      if (!sat.p || OGE.satHidden.has(sat.name) || C.Cartesian3.distance(sat.p, viewer.camera.positionWC) > (A.ship ? 8e6 : 2.5e6) || !satOcc.isPointVisible(sat.p)) continue; // only the satellites near the ship, and not the ones shot down
+      if (!sat.p || OGE.satHidden.has(sat.name) || C.Cartesian3.distance(sat.p, viewer.camera.positionWC) > 2.5e6 || !satOcc.isPointVisible(sat.p)) continue; // only the satellites near the ship, and not the ones shot down
       const q = (C.SceneTransforms.worldToWindowCoordinates || C.SceneTransforms.wgs84ToWindowCoordinates)(scene, sat.p);
       if (!q || q.x < 0 || q.y < 0 || q.x > w || q.y > h) continue;
       const sd = C.Cartesian3.distance(sat.p, viewer.camera.positionWC), iss = /ISS|ZARYA/.test(sat.name);
       if (C.Cartesian3.dot(C.Cartesian3.subtract(sat.p, viewer.camera.positionWC, new C.Cartesian3()), viewer.camera.directionWC) < 0) continue; // behind the view
-      const fy = h / 2 / Math.tan((viewer.camera.frustum.fovy || rad(60)) / 2), sr = clamp(((iss ? 3000 : 1800) * (A.ship ? 5 : 1) * fy) / sd, A.ship ? (sd > 2.5e6 ? 9 : 18) : 3, 220); // from the ship they are magnified five times and never smaller than a full model, in the arcade or in free flight // drawn as if a couple of km wide: it grows as you fly up to it
+      const fy = h / 2 / Math.tan((viewer.camera.frustum.fovy || rad(60)) / 2), sr = clamp(((iss ? 3000 : 1800) * (arcade ? 5 : 1) * fy) / sd, arcade ? 14 : 3, 220); // in the arcade they are never smaller than a full sprite // drawn as if a couple of km wide: it grows as you fly up to it
       g.save(); g.translate(q.x, q.y);
       if (sr < 7) { g.fillStyle = g.shadowColor = iss ? '#ffd60a' : '#bfe6ff'; g.shadowBlur = 10; g.beginPath(); g.arc(0, 0, sr, 0, 7); g.fill(); }
       else { // body, two solar wings with cells, an antenna dish
@@ -2141,7 +2141,6 @@
     if (caps && quest()) drawCaps();
     if (arcade) drawArcade(w, h, text);
     if (A.ship && !OGE.body) moonHud(w, h);
-    if (!auto && !nav && A.ship && s.alt > SPACE && !landing) text(`${T('Piloto automático:')} ${DEST.map((d, i) => `${i + 1} ${T(PLACES[d])}`).join(' · ')}`, cx, cy - r - 28, 12);
     if (nav) text(`${T('PILOTO AUTOMÁTICO AL PUNTO DEL MINIMAPA')} · ${Math.round(nav.left / 1000).toLocaleString(OGE_LANG)} km`, cx, cy - r - 28, 14);
     if (auto) text(`${T('PILOTO AUTOMÁTICO A')} ${T(PLACES[auto.to]).toUpperCase()} · ${T('dispara o esquiva (A D W S) · escudo contra asteroides')}${auto.real ? '' : ' · ' + Math.max(0, Math.ceil((TRIP_MS - (performance.now() - auto.t0)) / 1000)) + ' s'}`, cx, cy - r - 28, 14);
     const tp3 = tps() ? drawShip3D(w, h) : null; // third person: the ship in 3D and its reticles
@@ -2205,15 +2204,15 @@
 
     // Speed (knots) on the left, altitude (feet) on the right
     const bx = Math.min(r + 70, cx - 60);
-    g.strokeRect(cx - bx - 38, cy - 12, 76, 24); text(landing === 'parked' ? Math.round((s.taxi || 0) * gWarp * 3.6) + ' km/h' : Math.round(s.v * warp * KT) + ' KT', cx - bx, cy + 1, 14); // the turbo counts as speed; on the ground, the driving speed
+    g.strokeRect(cx - bx - 38, cy - 12, 76, 24); text(landing === 'parked' ? Math.round((s.taxi || 0) * gWarp * 3.6) + ' km/h' : spd(s.v * warp), cx - bx, cy + 1, IMPERIAL ? 14 : 12); // the turbo counts as speed; on the ground, the driving speed
     { // turbo gauge under the speed: one segment per turbo level, lit up to the current one, and the real speed in km/h
       const gnd = landing === 'parked', n = gnd ? GWARPS.indexOf(gWarp) : warp > 100 ? WARPS.length - 1 : WARPS.indexOf(warp), sw = 76 / WARPS.length;
       g.save(); WARPS.forEach((_, i) => { g.fillStyle = i <= n ? (i >= 4 ? '#ff453a' : i >= 2 ? '#ffd60a' : '#39ff14') : 'rgba(57,255,20,.18)'; g.fillRect(cx - bx - 38 + i * sw + 1, cy + 18, sw - 2, 8); }); g.restore();
-      text(`TURBO ×${gnd ? gWarp : warp} · ${Math.round((gnd ? (s.taxi || 0) * gWarp : s.v * warp) * 3.6).toLocaleString(OGE_LANG)} km/h`, cx - bx, cy + 40, 12);
+      text(`TURBO ×${gnd ? gWarp : warp}` + (IMPERIAL ? ` · ${num((gnd ? (s.taxi || 0) * gWarp : s.v * warp) * 3.6)} km/h` : ''), cx - bx, cy + 40, 12);
     }
-    g.strokeRect(cx + bx - 46, cy - 12, 92, 24); text(Math.round(s.alt * FT) + ' FT', cx + bx, cy + 1, 14);
-    text((s.vs >= 0 ? '+' : '') + Math.round((s.vs * FT * 60) / 10) * 10 + ' FPM', cx + bx, cy + 26, 12);
-    text(T('SUELO ') + Math.round(s.agl * FT) + ' FT', cx + bx, cy + 42, 12);
+    g.strokeRect(cx + bx - 46, cy - 12, 92, 24); text(high(s.alt), cx + bx, cy + 1, 14);
+    text((s.vs >= 0 ? '+' : '') + (IMPERIAL ? Math.round((s.vs * FT * 60) / 10) * 10 + ' FPM' : num(s.vs) + ' m/s'), cx + bx, cy + 26, 12);
+    text(T('SUELO ') + high(s.agl), cx + bx, cy + 42, 12);
 
     // Engine and configuration (bottom left)
     const x0 = 24, y0 = h - 40;
@@ -2293,7 +2292,7 @@
     else if (k === 'f' || k === ']' || k === '[') s.flaps = clamp(s.flaps + (e.shiftKey || k === '[' ? -1 : 1), 0, 2);
     else if (k === 'c' && A.ship && landing) $('flyLift').click(); // C takes off again after landing
     else if (k === 'c') { stick.x = stick.y = 0; s.trim = 0; }
-    else if (k === 'q' && A && A.ship && !e.repeat) { stopped = !stopped; if (!stopped) { s.v = Math.max(s.v, A.v0 || 300); s.throttle = Math.max(s.throttle, 0.5); } } // Q: stop and hover; Q again: fly on
+    else if (k === 'q' && A && A.ship && landing !== 'parked' && !e.repeat) { stopped = !stopped; if (!stopped) { s.v = Math.max(s.v, A.v0 || 300); s.throttle = Math.max(s.throttle, 0.5); } } // Q: stop and hover; Q again: fly on
     else if (k === 'b' && A && A.ship) { if (!e.repeat) trigger(true); } // B fires, aiming by itself at the nearest enemy; held, it charges
     else if (k === 'v' && A.ship) bomb(); // V drops a bomb
     else if (k === 'g') nextWarp(-1);
