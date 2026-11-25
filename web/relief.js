@@ -569,6 +569,32 @@
   cbRN.addEventListener('change', syncRegionNames);
   syncRegionNames();
 
+  // ---------- Seas and oceans: names from Natural Earth's marine areas; a click opens their card (Wikidata) ----------
+  let seas = null, seasBusy = false;
+  const cbSea = $('layerSeas');
+  const syncSeas = async () => {
+    if (seas) seas.show = cbSea.checked;
+    if (!cbSea.checked || seas || seasBusy) return;
+    seasBusy = true;
+    try {
+      const [sb, db] = await Promise.all([buf('10m_physical/ne_10m_geography_marine_polys.shp'), buf('10m_physical/ne_10m_geography_marine_polys.dbf')]);
+      const clean = (v) => String(v ?? '').replace(/\0/g, '').trim(), labels = viewer.scene.primitives.add(new C.LabelCollection());
+      for (const f of shp.combine([shp.parseShp(sb), shp.parseDbf(db)]).features) {
+        const p = f.properties, name = clean(OGE_LANG === 'en' ? p.name_en : p.name_es) || clean(p.name);
+        if (!f.geometry || !name) continue;
+        const c = turf.pointOnFeature(f).geometry.coordinates, rank = +p.scalerank || 3, ocean = /ocean/i.test(clean(p.featurecla));
+        labels.add({ position: C.Cartesian3.fromDegrees(c[0], c[1]), text: name, font: `italic ${ocean ? 700 : 600} ${ocean ? 16 : 13}px serif`, fillColor: C.Color.fromCssColorString('#bfe9ff'), outlineColor: C.Color.fromCssColorString('#06324f'), outlineWidth: 3,
+          style: C.LabelStyle.FILL_AND_OUTLINE, disableDepthTestDistance: Number.POSITIVE_INFINITY, distanceDisplayCondition: new C.DistanceDisplayCondition(0, ocean ? 4e7 : rank <= 2 ? 1.2e7 : rank <= 4 ? 5e6 : 2e6), id: { oge: 'region', q: clean(p.wikidataid), name } });
+      }
+      const occ = new C.EllipsoidalOccluder(C.Ellipsoid.WGS84, viewer.camera.positionWC);
+      viewer.scene.preRender.addEventListener(() => { if (!labels.show) return; occ.cameraPosition = viewer.camera.positionWC; for (let i = 0; i < labels.length; i++) { const l = labels.get(i); l.show = occ.isPointVisible(l.position); } });
+      seas = labels; seas.show = cbSea.checked;
+    } catch (e) { OGE.toast('No se pudieron cargar los mares: ' + e.message, true); }
+    seasBusy = false;
+  };
+  cbSea.addEventListener('change', syncSeas);
+  syncSeas();
+
   // ---------- Live aircraft (ADS-B Exchange-style open feed from adsb.fi, no key): icons along their track, refreshed every 10 s ----------
   const planeIcon = (() => { // a white airliner seen from above, pointing up (north)
     const cv = Object.assign(document.createElement('canvas'), { width: 48, height: 48 }), g = cv.getContext('2d');
