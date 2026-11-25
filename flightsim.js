@@ -1084,6 +1084,7 @@
   }
   function raceGo(v, a, b, via = []) {
     relaunch = () => raceGo(v, a, b, via);
+    mpGo({ mode: 'race', v, a: { lon: a.lon, lat: a.lat, name: a.name }, b: { lon: b.lon, lat: b.lat, name: b.name }, via: via.map((p) => ({ lon: p.lon, lat: p.lat, name: p.name })) });
     const laps = Math.max(1, +v.laps || 1); if (laps > 1) b = { ...a }; // a circuit ends where it starts
     b.p = C.Cartesian3.fromDegrees(b.lon, b.lat, 1500);
     const hd = bearing(a, b);
@@ -1169,6 +1170,7 @@
     if (rec) localStorage.setItem(key, String(Math.round(ms)));
     score += pts(1000);
     const place = race.cpus.length ? 1 + race.cpus.filter((c) => c.f >= 1).length : 0;
+    mpSend({ t: 'fin', ms });
     OGE.toast(`🏁 ${T('¡Llegaste a')} ${race.to.name}! ${T('Tiempo')}: ${fmtT(ms)}` + (place ? ` · ${T('Puesto')} ${place}/${race.cpus.length + 1}` : '') + (rec ? ` · ${T('¡Nuevo récord!')}` : ` · ${T('Mejor tiempo')}: ${fmtT(best)}`));
     sfx('achieve');
     race = null;
@@ -1243,6 +1245,7 @@
   const advDone = () => +localStorage.getItem(advKey()) || 0; // stages beaten on this continent
   async function adventure(stage = advDone()) {
     relaunch = () => adventure(stage);
+    mpGo({ mode: 'adventure', cont: advCont, stage });
     const a3 = route()[Math.min(stage, route().length - 1)];
     const [s2, d2] = await Promise.all([fetch(NE + '50m_cultural/ne_50m_admin_0_countries.shp').then((r) => r.arrayBuffer()), fetch(NE + '50m_cultural/ne_50m_admin_0_countries.dbf').then((r) => r.arrayBuffer())]);
     const all = shp.combine([shp.parseShp(s2), shp.parseDbf(d2)]).features, A3 = (x) => String(x.properties.ADM0_A3).replace(/\0/g, '').trim();
@@ -1366,6 +1369,23 @@
   let mpMode = 'solo', ws = null, remote = null, p2 = null, credit = 1, mpTimer = null; // credit: which local player scores
   const gain = (n) => { if (credit === 2 && p2) p2.score += n; else score += n; };
   const mpSend = (m) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(m)); };
+  let mpEcho = false; // true while a game is being started from the other player's invitation: it is not announced back
+  const mpGo = (m) => { if (!mpEcho) mpSend({ t: 'go', name: localStorage.getItem('oge.pilot') || T('Piloto'), ...m }); }; // tells the other player which game starts
+  async function mpJoin(m) { // the other player started a game: offer to play the same one, in the same place
+    const what = m.mode === 'race' ? T('una carrera') : m.mode === 'adventure' ? T('la aventura') : m.mode === 'free' ? T('un vuelo libre') : T('una partida libre');
+    if (on) paused = true;
+    const ok = await OGE.ask({ title: `${String(m.name || T('Piloto')).slice(0, 24)} ${T('inició')} ${what}`, ok: 'Unirme', help: 'Jugarán el mismo modo, en el mismo lugar.' });
+    paused = false; last = performance.now();
+    if (!ok) return;
+    const num = (x) => Number.isFinite(+x), place = (p) => p && num(p.lon) && num(p.lat) && { lon: +p.lon, lat: +p.lat, name: String(p.name || '').slice(0, 60) }, txt = (x, n) => String(x ?? '').slice(0, n); // what arrives from the network is checked and trimmed
+    mpEcho = true;
+    try {
+      const a = place(m.a), b = place(m.b), via = Array.isArray(m.via) ? m.via.slice(0, 8).map(place) : [];
+      if (m.mode === 'race' && m.v && a && b && via.every(Boolean)) raceGo({ from: txt(m.v.from, 60), to: txt(m.v.to, 60), lands: txt(m.v.lands, 200), via: txt(m.v.via, 300), maxWarp: WARPS.includes(+m.v.maxWarp) ? +m.v.maxWarp : 2, laps: clamp(Math.round(+m.v.laps) || 1, 1, 5), cpus: clamp(Math.round(+m.v.cpus) || 0, 0, 12) }, a, b, via);
+      else if (m.mode === 'adventure' && ROUTES[m.cont] && Number.isInteger(m.stage) && m.stage >= 0) { advCont = m.cont; await adventure(m.stage); }
+      else if (m.mode !== 'race' && m.mode !== 'adventure') { if (num(m.lon) && num(m.lat)) viewer.camera.setView({ destination: C.Cartesian3.fromRadians(+m.lon, +m.lat, 3000) }); quickShip(m.mode === 'free' ? 'free' : 'arcade'); } // a race or an adventure with bad data starts nothing
+    } finally { mpEcho = false; }
+  }
   const P1POS = (w, h) => [w / 2, h * 0.8]; // where player 1's own ship is drawn in local mode
   // ---------- Third person: a chase camera with some lag, our own low-poly ship drawn in 3D, and twin reticles ahead of its nose ----------
   let chase = null; // { h, p, bank, d }: the camera's heading and pitch (they trail the ship's), the ship's bank into the turn, the distance
@@ -1696,6 +1716,8 @@
     } else if (m.t === 'shot' && remote) remote.shot = performance.now();
     else if (m.t === 'hit' && on && arcade && pvp()) hurt(Math.min(25, +m.n || 0));
     else if (m.t === 'mine' && on && Number.isFinite(+m.lon) && Number.isFinite(+m.lat) && Number.isFinite(+m.alt)) objs.push({ kind: 'mine', p: C.Cartesian3.fromRadians(+m.lon, +m.lat, +m.alt), size: 300, next: 1e15, until: performance.now() + 90000 });
+    else if (m.t === 'go') mpJoin(m);
+    else if (m.t === 'fin' && remote) OGE.toast(`${remote.name} ${T('llegó a la meta')}: ${fmtT(Math.max(0, +m.ms || 0))}`);
     else if (m.t === 'dead' && remote) { OGE.toast(`${remote.name} ${T('fue derribado.')}`); remote.p = remote.to = null; }
   }
   const mpClose = () => { const c = ws; ws = null; remote = null; clearInterval(mpTimer); if (c) c.close(); };
@@ -2188,6 +2210,7 @@
   const lastOpts = () => { try { return JSON.parse(localStorage.getItem('oge.flyOpts')) || {}; } catch { return {}; } };
   function quickShip(mode = 'arcade') { // the OpenStarshipEarth arcade with the options used last time; 'free': no enemies, no goals
     relaunch = () => quickShip(mode);
+    { const c = viewer.camera.positionCartographic; mpGo({ mode, lon: c.longitude, lat: c.latitude }); }
     const last = lastOpts();
     start('ship', last.mouse ?? true, mode !== 'free', true, mode !== 'free' && !localStorage.getItem('oge.tutorial'), mode === 'free');
   }
