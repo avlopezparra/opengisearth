@@ -7,11 +7,11 @@ cd "$(dirname "$0")"
 SDK="${SDK:-D:/mhtc/android/sdk}"; JAVA_HOME="${JAVA_HOME:-D:/mhtc/android/jdk17}"; KEYS="${KEYS:-D:/mhtc/android/keys}"
 BT="$SDK/build-tools/34.0.0"; JAR="$SDK/platforms/android-34/android.jar"; PKG=com/opengisearth/starship
 VERSION=$(sed -n 's/.*android:versionName="\([^"]*\)".*/\1/p' AndroidManifest.xml)
-export JAVA_HOME PATH="$JAVA_HOME/bin:$PATH"
+export JAVA_HOME; PATH="$(cygpath -u "$JAVA_HOME" 2>/dev/null || echo "$JAVA_HOME")/bin:$PATH" # a drive letter cannot go in a POSIX PATH as it is
 rm -rf build && mkdir -p build/gen build/classes build/dex
 "$BT/aapt2" compile --dir res -o build/res.zip
 "$BT/aapt2" link -o build/unsigned.apk -I "$JAR" --manifest AndroidManifest.xml --java build/gen build/res.zip
-javac -source 8 -target 8 -Xlint:-options -cp "$JAR" -d build/classes "src/$PKG/MainActivity.java" "build/gen/$PKG/R.java"
+"$JAVA_HOME/bin/javac" -source 8 -target 8 -Xlint:-options -cp "$JAR" -d build/classes "src/$PKG/MainActivity.java" "build/gen/$PKG/R.java"
 "$BT/d8.bat" --release --min-api 24 --lib "$JAR" --output build/dex build/classes/$PKG/*.class
 (cd build/dex && "$BT/aapt" add ../unsigned.apk classes.dex >/dev/null)
 "$BT/zipalign" -f 4 build/unsigned.apk build/aligned.apk
