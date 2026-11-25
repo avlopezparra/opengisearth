@@ -2140,7 +2140,7 @@
       }
     }
     const horiz = s.v * Math.cos(pe) * dt * warp; // negative over the top of a loop: it flies backwards
-    if (A.ship && s.alt > SPACE && !spaceMsg) { spaceMsg = true; OGE.toast(`${T('Fuera de la atmósfera.')} ${T('Piloto automático, con hiperturbo:')} ${DEST.map((d, i) => `${i + 1} ${T(PLACES[d])}`).join(' · ')}`); }
+    if (A.ship && s.alt > SPACE && !spaceMsg) { spaceMsg = true; OGE.toast(`${T('Fuera de la atmósfera.')} ${T('Piloto automático, con hiperturbo:')} ${DEST.map((d, i) => `${i + 1} ${T(PLACES[d])}`).join(' · ')} · 4 ${T('la superficie')}`); }
     if (deep) { if (auto) autoStep(dt); else spaceStep(dt, man ? pe : s.pitch); if (!man) pe = s.pitch; }
     else {
       if (warp > 100) setWarp(100); // flown by hand: no hyper turbo
@@ -2227,7 +2227,7 @@
     if (arcade) drawArcade(w, h, text);
     if (A.ship && !OGE.body) moonHud(w, h);
     if (nav) text(`${T('PILOTO AUTOMÁTICO AL PUNTO DEL MINIMAPA')} · ${Math.round(nav.left / 1000).toLocaleString(OGE_LANG)} km`, cx, cy - r - 28, 14);
-    if (auto) text(`${T('PILOTO AUTOMÁTICO A')} ${T(PLACES[auto.to]).toUpperCase()} · ${T('dispara o esquiva (A D W S) · escudo contra asteroides')}${auto.real ? '' : ' · ' + Math.max(0, Math.ceil((TRIP_MS - (performance.now() - auto.t0)) / 1000)) + ' s'}`, cx, cy - r - 28, 14);
+    if (auto) text(`${T('PILOTO AUTOMÁTICO A')} ${T(PLACES[auto.to] || 'la superficie').toUpperCase()} · ${T('dispara o esquiva (A D W S) · escudo contra asteroides')}${auto.real || auto.to === 'down' ? '' : ' · ' + Math.max(0, Math.ceil((TRIP_MS - (performance.now() - auto.t0)) / 1000)) + ' s'}`, cx, cy - r - 28, 14);
     const tp3 = tps() && !loading ? drawShip3D(w, h) : null; // while loading the chase camera has not pulled back yet // third person: the ship in 3D and its reticles
     if (p2 || remote) mpDraw(w, h, text);
     if (tut) drawTutorial(w);
@@ -2398,7 +2398,7 @@
     else if (k === 'k') { $('flyKeys').hidden = !$('flyKeys').hidden; $('flyRules').hidden = true; }
     else if (k === 'i') showRules();
     else if (k === 'o') tutorial(true);
-    else if ('123'.includes(k) && A && A.ship) autopilot(DEST[k - 1]);
+    else if ('1234'.includes(k) && A && A.ship) autopilot(k === '4' ? 'down' : DEST[k - 1]); // 4: back down to the surface of this world
     else keys.add(k);
     e.preventDefault(); e.stopPropagation();
   }, true);
@@ -2456,7 +2456,7 @@
     }
   }
   const PLACES = { earth: 'la Tierra', moon: 'la Luna', mars: 'Marte', sky: 'el espacio exterior' }, DEST = Object.keys(PLACES).filter((k) => k !== (OGE.body || 'earth')); // the autopilot keys 1, 2 and 3: every place but this one
-  DEST.forEach((d, i) => { const b = document.querySelector(`#flyTL button[data-key="${i + 1}"]`); if (b) b.textContent = '→ ' + T(PLACES[d]); });
+  [...DEST, 'down'].forEach((d, i) => { const b = document.querySelector(`#flyTL button[data-key="${i + 1}"]`); if (b) b.textContent = '→ ' + T(PLACES[d] || 'la superficie'); });
   function arrive(to) { // the trip goes on over the other world itself; the outer space is the sky view
     paused = true; OGE.toast(`${T('Llegando a')} ${T(PLACES[to])}…`); const u = new URL(location.href);
     if (to === 'earth') u.searchParams.delete('body'); else u.searchParams.set('body', to);
@@ -2474,15 +2474,15 @@
     if (s.alt <= SPACE || landing) return OGE.toast(T('El piloto automático se enciende fuera de la atmósfera.'));
     man = null; incoming = []; objs = objs.filter((o) => o.kind === 'boss' || o.kind === 'crest');
     auto = { to, real: to === 'moon' && !OGE.body, t0: performance.now(), ox: 0, oy: 0, next: performance.now() + 3500, warp0: warp }; setWarp(HYPER[HYPER.length - 1]);
-    OGE.toast(`${T('Piloto automático a')} ${T(PLACES[to])}: ${T('dispara o esquiva a los enemigos (A D W S); el escudo frena los asteroides. La misma tecla lo apaga.')}`);
+    OGE.toast(`${T('Piloto automático a')} ${T(PLACES[to] || 'la superficie')}: ${T('dispara o esquiva a los enemigos (A D W S); el escudo frena los asteroides. La misma tecla lo apaga.')}`);
   }
   function autoStep(dt) {
     const now = performance.now(), P = C.Cartesian3.fromRadians(s.lon, s.lat, s.alt), a = axesAt(P, s.heading, s.pitch, s.roll), up = C.Cartesian3.normalize(P, new C.Cartesian3()), unit = (v) => C.Cartesian3.normalize(v, v);
-    let to = auto.real ? unit(C.Cartesian3.subtract(moonPos(), P, new C.Cartesian3())) : (auto.dir || (auto.dir = up));
+    let to = auto.real ? unit(C.Cartesian3.subtract(moonPos(), P, new C.Cartesian3())) : auto.to === 'down' ? C.Cartesian3.negate(up, new C.Cartesian3()) : (auto.dir || (auto.dir = up));
     const down = C.Cartesian3.dot(to, up);
-    if (down < 0 && C.Cartesian3.magnitude(lin(P, 1, to, -C.Cartesian3.dot(P, to))) < R + 3e5) to = unit(lin(lin(to, 1, up, -down), 1, up, 0.35)); // the Earth is in the way: around it, climbing a little
+    if (auto.to !== 'down' && down < 0 && C.Cartesian3.magnitude(lin(P, 1, to, -C.Cartesian3.dot(P, to))) < R + 3e5) to = unit(lin(lin(to, 1, up, -down), 1, up, 0.35)); // the Earth is in the way: around it, climbing a little
     if (!auto.speed) auto.speed = auto.real ? Math.max(1e6, C.Cartesian3.distance(P, moonPos()) / 40) : 1e7; // about 40 s to the Moon
-    const F = unit(lin(a.F, 1, to, Math.min(1, 2.5 * dt))), go = auto.speed * clamp(C.Cartesian3.dot(F, to), 0, 1) ** 4 * Math.min(1, (now - auto.t0) / 3000) * dt; // it turns to its course first, then gathers speed
+    const F = unit(lin(a.F, 1, to, Math.min(1, 2.5 * dt))), go = (auto.to === 'down' ? Math.max(3000, s.alt * 0.6) : auto.speed) * clamp(C.Cartesian3.dot(F, to), 0, 1) ** 4 * Math.min(1, (now - auto.t0) / 3000) * dt; // it turns to its course first, then gathers speed
     const ox = clamp(auto.ox + clamp(s.rud + s.ail, -1, 1) * 1100 * dt, -1400, 1400), oy = clamp(auto.oy + s.elev * 1100 * dt, -900, 900); // the dodge: A D sideways, S up, W down
     const P1 = lin(lin(P, 1, F, go), 1, lin(a.R, ox - auto.ox, a.U, oy - auto.oy), 1), cg = C.Cartographic.fromCartesian(P1);
     auto.ox = ox; auto.oy = oy; s.lon = cg.longitude; s.lat = cg.latitude; s.alt = cg.height; setAttitude(P1, F, a.U);
@@ -2498,10 +2498,10 @@
       if (Math.hypot(o.auto[0] - ox, o.auto[1] - oy) < 300) { booms.push({ p: o.p, t: now }); if (o.rock) rocks++; else hits++; } else gain(pts(20)); // a clean dodge scores
       return false;
     });
-    const done = auto.real ? C.Cartesian3.distance(P1, moonPos()) < 2e7 : now - auto.t0 > TRIP_MS, dest = auto.to;
+    const done = auto.to === 'down' ? s.alt < 4e4 : auto.real ? C.Cartesian3.distance(P1, moonPos()) < 2e7 : now - auto.t0 > TRIP_MS, dest = auto.to;
     if (rocks) { broke = hit = now; sfx('shieldBreak'); } // the trip's shield takes every asteroid
     if (hits) { if (hp - 15 * hits * DIFF[diff].hurt > 1) hurt(15 * hits); else hit = now; } // enemies hurt, but the trip is never the end of the ship
-    if (done && on && !paused) { endAuto(); arrive(dest); }
+    if (done && on && !paused) { endAuto(); if (dest === 'down') { s.pitch = s.roll = 0; s.v = Math.min(s.v, A.v0 || 600); OGE.toast(T('De vuelta en la atmósfera.')); } else arrive(dest); } // down: levelled out at 40 km, the flight goes on
   }
   function moonHud(w, h) { // where the Moon is and how far, once the ship is high enough to go
     if (s.alt < DEEP && !(auto && auto.real)) return; // not all the time: only out where the ship can be pointed at it, or while the autopilot flies there
@@ -2568,7 +2568,7 @@
   if (!matchMedia('(pointer: coarse)').matches) { // with a keyboard the key buttons are not needed: only Controls and Scores stay at hand
     $('flyBtns').classList.add('keyboard');
     $('flyKeys').append(Object.assign(document.createElement('li'), { className: 'keyBtns' })); $('flyKeys').lastChild.append($('flyScores'), $('flyFlags'), $('flyArms'), $('flyColors'), $('flyMp'), $('flyReset'), $('flyShip'), $('flySun'), $('flyThird'),
-      ...DEST.map((d) => Object.assign(document.createElement('button'), { type: 'button', className: 'autoDest', textContent: `${T('Piloto automático')} → ${T(PLACES[d])}`, onclick: () => { if (pad.menu) padMenu(false); autopilot(d); } }))); // the autopilot can be chosen here as well as with 1, 2, 3 $('flyKeys').style.right = $('flyRules').style.right = '12px'; // no column of buttons beside them // the few actions without a key live in the K panel
+      ...[...DEST, 'down'].map((d) => Object.assign(document.createElement('button'), { type: 'button', className: 'autoDest', textContent: `${T('Piloto automático')} → ${T(PLACES[d] || 'la superficie')}`, onclick: () => { if (pad.menu) padMenu(false); autopilot(d); } }))); // the autopilot can be chosen here as well as with 1, 2, 3 $('flyKeys').style.right = $('flyRules').style.right = '12px'; // no column of buttons beside them // the few actions without a key live in the K panel
   } else { $('flyBtns').classList.add('touch'); document.body.classList.add('touchdev'); } // on a phone the stick steers (left half of the screen): the right column keeps the touch actions and the speed
   $('flyThird').onclick = () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'y' }));
   $('flyMore').onclick = () => { const more = $('flyBtns').classList.toggle('more'); localStorage.setItem('oge.flyMore', more ? '1' : ''); }; // remembered
