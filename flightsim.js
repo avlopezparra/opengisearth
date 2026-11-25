@@ -249,7 +249,7 @@
   let aisT = 0; const sunk = new Set(); // live ships: when to ask again, and the ones already sunk in this session
   function aisStep() { // real vessels as warships, where an open AIS feed exists without a key: Finnish waters (Digitraffic, Fintraffic, CC BY 4.0)
     const la = deg(s.lat), lo = deg(s.lon);
-    if (performance.now() < aisT || tut || race || la < 58.5 || la > 66.5 || lo < 17 || lo > 31) return;
+    if (OGE.body || performance.now() < aisT || tut || race || la < 58.5 || la > 66.5 || lo < 17 || lo > 31) return;
     aisT = performance.now() + 60000;
     fetch(`https://meri.digitraffic.fi/api/ais/v1/locations?latitude=${la.toFixed(2)}&longitude=${lo.toFixed(2)}&radius=60`).then((r) => r.json()).then((j) => {
       const t0 = performance.now(), far = (f) => Math.hypot((f.geometry.coordinates[0] - lo) * Math.cos(s.lat), f.geometry.coordinates[1] - la), near = j.features.filter((f) => f.properties.sog > 0.5 && !sunk.has(f.mmsi)).sort((x, y) => far(x) - far(y)).slice(0, 6); // the six nearest that are under way
@@ -410,8 +410,8 @@
     add(cam.directionWC, D); add(cam.rightWC, (Math.random() - 0.5) * D * 0.5); add(cam.upWC, (Math.random() - 0.5) * D * 0.25);
     const big = kind === 'ring' && Math.random() < 0.25;
     lift(p, kind, D * 0.06 * SIZE[kind] * (big ? 2.5 : 1));
-    { const cg = C.Cartographic.fromCartesian(p), sea = scene.globe.getHeight(new C.Cartographic(cg.longitude, cg.latitude)); if (!tut && sea !== undefined && sea < 1.5 && Math.random() < 0.15 && objs.filter((o) => o.kind === 'ship').length < 3) { objs.push({ kind: 'ship', p: C.Cartesian3.fromRadians(cg.longitude, cg.latitude, 15), cog: Math.random() * 6.28, size: 320, hp: 4, next: performance.now() + 2000 }); return; } // a warship, only over the water
-      if (!tut && sea !== undefined && sea < 1.5 && Math.random() < 0.3 && objs.filter((o) => o.kind === 'octo').length < 4) { objs.push({ kind: 'octo', p: C.Cartesian3.fromRadians(cg.longitude, cg.latitude, 30), size: 260, hp: 2, next: performance.now() + 1500 + Math.random() * 2500 }); return; } } // sea creatures, only over the water
+    { const cg = C.Cartographic.fromCartesian(p), sea = scene.globe.getHeight(new C.Cartographic(cg.longitude, cg.latitude)); if (!tut && !OGE.body && sea !== undefined && sea < 1.5 && Math.random() < 0.15 && objs.filter((o) => o.kind === 'ship').length < 3) { objs.push({ kind: 'ship', p: C.Cartesian3.fromRadians(cg.longitude, cg.latitude, 15), cog: Math.random() * 6.28, size: 320, hp: 4, next: performance.now() + 2000 }); return; } // a warship, only over the water
+      if (!tut && !OGE.body && sea !== undefined && sea < 1.5 && Math.random() < 0.3 && objs.filter((o) => o.kind === 'octo').length < 4) { objs.push({ kind: 'octo', p: C.Cartesian3.fromRadians(cg.longitude, cg.latitude, 30), size: 260, hp: 2, next: performance.now() + 1500 + Math.random() * 2500 }); return; } } // sea creatures, only over the water
     objs.push({ kind, big, p, size: D * 0.06 * SIZE[kind] * (big ? 2.5 : 1), look: Math.floor(Math.random() * ENEMY.length), next: performance.now() + 3000 + Math.random() * 4000 }); // sized for the speed it was created at; next: when an enemy fires
   }
   function hurt(n) {
@@ -463,6 +463,7 @@
   }
   let aaT = 0, aaBusy = false, aaAt = null; // anti-aircraft sites from OpenStreetMap, asked again after flying ~40 km
   async function aaSites() {
+    if (OGE.body) return;
     const lo = deg(s.lon), la = deg(s.lat);
     if (aaBusy || (aaAt && Math.hypot(lo - aaAt[0], la - aaAt[1]) < 0.35) || performance.now() < aaT) return;
     aaBusy = true; aaT = performance.now() + 20000; aaAt = [lo, la];
@@ -752,17 +753,17 @@
     loadCaps();
     loadRegs();
     if (A.ship) OGE.minimap.zoom(99); // the starship starts with the minimap zoomed all the way in
-    if (A.ship && OGE.minimap.open) OGE.minimap.open();
+    if (A.ship && OGE.minimap.open && !OGE.body) OGE.minimap.open(); // the minimap is a map of the Earth
     arcade = !!A.ship && !!useArcade;
-    autoOn = !arcade ? [] : ['layerSats', ...(window.__TAURI__ ? ['layerPlanes'] : [])].filter((id) => $(id) && !$(id).checked); // for this flight only: nearby satellites, region names to find the way, live aircraft (desktop)
+    autoOn = !arcade || OGE.body ? [] : ['layerSats', ...(window.__TAURI__ ? ['layerPlanes'] : [])].filter((id) => $(id) && !$(id).checked); // for this flight only: nearby satellites, region names to find the way, live aircraft (desktop)
     if (autoOn.includes('layerSats') && $('layerSatsNear')) { $('layerSatsNear').checked = true; $('layerSatsNear').dispatchEvent(new Event('change')); } // only the nearby ones: light
     for (const id of autoOn) { $(id).checked = true; $(id).dispatchEvent(new Event('change')); }
-    OGE.fxForce = !!arcade; // rain, snow and storms of the place show in the game
+    OGE.fxForce = !!arcade && !OGE.body; // rain, snow and storms of the place show in the game
     autoOff = !arcade ? [] : ['layerRegionNames', 'layerFlags', 'layerFlagsDep'].filter((id) => $(id) && $(id).checked); // the atlas labels and flags confuse in the game: off for the flight
     for (const id of autoOff) { $(id).checked = false; $(id).dispatchEvent(new Event('change')); } // live satellites and aircraft join the arcade
     if (!document.body.classList.contains('noside')) { sideWas = true; OGE.hideSide(true); } // more room for the flight; it comes back afterwards
     stopped = false;
-    if (arcade && !airports && !airBusy) { airBusy = true; fetch(NE + '10m_cultural/ne_10m_airports.shp').then((r) => r.arrayBuffer()).then((b) => { airports = shp.parseShp(b).filter((g) => g && g.type === 'Point').map((g) => g.coordinates); }).catch(() => {}).finally(() => { airBusy = false; }); } // 25 KB: only the points
+    if (arcade && !airports && !airBusy && !OGE.body) { airBusy = true; fetch(NE + '10m_cultural/ne_10m_airports.shp').then((r) => r.arrayBuffer()).then((b) => { airports = shp.parseShp(b).filter((g) => g && g.type === 'Point').map((g) => g.coordinates); }).catch(() => {}).finally(() => { airBusy = false; }); } // 25 KB: only the points
     maxHp = 100; usedTowns.clear(); hp = 100; bombs = 2; incoming = []; flash = hit = 0; shields = 0;
     run = { flags: 0, caps: 0, bosses: 0 };
     p2 = mpMode === 'local' && arcade ? { x: -0.65, y: 0.55, z: 200, hp: 100, score: 0, tilt: 0 } : null; // the second local player starts beside the first
@@ -791,6 +792,7 @@
   const got = new Set((() => { try { return JSON.parse(localStorage.getItem(CAPS)) || []; } catch { return []; } })()), capId = (c) => c.name + '|' + c.cont;
   const capOcc = new C.EllipsoidalOccluder(C.Ellipsoid.WGS84, viewer.camera.positionWC);
   async function loadCaps() {
+    if (OGE.body) caps = caps || []; // no capitals or bosses away from the Earth
     if (caps || capsBusy) return;
     capsBusy = true;
     try {
@@ -898,6 +900,11 @@
 
   // ---------- Region flags: the country's flag over every state or province; countries, continents and the world are achievements ----------
   const REGS = 'oge.regions';
+  const moonFlags = () => { // the flags left on the Moon: the six Apollo landings, and the two Chang'e sample missions that unfurled one
+    const flag = (f) => Object.assign(new Image(), { src: 'https://commons.wikimedia.org/wiki/Special:FilePath/' + f + '?width=120' }), us = flag('Flag_of_the_United_States.svg'), cn = flag('Flag_of_the_People%27s_Republic_of_China.svg');
+    return [['Apolo 11 (1969)', 23.47297, 0.67408, us], ['Apolo 12 (1969)', -23.42157, -3.01239, us], ['Apolo 14 (1971)', -17.47136, -3.6453, us], ['Apolo 15 (1971)', 3.63386, 26.13222, us], ['Apolo 16 (1972)', 15.50019, -8.97301, us], ['Apolo 17 (1972)', 30.77168, 20.1908, us], ["Chang'e 5 (2020)", -51.916, 43.058, cn], ["Chang'e 6 (2024)", -153.986, -41.638, cn]]
+      .map(([name, lon, lat, img], i) => ({ id: 'moon-' + i, lon, lat, lifted: true, name, a3: 'MOON', country: 'Luna', cont: 'Luna', p: C.Cartesian3.fromDegrees(lon, lat, 2000), img }));
+  };
   const subBusy = new Set(); // countries whose regional flags were already asked for
   function loadSubFlags(iso) { // the regions' own flags (Wikidata: ISO 3166-2 code and flag), matched to our regions by name
     subBusy.add(iso);
@@ -911,6 +918,7 @@
   let regs = null, regsBusy = false; // [{ id, name, a3, country, cont, p, img }]
   const gotReg = new Set((() => { try { return JSON.parse(localStorage.getItem(REGS)) || []; } catch { return []; } })());
   async function loadRegs() {
+    if (OGE.body) regs = regs || (OGE.body === 'moon' ? moonFlags() : []);
     if (regs || regsBusy) return;
     regsBusy = true;
     try {
@@ -972,6 +980,15 @@
       if (sub) g.drawImage(sub, q.x - w / 2, q.y + h / 2 + 2, w, sh); // the region's own flag under the national one
       if (d < 3e5) { g.fillStyle = '#fff'; g.textAlign = 'center'; g.font = '600 11px sans-serif'; g.fillText(r.name, q.x, q.y + h / 2 + (sub ? sh + 2 : 0) + 12); }
       g.restore();
+    }
+    if (OGE.body === 'moon') { // no minimap here: an arrow and the distance to the nearest flag still to find
+      let best = null, bd = Infinity;
+      for (const r of regs) { if (gotReg.has(r.id)) continue; const d = C.Cartesian3.distance(r.p, cam); if (d < bd) { bd = d; best = r; } }
+      if (best) {
+        const la = rad(best.lat), dl = rad(best.lon) - s.lon, brg = Math.atan2(Math.sin(dl) * Math.cos(la), Math.cos(s.lat) * Math.sin(la) - Math.sin(s.lat) * Math.cos(la) * Math.cos(dl)), x = hud.clientWidth / 2;
+        g.save(); g.fillStyle = '#ffd60a'; g.shadowColor = '#000'; g.shadowBlur = 4; g.textAlign = 'center'; g.font = '600 13px sans-serif'; g.fillText(`${best.name} · ${Math.round(bd / 3670)} km`, x, 124); // the globe is drawn Earth-sized: distances are scaled back to the Moon's
+        g.translate(x, 98); g.rotate(C.Math.negativePiToPi(brg - s.heading)); g.beginPath(); g.moveTo(0, -12); g.lineTo(8, 8); g.lineTo(0, 3); g.lineTo(-8, 8); g.closePath(); g.fill(); g.restore();
+      }
     }
   }
 
@@ -1211,6 +1228,7 @@
   let advOthers = null, advAllow = null; // [{ f, box }] the countries the adventure stage forbids
   let adv = null, advShape = null, graceT = 0, liveT = 0;
   async function liveEnemies() {
+    if (OGE.body) { liveT = Infinity; return; }
     liveT = performance.now() + (window.__TAURI__ ? 15000 : 90000); // asked every 15 s (the web feed has a small daily quota: every 90 s)
     try {
       const list = (await OGE.livePlanes(C.Math.toDegrees(s.lon), C.Math.toDegrees(s.lat), 120)).slice(0, 6);
@@ -2158,6 +2176,7 @@
     if (DIFF[v.diff]) { diff = v.diff; localStorage.setItem('oge.diff', diff); }
     if (SHIPS[v.model]) localStorage.setItem('oge.shipModel', v.model);
     if (ROUTES[v.cont]) { advCont = v.cont; localStorage.setItem('oge.advCont', advCont); }
+    if (OGE.body && /^adventure|^race/.test(v.mode)) { OGE.toast(T('La aventura y las carreras son de la Tierra: aquí, partida libre.')); v.mode = 'arcade'; }
     if (v.mode === 'adventure0') { localStorage.setItem(advKey(), '0'); adventure(0); } else if (v.mode === 'adventure') adventure(); else if (v.mode === 'race') raceMode(); else quickShip(v.mode);
   };
   OGE.flight = { start, stop, maneuver, state: () => s, flying: () => on, game: () => ({ score, coins, objs, hp, bombs, incoming, shields, regs, tut: tut && tut.i, p2, remote }) };
