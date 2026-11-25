@@ -474,6 +474,13 @@
     if (coins < 15) return OGE.toast(`${T('Una bomba cuesta 15 monedas: tienes')} ${coins}.`);
     coins -= 15; bombs++; sfx('bombGet'); OGE.toast(T('Bomba comprada por 15 monedas.'));
   }
+  function buyRockShield() { // the autopilot's own shield, bought back a layer at a time: dearer than the ordinary one
+    if (!on || !arcade || paused) return;
+    if (!auto) return OGE.toast(T('El escudo antiasteroides es del piloto automático.'));
+    if (auto.shield >= 3) return OGE.toast(T('El escudo antiasteroides está entero.'));
+    if (coins < 20) return OGE.toast(`${T('Una capa del escudo antiasteroides cuesta 20 monedas: tienes')} ${coins}.`);
+    coins -= 20; auto.shield++; sfx('achieve'); OGE.toast(T('Capa del escudo antiasteroides comprada por 20 monedas.'));
+  }
   function buyShield() { // coins buy shields: 10 each, three at most
     if (!on || !arcade || paused) return;
     if (shields >= 3) return OGE.toast(T('Ya llevas los 3 escudos.'));
@@ -1468,20 +1475,22 @@
     paused = true; $('table').addEventListener('close', () => { paused = false; last = performance.now(); }, { once: true });
   };
   function showFlags() { syncRegs(); // the region flags collected: the stage's in the adventure, otherwise the totals per country
-    if (!regs) return OGE.toast(T('Las banderas aún se están cargando.'));
+    if (!regs) { loadRegs(); return OGE.toast(T('Las banderas aún se están cargando.')); } // asked for before they are in (or after a failed download): fetch them now
     menuPause();
     if (adv && !adv.final) {
       const mine = regs.filter((r) => r.a3 === adv.a3).sort((a, b) => a.name.localeCompare(b.name));
       return OGE.showTable(`${T('Banderas de')} ${adv.name}: ${mine.filter((r) => gotReg.has(r.id)).length}/${mine.length}`, [T('Región'), T('Estado')], mine.map((r) => [r.name, gotReg.has(r.id) ? T('recolectada') : T('pendiente')]));
     }
     const per = new Map();
-    for (const r of regs) { const e = per.get(r.country) || [0, 0]; e[1]++; if (gotReg.has(r.id)) e[0]++; per.set(r.country, e); }
-    const rows = [...per].filter(([, [n]]) => n).sort((a, b) => b[1][0] - a[1][0]).map(([c, [n, all]]) => [c, `${n}/${all}`]);
-    OGE.showTable(`${T('Banderas recolectadas')}: ${gotReg.size}/${regs.length}`, [T('País'), T('Banderas')], rows.length ? rows : [[T('Aún ninguna'), '']]);
+    for (const r of regs) { const e = per.get(r.country) || [0, 0, r.img && r.img.src]; e[1]++; if (gotReg.has(r.id)) e[0]++; per.set(r.country, e); }
+    // A button on each country puts its flag on the ship, the same on both sides ("Nave: estilo y colores" has the regions' own and a different one per side)
+    const pick = (c, u) => Object.assign(document.createElement('button'), { type: 'button', textContent: T('Elegir bandera'), onclick: () => { localStorage.setItem('oge.finFlag', u); localStorage.removeItem('oge.finFlagR'); OGE.toast(`${T('Bandera en la nave')}: ${c}.`); } });
+    const rows = [...per].filter(([, [n]]) => n).sort((a, b) => b[1][0] - a[1][0]).map(([c, [n, all, u]]) => [c, `${n}/${all}`, u ? pick(c, u) : '']);
+    OGE.showTable(`${T('Banderas recolectadas')}: ${gotReg.size}/${regs.length}`, [T('País'), T('Banderas'), T('Nave')], rows.length ? rows : [[T('Aún ninguna'), '', '']]);
   }
   OGE.showFlags = showFlags;
   function showArms() { // the coats of arms won from the bosses, one per capital
-    if (!caps || !flagMap) return OGE.toast(T('Los escudos aún se están cargando: abre el arcade primero.'));
+    if (!caps || !flagMap) { loadCaps(); if (caps) OGE.flags().then((m) => { flagMap = m; }).catch(() => {}); return OGE.toast(T('Los escudos aún se están cargando: prueba de nuevo en unos segundos.')); } // the same: asking for them starts or repeats the download
     menuPause();
     const mine = caps.filter((c) => got.has(capId(c))).sort((x, y) => x.name.localeCompare(y.name)), box = Object.assign(document.createElement('div'), { style: 'display:flex;flex-wrap:wrap;gap:14px;justify-content:center' });
     const btn = (text, fn) => Object.assign(document.createElement('button'), { type: 'button', textContent: T(text), onclick: fn, style: 'display:block;width:100%;margin-top:4px;font-size:11px' });
@@ -1659,7 +1668,7 @@
   const mixHex = (a, b, k) => '#' + [1, 3, 5].map((i) => Math.round(parseInt(a.slice(i, i + 2), 16) * (1 - k) + parseInt(b.slice(i, i + 2), 16) * k).toString(16).padStart(2, '0')).join('');
   const hex = (c, d) => (/^#[0-9a-f]{6}$/i.test(c || '') ? c : d), hull1 = () => hex(localStorage.getItem('oge.hull1'), '#ff7300'); // the pilot's hull: orange unless chosen
   const shipCol = (sk, hl) => { const h = hex(hl, '#c9cfd8'); return { h, d: mixHex(h, '#10141c', 0.5), s: mixHex(hex(sk, '#3fa9ff'), '#565d6a', 0.3), w: '#c2901c', g: '#1b3a57', e: '#ffb300' }; }; // painted metal: the wing colour, a little worn, and the hull colour with its shaded side
-  const insignia = (M, onHull) => { // where an air force paints its roundel: on top of each wing and on each side of the fuselage. These 'i' faces are drawn only when the pilot wears an image
+  const insignia = (M, onHull) => { // where an air force paints its roundel: on top of each wing (the sides of the fuselage carry the flag instead). These 'i' faces are drawn only when the pilot wears an image
     const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]], cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]], dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2], unit = (a) => { const l = Math.hypot(...a) || 1; return a.map((x) => x / l); };
     const quads = M.F.map(([idx, c], fi) => { if (idx.length !== 4) return null; const P = idx.map((k) => M.V[k]), nn = cross(sub(P[1], P[0]), sub(P[2], P[0])); return { fi, c, P, n: unit(nn), area: Math.hypot(...nn), mid: [0, 1, 2].map((k) => (P[0][k] + P[1][k] + P[2][k] + P[3][k]) / 4) }; }).filter(Boolean);
     const put = (q, n, up, k, len = 1, c = 'i', side = Math.sign(q.mid[0]), wid = 1) => { // c: 'i' insignia, 'j' tail flag; side: -1 left, 1 right; wid: wider than tall (a flag) // len: stretched along its top-to-bottom axis, for a face seen almost edge-on // a square lying on face q, its top towards up, read the right way round from the side n points to; k times the room to the nearest edge
@@ -1670,12 +1679,11 @@
     };
     // The tail flag ('j' faces): on each fin, that is, the biggest wing or accent plate standing more upright than flat on that side; a single middle fin carries one on each face; a ship without fins wears it on the sides of the hull.
     const plates = M.F.map(([idx, c], fi) => { const P = idx.map((k) => M.V[k]), nn = cross(sub(P[1], P[0]), sub(P[2], P[0])); return { fi, c, P, n: unit(nn), area: Math.hypot(...nn) / (P.length === 3 ? 2 : 1), mid: [0, 1, 2].map((k) => P.reduce((s, p) => s + p[k], 0) / P.length) }; }).filter((q) => q.P.length <= 4 && 'sw'.includes(q.c) && Math.abs(q.n[0]) > 0.5).sort((x, y) => y.area - x.area);
-    // On the upper side of the hull beside each fin, where the camera behind the ship sees it: top towards the nose and stretched that way, since the plate is seen almost edge-on. The Falcon wears its roundel there, so its flag stays on the fins.
-    for (const e of [-1, 1]) { const top = !onHull && quads.filter((q) => q.c === 'h' && q.mid[0] * e > 0 && q.mid[1] > 0 && q.mid[2] < 0 && Math.abs(q.n[1]) > 0.3 && Math.abs(q.n[0]) > 0.3).sort((x, y) => y.area - x.area)[0]; if (top) { put(top, top.n[1] < 0 ? top.n.map((x) => -x) : top.n, [0, 0, 1], 1.3, 2.4, 'j', e, 1.3); continue; }
+    // On each side of the hull, where a second roundel used to be; the Falcon, whose roundel goes on the hull, keeps its flag on the fins.
+    for (const e of [-1, 1]) { const flank = !onHull && quads.filter((q) => 'hd'.includes(q.c) && Math.abs(q.n[0]) > 0.9 && q.mid[0] * e > 0).sort((x, y) => y.area - x.area)[0]; if (flank) { put(flank, [e, 0, 0], [0, 1, 0], 1.4, 1, 'j', e, 1.5); continue; }
       const fin = plates.find((q) => q.mid[0] * e > 1) || plates.find((q) => Math.abs(q.mid[0]) <= 1), side = fin || quads.filter((q) => 'hd'.includes(q.c) && Math.abs(q.n[0]) > 0.9 && q.mid[0] * e > 0).sort((x, y) => y.area - x.area)[0]; if (side) put(side, fin && Math.abs(fin.mid[0]) > 1 ? (fin.n[0] * e < 0 ? fin.n.map((x) => -x) : fin.n) : [e, 0, 0], [0, 1, 0], fin ? 0.55 : 1.1, 1, 'j', e, 1.5); } // lying on the fin itself, facing outwards
     if (onHull) { for (const e of [-1, 1]) { const q = quads.filter((q) => q.c === 'h' && q.mid[0] * e > 0 && Math.abs(q.n[1]) > 0.3 && Math.abs(q.n[0]) > 0.3).sort((x, y) => y.area - x.area)[0]; if (q) put(q, q.n[1] < 0 ? q.n.map((x) => -x) : q.n, [0, 0, 1], 1.6, 2.7); } return; } // the biggest plate on each upper side of the hull: a little proud of it and longer towards the nose, because the camera sees that plate almost edge-on
     for (const q of quads.filter((q) => q.c === 's').slice(0, 2)) put(q, q.n[1] < 0 ? q.n.map((x) => -x) : q.n, [0, 0, 1], 0.62); // the wings: the first mirrored pair, the image's top towards the nose
-    for (const e of [-1, 1]) { const q = quads.filter((q) => 'hd'.includes(q.c) && Math.abs(q.n[0]) > 0.9 && q.mid[0] * e > 0).sort((x, y) => y.area - x.area)[0]; if (q) put(q, [e, 0, 0], [0, 1, 0], 1.6); } // the biggest plate on each side of the hull (the square stands a little proud of it)
   };
   for (const k in SHIPS) insignia(SHIPS[k].mesh, k === 'halcon');
   const worn = {}; // the images the pilot wears, by the localStorage key that names each; only from Wikimedia
@@ -1909,11 +1917,11 @@
     const mid = toWin(scene, ax.P);
     if (mid && man && man.type === 'roll') { const k = (performance.now() - man.t0) / man.dur; g.save(); g.globalAlpha = 0.35; glow(g, mid.x, mid.y, px * 58, '#7fd4ff'); g.globalAlpha = 1; g.strokeStyle = 'rgba(225,245,255,.85)'; g.lineWidth = 3; g.lineCap = 'round';
       for (const n of [0, 1, 2]) { const a = k * 5 * Math.PI * man.dir + n * 2.09; g.beginPath(); g.arc(mid.x, mid.y, px * (50 + 7 * n), a, a + 1.2); g.stroke(); } g.restore(); }
-    if (mid && (shields || auto)) { // the shield around it: a crystal ball, clear in the middle, tinted and brighter towards its rim, with the light it catches (blue; green for the autopilot's)
+    if (mid && (shields || (auto && auto.shield))) { // the shield around it: a crystal ball, clear in the middle, tinted and brighter towards its rim, with the light it catches (blue; green for the autopilot's)
       const R = px * 62, rgb = shields ? '90,170,255' : '70,220,120', x = mid.x, y = mid.y; g.save();
       const body = g.createRadialGradient(x, y, R * 0.35, x, y, R); body.addColorStop(0, `rgba(${rgb},0)`); body.addColorStop(0.72, `rgba(${rgb},.07)`); body.addColorStop(0.93, `rgba(${rgb},.3)`); body.addColorStop(1, `rgba(${rgb},.6)`);
       g.fillStyle = body; g.beginPath(); g.arc(x, y, R, 0, 7); g.fill();
-      g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = 1 + shields * 0.6; g.stroke(); // a thin bright rim, thicker with more layers
+      g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = 1 + (shields || auto.shield) * 0.6; g.stroke(); // a thin bright rim, thicker with more layers
       const shine = g.createRadialGradient(x - R * 0.42, y - R * 0.48, 0, x - R * 0.42, y - R * 0.48, R * 0.5); shine.addColorStop(0, 'rgba(255,255,255,.6)'); shine.addColorStop(0.35, 'rgba(255,255,255,.18)'); shine.addColorStop(1, 'rgba(255,255,255,0)');
       g.fillStyle = shine; g.beginPath(); g.arc(x, y, R, 0, 7); g.fill(); // the highlight, up and to the left
       g.strokeStyle = 'rgba(255,255,255,.35)'; g.lineWidth = R * 0.035; g.lineCap = 'round'; g.beginPath(); g.arc(x, y, R * 0.86, 0.45, 1.25); g.stroke(); // light coming through, low on the other side
@@ -2311,7 +2319,7 @@
     if (arcade) drawArcade(w, h, text);
     if (A.ship && !OGE.body) moonHud(w, h);
     if (nav) text(`${T('PILOTO AUTOMÁTICO AL PUNTO DEL MINIMAPA')} · ${Math.round(nav.left / 1000).toLocaleString(OGE_LANG)} km`, cx, cy - r - 28, 14);
-    if (auto) text(`${T('PILOTO AUTOMÁTICO A')} ${T(PLACES[auto.to] || 'la superficie').toUpperCase()} · ${T('dispara o esquiva (A D W S) · escudo contra asteroides')}${auto.real || auto.to === 'down' ? '' : ' · ' + Math.max(0, Math.ceil((TRIP_MS - (performance.now() - auto.t0)) / 1000)) + ' s'}`, cx, cy - r - 28, 14);
+    if (auto) text(`${T('PILOTO AUTOMÁTICO A')} ${T(PLACES[auto.to] || 'la superficie').toUpperCase()} · ${T('dispara o esquiva (A D W S) · escudo contra asteroides')} ${auto.shield}/3${auto.real || auto.to === 'down' ? '' : ' · ' + Math.max(0, Math.ceil((TRIP_MS - (performance.now() - auto.t0)) / 1000)) + ' s'}`, cx, cy - r - 28, 14);
     const tp3 = tps() && !loading ? drawShip3D(w, h) : null; // while loading the chase camera has not pulled back yet // third person: the ship in 3D and its reticles
     if (p2 || remote) mpDraw(w, h, text);
     if (tut) drawTutorial(w);
@@ -2474,6 +2482,7 @@
     else if (k === 'v' && A.ship) bomb(); // V drops a bomb
     else if (k === 'g' && A.ship) buyShield(); // G buys a shield with coins
     else if (k === '5' && A.ship) buyBomb();
+    else if (k === '6' && A.ship) buyRockShield();
     else if (k === '+' || k === '=' || k === '-') OGE.minimap.zoom(k === '-' ? -1 : 1);
     else if (k === 'm') OGE.minimap.toggle();
     else if (k === 'n') nextTurn();
@@ -2559,7 +2568,7 @@
     if (auto) { endAuto(); return OGE.toast(T('Piloto automático apagado.')); }
     if (s.alt <= SPACE || landing) return OGE.toast(T('El piloto automático se enciende fuera de la atmósfera.'));
     man = null; incoming = []; objs = objs.filter((o) => o.kind === 'boss' || o.kind === 'crest');
-    auto = { to, real: to === 'moon' && !OGE.body, t0: performance.now(), ox: 0, oy: 0, next: performance.now() + 3500, warp0: warp }; setWarp(HYPER[HYPER.length - 1]);
+    auto = { to, real: to === 'moon' && !OGE.body, t0: performance.now(), ox: 0, oy: 0, next: performance.now() + 3500, warp0: warp, shield: 3 }; setWarp(HYPER[HYPER.length - 1]);
     OGE.toast(`${T('Piloto automático a')} ${T(PLACES[to] || 'la superficie')}: ${T('dispara o esquiva a los enemigos (A D W S); el escudo frena los asteroides. La misma tecla lo apaga.')}`);
   }
   function autoStep(dt) {
@@ -2585,7 +2594,7 @@
       return false;
     });
     const done = auto.to === 'down' ? s.alt < 4e4 : auto.real ? C.Cartesian3.distance(P1, moonPos()) < 2e7 : now - auto.t0 > TRIP_MS, dest = auto.to;
-    if (rocks) { broke = hit = now; sfx('shieldBreak'); } // the trip's shield takes every asteroid
+    if (rocks) { const took = Math.min(rocks, auto.shield); auto.shield -= took; hits += rocks - took; broke = hit = now; sfx('shieldBreak'); if (took && !auto.shield) OGE.toast(T('El escudo antiasteroides se rompió: la tecla 6 repone una capa por 20 monedas.')); } // each layer of the trip's shield takes one asteroid; without it they hurt as the enemies do
     if (hits) { if (hp - 15 * hits * DIFF[diff].hurt > 1) hurt(15 * hits); else hit = now; } // enemies hurt, but the trip is never the end of the ship
     if (done && on && !paused) { endAuto(); if (dest === 'down') { s.pitch = s.roll = 0; s.v = Math.min(s.v, A.v0 || 600); OGE.toast(T('De vuelta en la atmósfera.')); } else arrive(dest); } // down: levelled out at 40 km, the flight goes on
   }
@@ -2657,7 +2666,7 @@
   for (const b of document.querySelectorAll('#flyActs button')) b.addEventListener('pointerdown', (e) => { e.preventDefault(); const key = b.dataset.key, up = () => document.dispatchEvent(new KeyboardEvent('keyup', { key })); document.dispatchEvent(new KeyboardEvent('keydown', { key })); if (key === 'b') { b.addEventListener('pointerup', up, { once: true }); b.addEventListener('pointercancel', up, { once: true }); } else setTimeout(up, 80); }); // the fire button can be held to charge // the same as their keys
   if (!matchMedia('(pointer: coarse)').matches) { // with a keyboard the key buttons are not needed: only Controls and Scores stay at hand
     $('flyBtns').classList.add('keyboard');
-    $('flyKeys').append(Object.assign(document.createElement('li'), { className: 'keyBtns' })); $('flyKeys').lastChild.append($('flyScores'), $('flyFlags'), $('flyArms'), $('flyColors'), $('flyMp'), $('flyReset'), $('flyShip'), $('flySun'), $('flyCrt'), $('flyThird'), Object.assign(document.createElement('button'), { type: 'button', textContent: T('Comprar escudo: 10 monedas (G)'), onclick: () => { if (pad.menu) padMenu(false); buyShield(); } }), Object.assign(document.createElement('button'), { type: 'button', textContent: T('Comprar bomba: 15 monedas (5)'), onclick: () => { if (pad.menu) padMenu(false); buyBomb(); } }),
+    $('flyKeys').append(Object.assign(document.createElement('li'), { className: 'keyBtns' })); $('flyKeys').lastChild.append($('flyScores'), $('flyFlags'), $('flyArms'), $('flyColors'), $('flyMp'), $('flyReset'), $('flyShip'), $('flySun'), $('flyCrt'), $('flyThird'), Object.assign(document.createElement('button'), { type: 'button', textContent: T('Comprar escudo: 10 monedas (G)'), onclick: () => { if (pad.menu) padMenu(false); buyShield(); } }), Object.assign(document.createElement('button'), { type: 'button', textContent: T('Comprar bomba: 15 monedas (5)'), onclick: () => { if (pad.menu) padMenu(false); buyBomb(); } }), Object.assign(document.createElement('button'), { type: 'button', textContent: T('Escudo antiasteroides: 20 monedas la capa (6)'), onclick: () => { if (pad.menu) padMenu(false); buyRockShield(); } }),
       ...[...DEST, 'down'].map((d) => Object.assign(document.createElement('button'), { type: 'button', className: 'autoDest', textContent: `${T('Piloto automático')} → ${T(PLACES[d] || 'la superficie')}`, onclick: () => { if (pad.menu) padMenu(false); autopilot(d); } }))); // the autopilot can be chosen here as well as with 1, 2, 3 $('flyKeys').style.right = $('flyRules').style.right = '12px'; // no column of buttons beside them // the few actions without a key live in the K panel
   } else { $('flyBtns').classList.add('touch'); document.body.classList.add('touchdev'); } // on a phone the stick steers (left half of the screen): the right column keeps the touch actions and the speed
   $('flyThird').onclick = () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'y' }));
