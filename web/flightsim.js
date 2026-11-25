@@ -2389,6 +2389,9 @@
   const syncQuest = () => { $('flyQuest').textContent = (quest() ? '🚩 ' : '🚫 ') + T('Colección') + ' (J)'; $('flyQuest').classList.toggle('active', quest()); };
   $('flyQuest').onclick = () => { localStorage.setItem('oge.quest', quest() ? '0' : '1'); syncQuest(); OGE.toast(quest() ? 'Colección activada.' : 'Colección desactivada: vuelo libre por las vistas.'); };
   syncQuest();
+  const syncSun = () => { $('flySun').textContent = T('Día y noche') + ': ' + T($('layerSun').checked ? 'sí' : 'no'); $('flySun').classList.toggle('active', $('layerSun').checked); }; // the same switch as the layer "Luz del sol", at hand during the flight
+  $('flySun').onclick = () => $('layerSun').click();
+  $('layerSun').addEventListener('change', syncSun); syncSun(); $('flySun').hidden = !!OGE.body; // the other worlds are drawn without sunlight
   // OpenStarshipEarth: drop straight down to the ground and lift off again
   $('flyLand').onclick = () => { if (!on || !A.ship) return OGE.toast('Aterrizar y despegar son de la OpenStarshipEarth.'); landing = landing ? null : 'down'; sfx(landing ? 'land' : 'liftoff'); };
   $('flyLift').onclick = () => { if (!on || !A.ship) return; landing = 'up'; sfx('liftoff'); };
