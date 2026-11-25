@@ -109,7 +109,8 @@
     else if (best && best.kind === 'aa') { objs.splice(objs.indexOf(best), 1); gain(pts(250)); booms.push({ p: best.p, t: performance.now() }); sfx('down'); }
     else if (best && best.kind === 'airliner' && (best.hp -= power) > 0) { booms.push({ p: best.p, t: performance.now() }); sfx('shieldBreak'); }
     else if (best && best.kind === 'airliner') { objs.splice(objs.indexOf(best), 1); gain(pts(300)); booms.push({ p: best.p, t: performance.now() }); sfx('down'); }
-    else if (best) { objs.splice(objs.indexOf(best), 1); gain(pts(100)); booms.push({ p: best.p, t: performance.now() }); sfx('down'); }
+    else if (best) { objs.splice(objs.indexOf(best), 1); gain(pts(100)); booms.push({ p: best.p, t: performance.now() }); sfx('down');
+      if (best.kind === 'wall' && !best.rock) { const kind = ['coin', 'coin', 'coin', 'heart', 'shield', 'bomb'][Math.floor(Math.random() * 6)]; objs.push({ kind, p: best.p, size: (best.size / SIZE.wall) * SIZE[kind] * 1.5, look: 0, next: performance.now() + 4000 }); } } // a broken crate leaves something behind, at random: mostly coins
     if (power > 1 && best) { const c = best.p, t1 = performance.now(); objs = objs.filter((o) => { if (o.kind !== 'enemy' || o === best || C.Cartesian3.distance(o.p, c) > 1500) return true; gain(pts(100)); booms.push({ p: o.p, t: t1 }); return false; }); } // the blast takes the craft around its target too
     credit = 1;
   }
@@ -373,6 +374,7 @@
     snake: { name: 'Serpiente', hp: 18, every: 2200, shots: 1, color: '#7CFC00', sway: 2600 },
     face: { name: 'Cara gigante', hp: 45, every: 2600, shots: 3, color: '#40e0ff', sway: 0 },
     dragon: { name: 'Dragón', hp: 40, every: 1100, shots: 1, color: '#ff9f0a', sway: 1800 },
+    raptor: { name: 'Ave rapaz', hp: 36, every: 1300, shots: 2, color: '#e9edf2', sway: 2400 }, // wheels wide around its post and looses feathers in pairs
     crystal: { name: 'Coloso de cristal', hp: 24, every: 1800, shots: 2, color: '#9fe8ff', sway: 0, shield: true }, // only hurt while its shield is open
     hive: { name: 'Colmena', hp: 20, every: 2600, shots: 1, color: '#ffd23a', sway: 900, spawns: true }, // launches escorts; its core is protected while two or more fly
     hand: { name: 'Mano gigante', hp: 16, every: 2200, shots: 1, color: '#ffcc99', sway: 0, grab: true }, // chases the ship and grabs it: a barrel roll (R) breaks free
@@ -525,7 +527,7 @@
     if (o.fin) { localStorage.setItem('oge.adventure.final.' + advCont, '1'); gain(pts(4000)); OGE.toast(`${T(o.name)} ${T('ha caído.')} ${T('¡Completaste la aventura de')} ${T(advCont)}!`); sfx('achieve'); adv = null; }
     if (o.cap) { // the practice boss of the tutorial guards no capital
       const c = o.cap; dropCrest(c); owe(c, true);
-      OGE.toast(`${T('Jefe derrotado: recoge el escudo de')} ${c.name}.`);
+      OGE.toast(`${T('Jefe derrotado: recoge el escudo de')} ${landOf(c)}.`);
     }
   }
   function bomb() { // clears every enemy and shot in range
@@ -750,7 +752,7 @@
         g.shadowColor = '#ffe27a'; g.shadowBlur = 22;
         if (im && im.complete && im.naturalWidth) g.drawImage(im, q.x - R, q.y - (R * im.naturalHeight) / im.naturalWidth, R * 2, (R * 2 * im.naturalHeight) / im.naturalWidth);
         else { g.fillStyle = '#ffd23a'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = R * 1.6 + 'px sans-serif'; g.fillText('★', q.x, q.y); }
-        g.shadowBlur = 0; g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'alphabetic'; g.font = '600 12px sans-serif'; g.fillText(T('Recoge el escudo de') + ' ' + o.cap.name, q.x, q.y + R + 16);
+        g.shadowBlur = 0; g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'alphabetic'; g.font = '600 12px sans-serif'; g.fillText(T('Recoge el escudo de') + ' ' + landOf(o.cap), q.x, q.y + R + 16);
       }
       else if (o.kind === 'boss') {
         const R = Math.max(14, pr);
@@ -883,6 +885,7 @@
   const CONT = { Africa: 'África', Asia: 'Asia', Europe: 'Europa', 'North America': 'Norteamérica', 'South America': 'Sudamérica', Oceania: 'Oceanía', Antarctica: 'Antártida' };
   let towns = [], flagMap = null; // big cities that are not capitals; country flags and coats of arms
   const usedTowns = new Set(); // life boosters already taken in this flight
+  const landOf = (c) => (flagMap && flagMap.get(c.a3) && flagMap.get(c.a3).name) || c.name; // the country a capital stands for (its own name until the countries are in)
   let caps = null, capsBusy = false; // [{ name, lon, lat, cont, p }]
   const got = new Set((() => { try { return JSON.parse(localStorage.getItem(CAPS)) || []; } catch { return []; } })()), capId = (c) => c.name + '|' + c.cont;
   const OWED = 'oge.crestsOwed', owed = new Set((() => { try { return JSON.parse(localStorage.getItem(OWED)) || []; } catch { return []; } })()); // capitals whose boss is beaten and whose coat of arms was never picked up
@@ -1347,7 +1350,7 @@
     'Sudeste asiático': ['MMR', 'THA', 'LAO', 'KHM', 'VNM', 'MYS', 'IDN', 'PHL'], 'Oceanía': ['AUS', 'NZL', 'PNG'],
     'Ultramar': ['GRL', 'FRO', 'BMU', 'PRI', 'ABW', 'CUW', 'CYM', 'NCL', 'PYF', 'GUM'] }; // territories of other countries, a campaign of their own
   // The final boss of each campaign: [name, boss kind, lon, lat]. A creature of the region's legends at a place of its own, played by one of the boss kinds above.
-  const FINALS = { 'Sudamérica': ['Amaru', 'snake', -72.545, -13.163, 1], 'Norteamérica': ['Ave Piasa', 'dragon', -90.19, 38.89, 2], 'Centroamérica': ['Camazotz', 'saucer', -89.623, 17.222, 3], 'Caribe': ['Lusca', 'beacon', -77.5, 24.4, 4],
+  const FINALS = { 'Sudamérica': ['Amaru', 'snake', -72.545, -13.163, 1], 'Norteamérica': ['Ave Piasa', 'raptor', -90.19, 38.89, 2], 'Centroamérica': ['Camazotz', 'saucer', -89.623, 17.222, 3], 'Caribe': ['Lusca', 'beacon', -77.5, 24.4, 4],
     'Europa': ['Medusa', 'face', 25.0, 38.4, 5], 'Magreb': ['Anteo', 'golem', -5.8, 35.78, 6], 'Sahel': ['Bida', 'snake', -7.97, 15.77, 7], 'África subsahariana': ['Mokele-mbembe', 'fortress', 17.15, 1.35, 8], 'África del Sur': ['Adamastor', 'face', 18.47, -34.36, 14],
     'Medio Oriente': ['Tiamat', 'dragon', 50.5, 27.5, 9], 'Asia central': ['Zhalmauyz Kempir', 'hive', 79.08, 43.35, 10], 'Asia del Sur': ['Makara', 'crystal', 88.0, 17.0, 13], 'Asia oriental': ['Yamata no Orochi', 'snake', 132.75, 35.4, 11],
     'Sudeste asiático': ['Bakunawa', 'saucer', 124.5, 11.5, 12], 'Oceanía': ['Bunyip', 'golem', 142.0, -34.2, 15], 'Ultramar': ['Kraken', 'hive', -8.0, 63.5, 16] };
@@ -1484,7 +1487,12 @@
     const per = new Map();
     for (const r of regs) { const e = per.get(r.country) || [0, 0, r.img && r.img.src]; e[1]++; if (gotReg.has(r.id)) e[0]++; per.set(r.country, e); }
     // A button on each country puts its flag on the ship, the same on both sides ("Nave: estilo y colores" has the regions' own and a different one per side)
-    const pick = (c, u) => Object.assign(document.createElement('button'), { type: 'button', textContent: T('Elegir bandera'), onclick: () => { localStorage.setItem('oge.finFlag', u); localStorage.removeItem('oge.finFlagR'); OGE.toast(`${T('Bandera en la nave')}: ${c}.`); } });
+    const pick = (c, u) => Object.assign(document.createElement('button'), { type: 'button', textContent: T('Elegir bandera'), onclick: async () => {
+      if (!subMap) try { subMap = await (await fetch('data/subflags.json')).json(); subAsked = true; } catch { /* only the national flag, then */ }
+      const own = regs.filter((r) => r.country === c && gotReg.has(r.id) && subMap && subMap[r.id]).map((r) => ['https://commons.wikimedia.org/wiki/Special:FilePath/' + encodeURIComponent(subMap[r.id]) + '?width=250', r.name]).sort((x, y) => x[1].localeCompare(y[1]));
+      let url = u; // with regions of its own collected, the pilot chooses between them and the national flag
+      if (own.length) { const v = await OGE.ask({ title: `${T('Bandera en la nave')}: ${c}`, ok: 'Elegir', fields: [{ id: 'f', label: 'Bandera nacional o de una región recolectada', type: 'select', value: u, options: [[u, 'Bandera nacional'], ...own] }] }); if (!v) return; url = v.f; }
+      localStorage.setItem('oge.finFlag', url); localStorage.removeItem('oge.finFlagR'); OGE.toast(`${T('Bandera en la nave')}: ${c}.`); } });
     const rows = [...per].filter(([, [n]]) => n).sort((a, b) => b[1][0] - a[1][0]).map(([c, [n, all, u]]) => [c, `${n}/${all}`, u ? pick(c, u) : '']);
     OGE.showTable(`${T('Banderas recolectadas')}: ${gotReg.size}/${regs.length}`, [T('País'), T('Banderas'), T('Nave')], rows.length ? rows : [[T('Aún ninguna'), '', '']]);
   }
@@ -1661,6 +1669,10 @@
       m.sym('s', [4, 1.5, 58], [50, -1, -34], [44, -1, -46], [7, 1, -44]); m.sym('w', [50, -1, -34], [44, -1, -46], [52, 9, -50]); m.sym('d', [14, -2.5, -10], [22, -2.5, -10], [22, -2.5, -48], [14, -2.5, -48]); }) },
     tridente: { name: 'Tridente', tip: [44, 0, 52], tail: -40, mesh: meshOf((m) => { m.hull(30, [[18, 7, 7, 6], [-6, 10, 10, 8], [-30, 9, 9, 7], [-40, 6, 6, 5]]); canopy(m, 22, -2, 7, 7, 5);
       m.sym('s', [9, 0, 10], [44, 0, 4], [44, 0, -28], [9, 0, -22]); m.sym('h', [40, 1.5, 4], [48, 1.5, 4], [46, 1.5, 52], [42, 1.5, 52]); m.sym('d', [40, -1.5, 4], [48, -1.5, 4], [46, -1.5, 52], [42, -1.5, 52]); m.sym('w', [48, -12, 2], [48, 12, 2], [48, 7, -30], [48, -7, -30]); }) },
+    // The Condor: broad straight wings ending in spread 'finger' feathers, and a fan for a tail
+    condor: { name: 'Cóndor', tip: [62, 4, 2], tail: -44, mesh: meshOf((m) => { m.hull(50, [[30, 5, 5, 3.5], [4, 9, 8.5, 6], [-26, 8, 7.5, 5], [-42, 5, 5, 3.5]]); canopy(m, 30, 6, 5.5, 8, 4.5);
+      m.sym('s', [8, 2, 14], [62, 4, 2], [62, 4, -18], [8, 1, -24]); m.sym('w', [62, 4, 2], [75, 8, -3], [62, 4, -4]); m.sym('w', [62, 4, -6], [78, 7, -12], [62, 4, -11]); m.sym('w', [62, 4, -13], [74, 6, -22], [62, 4, -18]);
+      m.sym('s', [3, 3, -34], [20, 3, -58], [3, 3, -54]); m.sym('w', [5, 4, 30], [16, 3, 22], [5, 4, 18]); }) },
     manta: { name: 'Manta', tip: [58, 3, -8], tail: -38, mesh: meshOf((m) => { m.hull(40, [[22, 6, 5, 3], [-8, 11, 7, 4], [-36, 8, 5, 3]]); canopy(m, 26, 2, 4.5, 6.5, 5);
       m.sym('s', [8, 5, 26], [40, -1, 2], [58, -7, -30], [9, 5, -34]); m.sym('w', [40, -1, 2], [60, -4, 8], [58, -7, -30]); m.sym('s', [10, 6, -18], [10, 6, -36], [19, 22, -44]); }) },
   };
@@ -1679,8 +1691,11 @@
     };
     // The tail flag ('j' faces): on each fin, that is, the biggest wing or accent plate standing more upright than flat on that side; a single middle fin carries one on each face; a ship without fins wears it on the sides of the hull.
     const plates = M.F.map(([idx, c], fi) => { const P = idx.map((k) => M.V[k]), nn = cross(sub(P[1], P[0]), sub(P[2], P[0])); return { fi, c, P, n: unit(nn), area: Math.hypot(...nn) / (P.length === 3 ? 2 : 1), mid: [0, 1, 2].map((k) => P.reduce((s, p) => s + p[k], 0) / P.length) }; }).filter((q) => q.P.length <= 4 && 'sw'.includes(q.c) && Math.abs(q.n[0]) > 0.5).sort((x, y) => y.area - x.area);
-    // On each side of the hull, where a second roundel used to be; the Falcon, whose roundel goes on the hull, keeps its flag on the fins.
-    for (const e of [-1, 1]) { const flank = !onHull && quads.filter((q) => 'hd'.includes(q.c) && Math.abs(q.n[0]) > 0.9 && q.mid[0] * e > 0).sort((x, y) => y.area - x.area)[0]; if (flank) { put(flank, [e, 0, 0], [0, 1, 0], 1.4, 1, 'j', e, 1.5); continue; }
+    // On the upper plate of the hull, on each side, where the camera behind the ship sees it: top towards the nose and stretched that way, since the plate is seen almost edge-on.
+    // The Falcon wears its roundel on the biggest of those plates: its flag takes the next one towards the tail.
+    for (const e of [-1, 1]) { const ups = quads.filter((q) => q.c === 'h' && q.mid[0] * e > 0 && Math.abs(q.n[1]) > 0.3 && Math.abs(q.n[0]) > 0.3 && q.mid[1] > 0), rnd = onHull && quads.filter((q) => q.c === 'h' && q.mid[0] * e > 0 && Math.abs(q.n[1]) > 0.3 && Math.abs(q.n[0]) > 0.3).sort((x, y) => y.area - x.area)[0];
+      const top = rnd ? ups.filter((q) => q.mid[2] < rnd.mid[2] - 1).sort((x, y) => y.mid[2] - x.mid[2])[0] : ups.filter((q) => q.mid[2] < 0).sort((x, y) => y.area - x.area)[0];
+      if (top) { put(top, top.n[1] < 0 ? top.n.map((x) => -x) : top.n, [0, 0, 1], 1.3, 2.4, 'j', e, 1.3); continue; }
       const fin = plates.find((q) => q.mid[0] * e > 1) || plates.find((q) => Math.abs(q.mid[0]) <= 1), side = fin || quads.filter((q) => 'hd'.includes(q.c) && Math.abs(q.n[0]) > 0.9 && q.mid[0] * e > 0).sort((x, y) => y.area - x.area)[0]; if (side) put(side, fin && Math.abs(fin.mid[0]) > 1 ? (fin.n[0] * e < 0 ? fin.n.map((x) => -x) : fin.n) : [e, 0, 0], [0, 1, 0], fin ? 0.55 : 1.1, 1, 'j', e, 1.5); } // lying on the fin itself, facing outwards
     if (onHull) { for (const e of [-1, 1]) { const q = quads.filter((q) => q.c === 'h' && q.mid[0] * e > 0 && Math.abs(q.n[1]) > 0.3 && Math.abs(q.n[0]) > 0.3).sort((x, y) => y.area - x.area)[0]; if (q) put(q, q.n[1] < 0 ? q.n.map((x) => -x) : q.n, [0, 0, 1], 1.6, 2.7); } return; } // the biggest plate on each upper side of the hull: a little proud of it and longer towards the nose, because the camera sees that plate almost edge-on
     for (const q of quads.filter((q) => q.c === 's').slice(0, 2)) put(q, q.n[1] < 0 ? q.n.map((x) => -x) : q.n, [0, 0, 1], 0.62); // the wings: the first mirrored pair, the image's top towards the nose
@@ -1760,6 +1775,16 @@
     m.poly('m', ...Array.from({ length: 6 }, (_, k) => [10 * Math.cos((k * Math.PI) / 3), 10 * Math.sin((k * Math.PI) / 3), 46.5])); // the reactor
     for (const e of [-1, 1]) m.poly('w', [e * gap * 13, -11, 47.5], [e * (13 + gap * 13), -11, 47.5], [e * (13 + gap * 13), 11, 47.5], [e * gap * 13, 11, 47.5]); // the doors
     [-1, 0, 1].forEach((x, n) => m.poly('abc'[n], [x * 5 - 1.8, 43, -11.5], [x * 5 + 1.8, 43, -11.5], [x * 5 + 1.8, 46, -11.5], [x * 5 - 1.8, 46, -11.5])); // a light for each phase it has left
+  });
+  const raptorMesh = (t) => meshOf((m) => { const f = Math.sin(t * 4); // a giant bird of prey seen from the front: beating wings with pale feather tips, a white ruff, a red crest, hooked beak, talons and a fan of long tail feathers
+    for (let k = -2; k <= 2; k++) m.poly(k % 2 ? 'w' : 'd', [k * 5 - 3, -22, -6], [k * 5 + 3, -22, -6], [k * 13 + 4, -70 + Math.abs(k) * 6 + f * 2, -12], [k * 13 - 4, -72 + Math.abs(k) * 6 + f * 2, -12]); // the tail
+    for (const e of [-1, 1]) { const el = [e * 46, 12 + f * 16, -3], tip = [e * 86, 8 + f * 36, -8];
+      m.poly('s', [e * 10, 12, 0], el, [el[0], el[1] - 24, -6], [e * 10, -10, -2]); m.poly('d', el, tip, [tip[0] - e * 8, tip[1] - 22, -10], [el[0], el[1] - 24, -6]); // arm and hand of the wing
+      for (let k = 0; k < 6; k++) { const u = k / 5, x = e * (14 + u * 66), y = (u < 0.5 ? -10 + (el[1] - 14) * u * 2 : el[1] - 24 + (tip[1] - 22 - el[1] + 24) * (u - 0.5) * 2); m.poly('w', [x - e * 5, y + 1, -6], [x + e * 5, y + 1, -6], [x + e * 2, y - 13, -8]); } // the feathers along its trailing edge
+      m.poly('e', [e * 5, -24, 5], [e * 11, -37, 12], [e * 3, -35, 9]); } // talons
+    ballAt(m, 0, -12, -3, 13, 'sd'); ballAt(m, 0, 2, 0, 16, 'hs'); ballAt(m, 0, 15, 3, 11, 'ww'); ballAt(m, 0, 25, 6, 9, 'hs'); // belly, chest, ruff and head
+    for (const k of [-1, 0, 1]) m.poly('c', [k * 3 - 2, 32, 5], [k * 3 + 2, 32, 5], [k * 6, 45 - Math.abs(k) * 4, 0]); // the crest
+    m.poly('e', [-4, 26, 14], [4, 26, 14], [0, 18, 27]); m.poly('e', [-4, 26, 14], [0, 18, 27], [0, 21, 13]); m.poly('e', [4, 26, 14], [0, 21, 13], [0, 18, 27]); // the hooked beak
   });
   const golemMesh = (t) => meshOf((m) => { const sw = Math.sin(t * 2) * 6; // a stone giant: its arms swing as it hovers
     boxM(m, -24, -20, -12, 24, 26, 12); boxM(m, -13, 28, -10, 13, 50, 10); // torso and head
@@ -1900,6 +1925,7 @@
       drawMesh(BEACON, foeAxes(o.p, t * (o.rage ? 3 : 0.6)), { h: '#eef0f4', s: '#c9ccd4', d: '#5c6170', w: '#c0392b', e: o.rage ? '#ff3b30' : '#fff2a8' }, white, sc * 0.9, null);
     } else if (k === 'snake') drawMesh(snakeMesh(t), foeAxes(o.p, 0.45), { h: '#7ddc6f', s: '#3f9a45', d: '#1f5c2a', w: '#ff1744', e: '#ffeb3b' }, white, sc * 0.85, null);
     else if (k === 'dragon') drawMesh(dragonMesh(t, now - (o.spat || 0) < 400), foeAxes(o.p, 0.4), { h: '#ff8a3c', s: '#d6451f', d: '#7a1f12', w: '#ffd23a', e: '#fff07a' }, white, sc * 0.95, null);
+    else if (k === 'raptor') drawMesh(raptorMesh(t), foeAxes(o.p, Math.sin(t * 0.7) * 0.35), { h: '#4a4f5c', s: '#2f333d', d: '#1a1c22', w: '#e9edf2', e: '#ffc21a', c: '#e0303a' }, white, sc, null);
     else if (k === 'saucer') drawMesh(SAUCER, foeAxes(o.p, t * 1.5), { h: '#e6e9f0', s: '#aeb5c4', d: '#565d70', g: '#7fdcff', e: col }, white, sc * 0.9, col);
     else if (k === 'golem') drawMesh(golemMesh(t), foeAxes(o.p, Math.sin(t * 0.8) * 0.5), { h: '#b9aa94', s: '#8c7d69', d: '#544a3d', e: col }, white, sc * 0.9, null);
     else if (k === 'dread') { const lit = (n) => (n <= 3 - (o.stage || 1) ? '#39ff14' : '#1c2a1c'); drawMesh(dreadMesh(open ? 1 : 0), foeAxes(o.p, Math.sin(t * 0.6) * 0.45), { h: '#aeb6c4', s: '#7c8596', d: '#474e5c', e: '#6ee7ff', w: '#59616f', m: open ? (Math.sin(now / 60) > 0 ? '#ff2d55' : '#ffd0d8') : '#141820', a: lit(0), b: lit(1), c: lit(2) }, white, sc, null); }
