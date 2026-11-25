@@ -154,10 +154,11 @@
   const TH = window.OGE_THEME, VOICE = { lead: ['sawtooth', 0.045], harmony: ['square', 0.018], bass: ['triangle', 0.09] };
   // [modulator ratio, modulation index at the attack, index it decays to, decay seconds, volume, carrier detune in cents]
   const FM = { lead: [1, 3.2, 1.1, 0.25, 0.07, 4], harmony: [2, 1.6, 0.4, 0.4, 0.028, -6], bass: [1, 4.5, 1.4, 0.12, 0.11, 0] };
+  const MUSIC = 0.55; // how loud the music plays: under the sound effects
   let musicBus = null; // music → (dry + echo) → master
   function bus() {
     if (musicBus) return musicBus;
-    musicBus = audio.createGain();
+    musicBus = audio.createGain(); musicBus.gain.value = MUSIC;
     const echo = audio.createDelay(1), fb = audio.createGain(), lp = audio.createBiquadFilter(), wet = audio.createGain();
     echo.delayTime.value = 0.19; fb.gain.value = 0.32; lp.type = 'lowpass'; lp.frequency.value = 2800; wet.gain.value = 0.28;
     musicBus.connect(master); musicBus.connect(echo); echo.connect(lp).connect(fb).connect(echo); lp.connect(wet).connect(master); musicBus.wet = wet;
@@ -189,14 +190,14 @@
       car.frequency.setValueAtTime(f0, t); car.frequency.exponentialRampToValueAtTime(f1, t + dur * 0.6);
       mod.frequency.setValueAtTime(f0 * ratio, t); mod.frequency.exponentialRampToValueAtTime(f1 * ratio, t + dur * 0.6);
       depth.gain.setValueAtTime(f0 * idx, t); depth.gain.exponentialRampToValueAtTime(1, t + dur * 0.45);
-      v.gain.setValueAtTime(vol, t); v.gain.exponentialRampToValueAtTime(0.001, end);
+      v.gain.setValueAtTime(vol * MUSIC, t); v.gain.exponentialRampToValueAtTime(0.001, end);
       mod.connect(depth).connect(car.frequency); car.connect(v).connect(master); car.start(t); mod.start(t); car.stop(end + 0.01); mod.stop(end + 0.01);
     };
     if (!noise) { // PSG noise: one of two levels held for several samples, so it is gritty and a little pitched
       noise = audio.createBuffer(1, audio.sampleRate * 0.5, audio.sampleRate); const ch = noise.getChannelData(0), hold = Math.max(1, Math.round(audio.sampleRate / 7000)); let lv = 1;
       for (let i = 0; i < ch.length; i++) { if (i % hold === 0) lv = Math.random() < 0.5 ? -1 : 1; ch[i] = lv; }
     }
-    const hiss = (rate, len, vol, hp) => { const src = audio.createBufferSource(), f = audio.createBiquadFilter(), v = audio.createGain(); src.buffer = noise; src.playbackRate.value = rate; f.type = 'highpass'; f.frequency.value = hp; v.gain.setValueAtTime(vol, t); v.gain.exponentialRampToValueAtTime(0.001, t + len); src.connect(f).connect(v).connect(master); src.start(t); src.stop(t + len); };
+    const hiss = (rate, len, vol, hp) => { const src = audio.createBufferSource(), f = audio.createBiquadFilter(), v = audio.createGain(); src.buffer = noise; src.playbackRate.value = rate; f.type = 'highpass'; f.frequency.value = hp; v.gain.setValueAtTime(vol * MUSIC, t); v.gain.exponentialRampToValueAtTime(0.001, t + len); src.connect(f).connect(v).connect(master); src.start(t); src.stop(t + len); };
     if (midi === 35 || midi === 36) return fm(190, 44, 0.5, 7, 0.17, 0.36); // kick: a deep thud with a hard FM click in front
     if (midi === 38 || midi === 40) { fm(250, 140, 2.37, 10, 0.13, 0.15); return hiss(0.7, 0.13, 0.11, 1100); } // snare: an inharmonic FM crack, PSG noise over it
     if (midi === 37 || midi === 39) return fm(520, 400, 3.3, 6, 0.05, 0.12); // rim shot, clap: short and bright
@@ -221,11 +222,12 @@
     }
     th.bass = bass; th.harmony = notes.sort((x, y) => x[0] - y[0]).flat(); th.drums = drums;
   }
-  // The atlas plays a quiet piece of its own on each world (the sky has its own switch, in sky.js); a button switches it off and the choice is kept. Browsers only let sound start after a click.
-  const atlasTheme = () => (OGE.body === 'moon' ? window.OGE_ATLAS_MOON_THEME : OGE.body === 'mars' ? window.OGE_ATLAS_MARS_THEME : OGE.body === 'sky' ? null : window.OGE_ATLAS_THEME), wantsAtlas = () => localStorage.getItem('oge.atlasMusic') !== '0';
-  function atlasMusic() { const th = atlasTheme(), w = wantsAtlas(); $('musicBtn').textContent = T(w ? 'Música: sí' : 'Música: no'); if (th && !(on && arcade) && w !== (tune === th)) music(w, th); }
+  // The atlas plays a quiet piece of its own on each world and on the sky while the note button under the zoom bar is on (off unless chosen; the choice is kept). Browsers only let sound start after a click.
+  const atlasTheme = () => (OGE.body === 'moon' ? window.OGE_ATLAS_MOON_THEME : OGE.body === 'mars' ? window.OGE_ATLAS_MARS_THEME : OGE.body === 'sky' ? window.OGE_SKY_THEME : window.OGE_ATLAS_THEME), wantsAtlas = () => localStorage.getItem('oge.atlasMusic') === '1';
+  const paintMusic = () => { const b = $('musicBtn'), w = wantsAtlas(); b.style.opacity = w ? 1 : 0.45; b.title = T(w ? 'Música del atlas: sí' : 'Música del atlas: no'); };
+  function atlasMusic() { const th = atlasTheme(), w = wantsAtlas(); paintMusic(); if (th && !(on && arcade) && w !== (tune === th)) music(w, th); }
   $('musicBtn').onclick = () => { const th = atlasTheme(); if (!(wantsAtlas() && th && !(on && arcade) && tune !== th)) localStorage.setItem('oge.atlasMusic', wantsAtlas() ? '0' : '1'); atlasMusic(); }; // wanted but still silent (no click yet): the click only starts it
-  $('musicBtn').hidden = OGE.body === 'sky'; $('musicBtn').textContent = T(wantsAtlas() ? 'Música: sí' : 'Música: no');
+  paintMusic();
   addEventListener('pointerdown', (e) => { if (e.target.id !== 'musicBtn') atlasMusic(); });
   OGE.music = (play, th) => music(play, th); // the sky view of the atlas plays its own piece
   let tune = null; // the theme playing now: Main Theme or Boss Fight OpenStarshipEarth
