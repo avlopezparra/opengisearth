@@ -81,7 +81,8 @@
     const ground = scene.globe.pick(ray, scene);
     shots.push({ t, x: ax, y: ay, who, big: power > 1 });
     if (arcade) versus(who, ax, ay, ray);
-    if (ground && C.Cartesian3.distance(ground, viewer.camera.positionWC) < 4e5) {
+    if (ground && arcade) booms.push({ p: ground, t: performance.now(), small: true });
+    else if (ground && C.Cartesian3.distance(ground, viewer.camera.positionWC) < 4e5) {
       const e = viewer.entities.add({ position: ground, point: { pixelSize: 16, color: C.Color.ORANGE, outlineColor: C.Color.YELLOW, outlineWidth: 4, disableDepthTestDistance: Number.POSITIVE_INFINITY } });
       e._tmp = true; // not a user feature: never saved
       setTimeout(() => viewer.entities.remove(e), 450);
@@ -826,17 +827,22 @@
       g.restore();
     }
     booms = booms.filter((b) => now - b.t < 550);
-    for (const b of booms) { // explosion where an enemy was hit
-      const q = toWin(scene, b.p), k = (now - b.t) / 550;
-      if (!q) continue;
-      const R = 10 + 44 * k, fade = 1 - k, seed = b.t % 97; g.save();
-      if (k > 0.35) { g.globalAlpha = 0.35 * fade; g.fillStyle = '#2b2622'; for (let n = 0; n < 4; n++) { const a = seed + n * 1.7, r0 = R * 0.5 * k; g.beginPath(); g.arc(q.x + Math.cos(a) * r0, q.y + Math.sin(a) * r0 - R * 0.3 * k, R * (0.42 + 0.1 * n), 0, 7); g.fill(); } g.globalAlpha = 1; } // the smoke it leaves, drifting up
+    for (const b of booms) { // an explosion: balls of fire rising, a shock ring on the ground, sparks that fall back, smoke. small: a shot that met the ground
+      const q = toWin(scene, b.p), k = (now - b.t) / (b.small ? 420 : 550);
+      if (!q || k > 1) continue;
+      const W = C.Cartesian3.distance(b.p, viewer.camera.positionWC) * (b.small ? 0.02 : 0.035), m = C.Transforms.eastNorthUpToFixedFrame(b.p); // its size in metres grows with the distance: it reads at any range
+      const axis = (c) => { const p = toWin(scene, new C.Cartesian3(b.p.x + m[c] * W, b.p.y + m[c + 1] * W, b.p.z + m[c + 2] * W)); return p ? [p.x - q.x, p.y - q.y] : [0, 0]; }, E = axis(0), N = axis(4), U = axis(8); // W metres east, north and up of the hit, as they fall on the screen
+      const R = Math.max(Math.hypot(...E), Math.hypot(...N), Math.hypot(...U), 6), fade = 1 - k, seed = b.t % 97, at = (e, n, u) => [q.x + E[0] * e + N[0] * n + U[0] * u, q.y + E[1] * e + N[1] * n + U[1] * u];
+      const ball = (x, y, r, stops) => { const gr = g.createRadialGradient(x - r * 0.3, y - r * 0.3, r * 0.05, x, y, r); stops.forEach(([o, c]) => gr.addColorStop(o, c)); g.fillStyle = gr; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); }; // lit from one side: a ball, not a disc
+      g.save();
+      g.save(); g.transform(E[0], E[1], N[0], N[1], q.x, q.y); { const gr = g.createRadialGradient(0, 0, 0, 0, 0, 1.5); gr.addColorStop(0, `rgba(255,170,60,${(0.5 * fade).toFixed(2)})`); gr.addColorStop(1, 'rgba(255,80,0,0)'); g.fillStyle = gr; g.beginPath(); g.arc(0, 0, 1.5, 0, 7); g.fill(); } // the glow it throws on the ground
+      g.beginPath(); g.arc(0, 0, 0.5 + 1.8 * k, 0, 7); g.restore(); g.strokeStyle = `rgba(255,225,150,${(0.6 * fade).toFixed(2)})`; g.lineWidth = 2; g.stroke(); // the shock ring, lying on the ground
+      if (k > 0.3) for (let n = 0; n < 4; n++) { const a = seed + n * 1.7, [x, y] = at(Math.cos(a) * 0.35 * k, Math.sin(a) * 0.35 * k, 0.8 + 1.5 * k + 0.2 * n), al = (0.5 * fade).toFixed(2); ball(x, y, R * (0.45 + 0.1 * n) * (0.6 + 0.5 * k), [[0, `rgba(120,112,104,${al})`], [0.6, `rgba(52,46,42,${al})`], [1, 'rgba(20,18,16,0)']]); } // the smoke, climbing off the top
       g.globalCompositeOperation = 'lighter';
-      for (let n = 0; n < 6; n++) { const a = seed + n * 1.047, r0 = n ? R * 0.45 * k : 0, pr = R * (n ? 0.45 + 0.07 * ((seed * (n + 3)) % 5) : 0.8), x = q.x + Math.cos(a) * r0, y = q.y + Math.sin(a) * r0, gr = g.createRadialGradient(x, y, 0, x, y, pr); // a ball of fire made of several puffs, never a plain disc
-        gr.addColorStop(0, `rgba(255,255,255,${fade.toFixed(2)})`); gr.addColorStop(0.3, `rgba(255,236,150,${(0.9 * fade).toFixed(2)})`); gr.addColorStop(0.65, `rgba(255,140,20,${(0.5 * fade).toFixed(2)})`); gr.addColorStop(1, 'rgba(255,60,0,0)');
-        g.fillStyle = gr; g.beginPath(); g.arc(x, y, pr, 0, 7); g.fill(); }
-      g.strokeStyle = `rgba(255,220,120,${(0.45 * fade).toFixed(2)})`; g.lineWidth = 1.5; g.beginPath(); g.arc(q.x, q.y, R * 1.3, 0, 7); g.stroke(); // a faint shock ring
-      g.strokeStyle = `rgba(255,240,180,${fade.toFixed(2)})`; g.lineWidth = 2; g.lineCap = 'round'; for (let n = 0; n < 9; n++) { const a = seed + n * 0.698, r0 = R * (0.5 + 1.1 * k), r1 = r0 + 12 * fade; g.beginPath(); g.moveTo(q.x + Math.cos(a) * r0, q.y + Math.sin(a) * r0); g.lineTo(q.x + Math.cos(a) * r1, q.y + Math.sin(a) * r1); g.stroke(); } // sparks flying out
+      for (let n = 0; n < 7; n++) { const a = seed + n * 0.9, out = n ? 0.38 * (0.4 + k) : 0, [x, y] = at(Math.cos(a) * out, Math.sin(a) * out, 0.25 + (n ? 0.2 * (n % 3) : 0.1) + k * (0.7 + 0.1 * n)); // balls of fire around the middle one, rising as they grow
+        ball(x, y, R * (n ? 0.42 + 0.07 * (n % 4) : 0.75) * (0.55 + 0.6 * k), [[0, `rgba(255,255,255,${fade.toFixed(2)})`], [0.3, `rgba(255,236,150,${(0.9 * fade).toFixed(2)})`], [0.65, `rgba(255,140,20,${(0.5 * fade).toFixed(2)})`], [1, 'rgba(255,60,0,0)']]); }
+      g.strokeStyle = `rgba(255,240,180,${fade.toFixed(2)})`; g.lineWidth = 2; g.lineCap = 'round';
+      for (let n = 0; n < 9; n++) { const a = seed + n * 0.698, up = 1.2 + 0.5 * (n % 3), pos = (kk) => at(Math.cos(a) * 1.6 * kk, Math.sin(a) * 1.6 * kk, up * kk - 1.6 * kk * kk), p0 = pos(Math.max(0, k - 0.1)), p1 = pos(k); g.beginPath(); g.moveTo(p0[0], p0[1]); g.lineTo(p1[0], p1[1]); g.stroke(); } // sparks thrown up and out, falling back
       g.restore();
     }
     bursts = bursts.filter((b) => now - b.t < 1800);
@@ -2442,7 +2448,7 @@
   }
   function maneuver(type) {
     if (on && !A.ship) return OGE.toast('Disparar y las maniobras son solo de la OpenStarshipEarth.');
-    if (!on || paused || man || auto) return;
+    if (!on || paused || man || auto || landing) return; // no rolls or loops on the ground (landing or landed): only in the air
     const dir = keys.has('a') ? -1 : keys.has('d') ? 1 : (lastRoll = -lastRoll);
     man = { type, t0: performance.now(), dur: type === 'roll' ? 600 : type === 'loop' ? 2400 : 1500, dir };
     sfx(type === 'roll' ? 'roll' : 'loop');
