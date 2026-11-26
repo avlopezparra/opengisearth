@@ -119,6 +119,28 @@ body.flying #globe, body.flying #mmBox, body.flying #flyTL, body.flying #flyActs
 #flyBtns > div button { flex: 1; }
 #flyKeys, #flyRules { position: absolute; z-index: 4; right: 190px; bottom: 60px; margin: 0; padding: 10px 14px 10px 28px; background: var(--bg); border-radius: 6px; font-size: 13px; line-height: 1.7; }
 #flyKeys[hidden], #flyRules[hidden] { display: none; }
+/* The K panel shows the controls and nothing else: the keyboard as a picture, or the pad's buttons while one is connected. The options live in the pause menu. */
+#flyKeys li:not(.kbmap):not(.padmap) { display: none; }
+#flyKeys.pad li.kbmap { display: none; }
+#flyKeys li.padmap { list-style: none; margin-left: -14px; max-width: 560px; }
+#flyPause { position: absolute; z-index: 5; left: 50%; top: 50%; transform: translate(-50%, -50%); display: grid; grid-template-columns: repeat(3, minmax(190px, 1fr)); gap: 10px; padding: 18px 20px 20px; background: var(--bg); border-radius: 14px; max-height: 88vh; overflow: auto; box-shadow: 0 10px 34px rgba(0,0,0,.5); }
+#flyPause[hidden] { display: none; }
+#flyPause h3 { grid-column: 1 / -1; margin: 0 0 2px; text-align: center; font-size: 20px; }
+#flyPause button { padding: 14px 12px; font-size: 15px; }
+#shipMenu { width: min(520px, 94vw); max-height: 94vh; box-sizing: border-box; padding: 16px 20px; text-align: center; color: #eaf4ff !important; border: 2px solid #ff9a1f; border-radius: 18px; background: radial-gradient(120% 90% at 50% 0%, #1d4f86 0%, #0b2240 55%, #050d1c 100%) !important; box-shadow: 0 16px 50px rgba(0,0,0,.6); backdrop-filter: none; }
+#shipMenu::backdrop { background: rgba(3, 10, 24, .72); backdrop-filter: blur(3px); }
+#shipMenu img { width: 88px; height: 88px; }
+#shipMenu h1 { margin: 2px 0 10px; font-size: 25px; letter-spacing: 2px; text-transform: uppercase; color: #ffb347; text-shadow: 0 2px 0 #7a3a00; }
+#shipMenu .mode { display: block; width: 100%; white-space: normal; margin: 8px 0; padding: 12px 16px; text-align: left; font-size: 19px; border-radius: 12px; border: 2px solid #3f7fc0; background: linear-gradient(#17406f, #0e2a4d); color: #fff; cursor: pointer; }
+#shipMenu .mode span { display: block; font-size: 13px; font-weight: 400; opacity: .8; margin-top: 2px; }
+#shipMenu .mode:hover, #shipMenu .mode:focus { border-color: #ffd60a; background: linear-gradient(#ff9a1f, #c85f00); outline: none; transform: scale(1.02); }
+#shipMenu .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; text-align: left; }
+#shipMenu .row label { margin: 0; color: #cfe4ff; }
+#shipMenu select { padding: 9px 6px; font-size: 15px; }
+#shipMenu .shipPreview { height: 96px; margin: 4px auto 0; }
+#shipMenu .quit { margin-top: 6px; padding: 9px 26px; font-size: 15px; }
+#shipMenu .small { color: #cfe4ff; opacity: .6; margin: 8px 0 0; }
+.shipPreview { display: block; margin: 4px auto 8px; max-width: 100%; }
 
 /* Map compass, under Cesium's home/help buttons */
 #compass { position: absolute; top: 46px; right: 8px; z-index: 3; width: 44px; height: 44px; padding: 0; border-radius: 50%; background: var(--bg); border: 1px solid #777; }
