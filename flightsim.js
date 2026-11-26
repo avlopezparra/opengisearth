@@ -241,7 +241,7 @@
     try { ac(); } catch { return; } // no audio device
     if (!loopBuf) { loopBuf = 0; try { loopBuf = await audio.decodeAudioData(await (await fetch(ATLAS_LOOP[OGE.body] || 'music/atlas_earth.ogg')).arrayBuffer()); } catch { loopBuf = null; return; } } // a browser that cannot read Ogg stays silent
     if (loopSrc || !wantsAtlas() || (on && arcade)) return; // things changed while it loaded
-    const v = audio.createGain(); v.gain.value = 0.5; loopSrc = audio.createBufferSource(); loopSrc.buffer = loopBuf; loopSrc.loop = true; loopSrc.connect(v).connect(master); loopSrc.start();
+    const v = audio.createGain(); v.gain.value = 0.18; loopSrc = audio.createBufferSource(); loopSrc.buffer = loopBuf; loopSrc.loop = true; loopSrc.connect(v).connect(master); loopSrc.start();
   }
   const skyTune = () => (OGE.body === 'sky' ? window.OGE_SKY_THEME : null), atlasPlaying = () => (OGE.body === 'sky' ? !!tune && tune === skyTune() : !!loopSrc);
   const paintMusic = () => { const b = $('musicBtn'), w = wantsAtlas(); b.style.opacity = w ? 1 : 0.45; b.title = T(w ? 'Música del atlas: sí' : 'Música del atlas: no'); };
