@@ -17,6 +17,7 @@
     ship: { name: 'OpenStarshipEarth — nave muy rápida con láseres; flota y sube al espacio', ship: true, vStall: 0, vMax: 8000, thrust: 400, roll: rad(220), pitch: rad(75), yaw: rad(35), agl: 3000, v0: 600 },
   };
   const hud = $('hud'), g = hud.getContext('2d');
+  const SPLIT = (() => { const q = new URLSearchParams(location.search), n = +q.get('split'); return n === 1 || n === 2 ? { n, ch: String(q.get('ch') || 'oge').replace(/[^\w-]/g, '').slice(0, 24), mode: q.get('mode'), lon: +q.get('lon') || 0, lat: +q.get('lat') || 0 } : null; })(); // this page is one half of a split screen
   let on = false, paused = false, mouseCtl = false, showHud = true, A = null, s = null, last = 0;
   const WARPS = [1, 2, 5, 10, 25, 50, 100];
   const GWARPS = [1, 2, 5, 10];
@@ -266,6 +267,7 @@
   OGE.music = (play, th) => music(play, th); // the sky view of the atlas plays its own piece
   let tune = null; // the theme playing now: Main Theme or Boss Fight OpenStarshipEarth
   function music(play, th = TH) {
+    if (SPLIT && SPLIT.n === 2) play = false; // one music for the two halves of a split screen: the left one's
     clearInterval(musicTimer); musicTimer = null; tune = play ? th : null;
     style = th === window.OGE_RACE_THEME ? STYLE.race : th === window.OGE_ADV_THEME ? STYLE.adventure : th === window.OGE_BOSS_THEME || (th && th === window.OGE_FINAL_THEME) ? STYLE.boss : STYLE.main;
     if (musicBus) musicBus.wet.gain.value = style.echo;
@@ -962,6 +964,7 @@
     if (v) { if (DIFF[v.diff]) { diff = v.diff; localStorage.setItem('oge.diff', diff); } localStorage.setItem('oge.quest', v.quest ? '1' : '0'); start(v.plane, v.mouse, v.arcade, v.aim, v.tut); }
   }
   function start(plane, useMouse, useArcade = true, useAim = false, useTut = false, useCalm = false) {
+    if (SPLIT) { useMouse = false; useTut = false; } // a half of a split screen has no mouse: keys and pad only
     if (OGE.body === 'sky') return OGE.toast(T('El cielo es para mirar: elige la Tierra, la Luna o Marte para volar.'), true);
     calm = useCalm;
     A = PLANES[plane];
@@ -970,7 +973,7 @@
     ammo = A.gun ? 511 : 0;
     aimMouse = !!A.ship && !!useAim; mouse.x = hud.clientWidth / 2; mouse.y = hud.clientHeight / 2;
     requestAnimationFrame(() => { mouse.x = hud.clientWidth / 2; mouse.y = hud.clientHeight / 2; }); // once the HUD has its size: the aim starts centred
-    { const touch = matchMedia('(pointer: coarse)').matches; if (touch || fsWant()) fsSet(true).then(() => touch && screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape')).catch(() => {}); } // full screen unless it was turned off; a phone also turns on its side
+    { const touch = matchMedia('(pointer: coarse)').matches; if (!SPLIT && (touch || fsWant())) fsSet(true).then(() => touch && screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape')).catch(() => {}); } // full screen unless it was turned off; a phone also turns on its side
     man = null; chase = null;
     loadCaps();
     loadRegs();
@@ -1105,7 +1108,7 @@
   }
   OGE.minimap.extra = (mg) => {
     if (race && race.path && race.path.length > 1) { mg.save(); mg.lineJoin = 'round'; mg.beginPath(); let was = null; for (const [x, y] of race.path) { const [px, py] = OGE.minimap.xy(x, y); if (was && Math.abs(px - was) < 120) mg.lineTo(px, py); else mg.moveTo(px, py); was = px; } // a jump across the map is the far side of the world: no line there
-      mg.strokeStyle = 'rgba(0,0,0,.6)'; mg.lineWidth = 5; mg.stroke(); mg.strokeStyle = '#ff2bd6'; mg.lineWidth = 3; mg.stroke(); mg.restore(); } // the race route, in the colour of the thread on the ground
+      mg.strokeStyle = 'rgba(0,0,0,.6)'; mg.lineWidth = 5; mg.stroke(); mg.strokeStyle = '#ffe600'; mg.lineWidth = 3; mg.stroke(); mg.restore(); } // the race route, in the colour of the thread on the ground
     if (race && race.gates) { mg.save(); race.gates.slice(race.nextGate, race.nextGate + 12).forEach((gt, i) => { const [px, py] = OGE.minimap.xy(gt.lon, gt.lat); mg.fillStyle = i ? 'rgba(255,214,10,.5)' : '#ffd60a'; mg.strokeStyle = '#3a2600'; mg.beginPath(); mg.arc(px, py, i ? 2.5 : 4.5, 0, 7); mg.fill(); if (!i) mg.stroke(); }); mg.restore(); } // the rings left to pass: the next one bigger
     const edge = (x, y, color) => { // a point inside the map, or an arrow on its edge pointing to it
       const W = 240, H = 120, cx = W / 2, cy = H / 2;
@@ -1361,6 +1364,12 @@
     sfx('achieve'); OGE.toast(`${T(name)}: ${T('terminaste en el puesto')} ${place}.`);
     const prize = Object.values(SHIPS).find((m) => m.cups && m.cups > before && m.cups <= cupsDone()); if (prize) setTimeout(() => OGE.toast(`${T('Nave desbloqueada')}: ${T(prize.name)}`), 2500);
   }
+  async function raceAgain() { // the race set up last time, without asking: a split screen has no mouse to fill in the form. Without the computer's rivals, which only one half would see
+    let v = null; try { v = JSON.parse(localStorage.getItem('oge.raceLast')); } catch { /* none */ }
+    if (!v || !v.from || !v.to) { OGE.toast(T('Aún no hay una carrera configurada: se juega una partida libre.')); return quickShip('arcade'); }
+    v = { ...v, cup: '', cpus: 0 };
+    try { const [a, b, ...via] = await Promise.all([geocode(v.from), geocode(v.to), ...String(v.via || '').split(',').map((x) => x.trim()).filter(Boolean).map(geocode)]); raceGo(v, a, b, via); } catch (e) { OGE.toast(e.message, true); quickShip('arcade'); }
+  }
   async function raceMode() {
     countries(); // the borders a course keeps to, fetched while the form is filled in
     const last = (() => { try { return JSON.parse(localStorage.getItem('oge.raceLast')) || {}; } catch { return {}; } })();
@@ -1396,7 +1405,7 @@
     if (!show || !race || !race.path || race.path.length < 2) return;
     const lap = 1 / (race.laps || 1), n = Math.max(2, Math.min(1500, Math.round((race.pathLen * lap) / 8000))), inst = []; // a piece every 8 km or so: one lap is enough, the others run over it
     for (let i = 0; i < n; i++) { const a = pathAt((i / n) * lap), b = pathAt(((i + 1) / n) * lap); if (a[0] === b[0] && a[1] === b[1]) continue;
-      inst.push(new C.GeometryInstance({ geometry: new C.GroundPolylineGeometry({ positions: C.Cartesian3.fromDegreesArray([a[0], a[1], b[0], b[1]]), width: 6 }), attributes: { color: C.ColorGeometryInstanceAttribute.fromColor(C.Color.fromCssColorString(i % 2 ? '#00e5ff' : '#ff2bd6')) } })); }
+      inst.push(new C.GeometryInstance({ geometry: new C.GroundPolylineGeometry({ positions: C.Cartesian3.fromDegreesArray([a[0], a[1], b[0], b[1]]), width: 6 }), attributes: { color: C.ColorGeometryInstanceAttribute.fromColor(C.Color.fromCssColorString(i % 2 ? '#ffe600' : '#1e7bff')) } })); }
     if (inst.length) raceThread = scene.groundPrimitives.add(new C.GroundPolylinePrimitive({ geometryInstances: inst, appearance: new C.PolylineColorAppearance() }));
   }
   function raceLimits(zone, others) { // zone: the countries allowed; others: the closed ones. No arguments: the line is taken away
@@ -1939,12 +1948,14 @@
   let mpMode = 'solo', ws = null, remote = null, p2 = null, credit = 1, mpTimer = null; // credit: which local player scores
   const gain = (n) => { if (credit === 2 && p2) p2.score += n; else score += n; };
   const mpSend = (m) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(m)); };
+  let splitGo = false; // the left half of a split screen has started the game
   let mpEcho = false; // true while a game is being started from the other player's invitation: it is not announced back
   const mpGo = (m) => { if (!mpEcho) mpSend({ t: 'go', name: localStorage.getItem('oge.pilot') || T('Piloto'), ...m }); }; // tells the other player which game starts
-  async function mpJoin(m) { // the other player started a game: offer to play the same one, in the same place
+  async function mpJoin(m) {
+    if (SPLIT && on) return; // a half of a split screen that is flying keeps its game: the other half only came back after being shot down // the other player started a game: offer to play the same one, in the same place
     const what = m.mode === 'race' ? T('una carrera') : m.mode === 'adventure' ? T('la aventura') : m.mode === 'free' ? T('un vuelo libre') : T('una partida libre');
     if (on) paused = true;
-    const ok = await OGE.ask({ title: `${String(m.name || T('Piloto')).slice(0, 24)} ${T('inició')} ${what}`, ok: 'Unirme', help: 'Jugarán el mismo modo, en el mismo lugar.' });
+    const ok = SPLIT || await OGE.ask({ title: `${String(m.name || T('Piloto')).slice(0, 24)} ${T('inició')} ${what}`, ok: 'Unirme', help: 'Jugarán el mismo modo, en el mismo lugar.' });
     paused = false; last = performance.now();
     if (!ok) return;
     const num = (x) => Number.isFinite(+x), place = (p) => p && num(p.lon) && num(p.lat) && { lon: +p.lon, lat: +p.lat, name: String(p.name || '').slice(0, 60) }, txt = (x, n) => String(x ?? '').slice(0, n); // what arrives from the network is checked and trimmed
@@ -2438,6 +2449,7 @@
     else if (m.t === 'missile' && on && arcade && pvp() && remote && remote.p) fireRocket(remote.p, { me: true }, 25); // the other pilot's missile: it flies here from where that pilot is
     else if (m.t === 'mine' && on && Number.isFinite(+m.lon) && Number.isFinite(+m.lat) && Number.isFinite(+m.alt)) objs.push({ kind: 'mine', p: C.Cartesian3.fromRadians(+m.lon, +m.lat, +m.alt), size: 300, next: 1e15, until: performance.now() + 90000 });
     else if (m.t === 'go') mpJoin(m);
+    else if (m.t === 'ready' && SPLIT && SPLIT.n === 1 && !splitGo) { splitGo = true; viewer.camera.setView({ destination: C.Cartesian3.fromDegrees(SPLIT.lon, SPLIT.lat, 3000) }); if (SPLIT.mode === 'race') raceAgain(); else quickShip(SPLIT.mode === 'free' ? 'free' : 'arcade'); } // the right half is there: the left one starts, and the right follows it
     else if (m.t === 'fin' && remote) OGE.toast(`${remote.name} ${T('llegó a la meta')}: ${fmtT(Math.max(0, +m.ms || 0))}`);
     else if (m.t === 'dead' && remote) { OGE.toast(`${remote.name} ${T('fue derribado.')}`); remote.p = remote.to = null; }
   }
@@ -2448,14 +2460,56 @@
     ws = c;
     c.onmessage = (e) => { try { mpMessage(JSON.parse(e.data)); } catch { /* a malformed message is ignored */ } };
     c.onclose = () => { if (ws !== c) return; OGE.toast('Se cortó la conexión con el otro jugador.', true); ws = null; remote = null; clearInterval(mpTimer); }; // not when closed on purpose
+    mpBeat();
+  }
+  function mpSplit() { // a half of a split screen: the other half is an online player, reached through a channel of this browser
+    mpClose(); const bc = new BroadcastChannel('oge-split-' + SPLIT.ch);
+    ws = { readyState: 1, send: (d) => bc.postMessage(d), close: () => bc.close() };
+    bc.onmessage = (e) => { try { mpMessage(JSON.parse(e.data)); } catch { /* a malformed message is ignored */ } };
+    mpMode = SPLIT.n === 1 ? 'host' : 'join'; mpBeat();
+    if (SPLIT.n === 2) { const t = setInterval(() => { if (on) clearInterval(t); else mpSend({ t: 'ready' }); }, 600); } // until the left half has started the game, and this one has followed
+  }
+  function mpBeat() { // where this ship is, ten times a second
     clearInterval(mpTimer);
     mpTimer = setInterval(() => { if (on) mpSend({ t: 's', lon: s.lon, lat: s.lat, alt: s.alt, r: s.roll, h: s.heading, pt: s.pitch, m: localStorage.getItem('oge.shipModel') || 'dardo', hp, score, skin: skin(1), name: localStorage.getItem('oge.pilot') || T('Piloto') }); }, 100); // ten times a second
+  }
+  let splitOn = null; // the split screen while it is open: its close()
+  function splitScreen(mode) { // two games side by side; the atlas behind waits
+    if (on) stop();
+    const ch = Math.random().toString(36).slice(2, 10), c = viewer.camera.positionCartographic, box = Object.assign(document.createElement('div'), { id: 'splitBox' });
+    const frames = [1, 2].map((n) => { const f = Object.assign(document.createElement('iframe'), { src: `./?split=${n}&ch=${ch}&mode=${mode}&lon=${deg(c.longitude).toFixed(4)}&lat=${deg(c.latitude).toFixed(4)}`, tabIndex: -1, title: `${T('Jugador')} ${n}` }); f.setAttribute('allow', 'autoplay; gamepad; fullscreen'); return f; });
+    box.append(...frames, Object.assign(document.createElement('div'), { className: 'note', textContent: T('Jugador 1: teclado y mando 1 · Jugador 2: teclado numérico y mando 2 · Esc: salir') }));
+    document.body.append(box); viewer.useDefaultRenderLoop = false;
+    try { const fs = document.documentElement.requestFullscreen; if (fs && !document.fullscreenElement) Promise.resolve(fs.call(document.documentElement)).catch(() => {}); } catch { /* not allowed here */ }
+    // The numpad flies the right half: 8 5 4 6 as W S A D, 0 fires (held, it charges), Enter is the boost, + and - the turbo, . the barrel roll, 7 the race item, 9 a bomb, 1 a loop, 3 a turn back
+    const NUM = { Numpad8: 'w', Numpad5: 's', Numpad2: 's', Numpad4: 'a', Numpad6: 'd', Numpad0: 'b', NumpadEnter: 'e', NumpadAdd: ' ', NumpadSubtract: 'shift', NumpadDecimal: 'r', Numpad7: 'u', Numpad9: 'v', Numpad1: 'x', Numpad3: 'f' };
+    const post = (n, m) => { const w = frames[n].contentWindow; if (w) w.postMessage(m, location.origin); };
+    const key = (e) => { e.stopImmediatePropagation(); e.preventDefault(); // nothing of the atlas behind reacts
+      if (e.key === 'Escape') { if (e.type === 'keydown') close(); return; }
+      const two = /^Numpad/.test(e.code); if (two && !NUM[e.code]) return;
+      post(two ? 1 : 0, { t: 'key', type: e.type, key: two ? NUM[e.code] : e.key }); };
+    let raf = 0; const pads = () => { raf = requestAnimationFrame(pads); const list = [...(navigator.getGamepads ? navigator.getGamepads() : [])].filter((p) => p && p.connected);
+      [0, 1].forEach((n) => { const p = list[n]; post(n, { t: 'pad', pad: p ? { axes: [...p.axes], buttons: p.buttons.map((b) => ({ pressed: b.pressed, value: b.value })) } : null }); }); }; // pad 1 to the left half, pad 2 to the right
+    function close() { cancelAnimationFrame(raf); removeEventListener('keydown', key, true); removeEventListener('keyup', key, true); box.remove(); viewer.useDefaultRenderLoop = true; splitOn = null;
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); }
+    addEventListener('keydown', key, true); addEventListener('keyup', key, true); pads(); splitOn = close;
+  }
+  if (SPLIT) { // this page is a half of a split screen: its keys and its pad come from the page around it
+    window.OGE_SPLIT_PAD = null;
+    addEventListener('message', (e) => { if (e.source !== parent || e.origin !== location.origin) return; const m = e.data || {};
+      if (m.t === 'pad') { window.OGE_SPLIT_PAD = m.pad; return; }
+      if (m.t !== 'key') return;
+      const dlg = document.querySelector('dialog[open]'), k = String(m.key).toLowerCase(); // a dialog (shot down, the results of a race) is answered with the keys that fire
+      if (dlg && m.type === 'keydown') { if (['enter', 'e', 'b', ' '].includes(k)) { const ok = dlg.querySelector('.row.end button:last-child'); if (ok) ok.click(); } else if (['q', 'backspace'].includes(k)) dlg.dispatchEvent(new Event('cancel')); return; }
+      document.dispatchEvent(new KeyboardEvent(m.type, { key: m.key, bubbles: true })); });
+    setTimeout(() => { OGE.hideSide(true); mpSplit(); }, 1500);
   }
   async function multiplayer() {
     const wasOn = on, live = !!(p2 || ws || remote); if (!live) paused = true; // in a multiplayer game the others keep flying: no pause
     const v = await OGE.ask({ title: 'OpenStarshipEarth: multijugador', ok: 'Jugar',
       help: 'Local: el jugador 2 mueve su nave con I J K L, se adelanta con O, se retrasa con U y dispara con Enter (su mira es la cruz sobre su nave). En línea: la app de escritorio crea la partida y muestra su IP:puerto; el otro jugador se une con esa dirección desde su app o desde la página (la página publicada en https puede bloquear la conexión: entonces usa la app). En la misma red Wi-Fi o por cable, el otro jugador elige «buscar partidas en esta red local» en su app y no escribe ninguna dirección. Los jugadores pueden dispararse entre ellos.',
-      fields: [{ id: 'mode', label: 'Modo', type: 'select', value: mpMode, options: [['solo', 'Un jugador'], ['local', 'Local: 2 jugadores en esta pantalla'], ['host', 'En línea: crear partida (app de escritorio)'], ['join', 'En línea: unirse a una partida'], ['lan', 'En línea: buscar partidas en esta red local (app de escritorio)']] },
+      fields: [{ id: 'mode', label: 'Modo', type: 'select', value: mpMode, options: [['solo', 'Un jugador'], ['local', 'Local: 2 jugadores en esta pantalla'], ['split', 'Pantalla dividida: 2 jugadores, con mandos o el teclado numérico'], ['host', 'En línea: crear partida (app de escritorio)'], ['join', 'En línea: unirse a una partida'], ['lan', 'En línea: buscar partidas en esta red local (app de escritorio)']] },
+        { id: 'splitMode', label: 'Juego en pantalla dividida', type: 'select', value: localStorage.getItem('oge.splitMode') || 'arcade', options: [['arcade', 'Partida libre'], ['free', 'Vuelo libre'], ['race', 'Carrera: la última configurada, sin rivales de la CPU']] },
         { id: 'addr', label: 'Dirección del anfitrión (IP:puerto), para unirse', value: localStorage.getItem('oge.mpAddr') || '', placeholder: '192.168.1.20:7777' },
         { id: 'port', label: 'Puerto, para crear la partida', type: 'number', value: +localStorage.getItem('oge.mpPort') || 7777, min: 1024, max: 65535, step: 1 },
         { id: 'model', label: 'Modelo de tu nave', type: 'select', value: SHIPS[localStorage.getItem('oge.shipModel')] ? localStorage.getItem('oge.shipModel') : 'dardo', options: shipOpts(), after: shipPreview },
@@ -2465,6 +2519,7 @@
     if (!live) { paused = false; last = performance.now(); }
     if (!v) return;
     localStorage.setItem('oge.skin1', tintOf(v, 'c1', skin(1))); localStorage.setItem('oge.skin2', tintOf(v, 'c2', skin(2))); localStorage.setItem('oge.pvp', v.pvp ? '1' : '0'); if (SHIPS[v.model]) localStorage.setItem('oge.shipModel', v.model); if (SHIPS[v.model2]) localStorage.setItem('oge.shipModel2', v.model2);
+    if (v.mode === 'split') { mpMode = 'solo'; mpClose(); localStorage.setItem('oge.splitMode', v.splitMode); return splitScreen(v.splitMode); }
     mpMode = v.mode;
     if (!['host', 'join', 'lan'].includes(v.mode)) mpClose();
     try {
@@ -2539,7 +2594,7 @@
   }
   function readPad() {
     { const pm = $('flyPause'), held = on && (paused || pad.menu); if (!held) pauseUp = false; if (pm) pm.hidden = !(held && pauseUp); if (on && paused) engineHum(0); } // every frame, paused or not: the pause menu follows the game's state, and a held game is silent
-    const gp = [...(navigator.getGamepads ? navigator.getGamepads() : [])].find((p) => p && p.connected);
+    const gp = SPLIT ? window.OGE_SPLIT_PAD : [...(navigator.getGamepads ? navigator.getGamepads() : [])].find((p) => p && p.connected); // a half of a split screen gets its own pad from the page around it
     pad.on = !!gp; if (!gp) return;
     const dz = (v) => (Math.abs(v) < 0.15 ? 0 : v), down = (i) => { const b = gp.buttons[i]; return !!b && (b.pressed || b.value > 0.5); }, hit = (i) => down(i) && !padPrev[i];
     const lx = dz(gp.axes[0] || 0), ly = dz(gp.axes[1] || 0), rx = dz(gp.axes[2] || 0), ry = dz(gp.axes[3] || 0), dlg = document.querySelector('dialog[open]');
