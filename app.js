@@ -83,6 +83,9 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
 
   const OGE = window.OGE = { viewer, $, el };
   OGE.body = BODY; // null on the Earth
+  // Cesium keeps north up by turning the globe only about its axis, so a drag stops dead at a pole. Near the poles that rule is dropped, as in the game:
+  // the Earth can be dragged straight across, down the opposite meridian (the view is then south up until north is set again)
+  viewer.scene.preRender.addEventListener(() => { viewer.camera.constrainedAxis = BODY !== 'sky' && Math.abs(viewer.camera.positionCartographic.latitude) > C.Math.toRadians(75) ? undefined : C.Cartesian3.UNIT_Z; });
   if (BODY) { // no blue sky, no sea of air: the Moon has none, and Mars gets a thin butterscotch one
     scene.globe.showGroundAtmosphere = false; scene.fog.enabled = false; scene.moon.show = false; scene.globe.enableLighting = false; scene.globe.baseColor = C.Color.fromCssColorString(BODY === 'moon' ? '#3a3a3a' : '#7a4a30');
     if (BODY === 'moon') scene.skyAtmosphere.show = false; else { scene.skyAtmosphere.hueShift = -0.5; scene.skyAtmosphere.saturationShift = -0.3; scene.skyAtmosphere.brightnessShift = -0.25; }
