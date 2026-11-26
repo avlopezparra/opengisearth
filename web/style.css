@@ -138,7 +138,12 @@ body.flying #globe, body.flying #mmBox, body.flying #flyTL, body.flying #flyActs
 #shipMenu .row label { margin: 0; color: #cfe4ff; }
 #shipMenu select { padding: 9px 6px; font-size: 15px; }
 #shipMenu .shipPreview { height: 96px; margin: 4px auto 0; }
-#shipMenu .quit { margin-top: 6px; padding: 9px 26px; font-size: 15px; }
+#shipMenu .quit { margin: 6px 4px 0; padding: 9px 22px; font-size: 15px; }
+@media (max-height: 620px) { /* a phone held sideways: the modes two by two, everything smaller, so that it fits without scrolling far */
+  #shipMenu { width: min(720px, 96vw); padding: 8px 14px; } #shipMenu img { width: 40px; height: 40px; vertical-align: middle; } #shipMenu h1 { display: inline-block; margin: 0 0 0 8px; font-size: 18px; vertical-align: middle; }
+  #shipMenu form { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; align-items: center; } #shipMenu form > :not(.mode):not(.quit) { grid-column: 1 / -1; } #shipMenu form > img, #shipMenu form > h1 { grid-column: auto; justify-self: end; } #shipMenu form > h1 { justify-self: start; }
+  #shipMenu .mode { margin: 0; padding: 8px 12px; font-size: 16px; } #shipMenu .mode span { font-size: 12px; } #shipMenu .row { margin-top: 2px; } #shipMenu .shipPreview { height: 64px; } #shipMenu .quit { margin: 0; } #shipMenu .small { margin: 0; }
+}
 #shipMenu .small { color: #cfe4ff; opacity: .6; margin: 8px 0 0; }
 .shipPreview { display: block; margin: 4px auto 8px; max-width: 100%; }
 
