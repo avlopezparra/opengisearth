@@ -474,6 +474,7 @@
   // ---------- OpenStarshipEarth arcade: random enemies to shoot, rings to fly through and coins to collect ----------
   // The objects live in the 3D world and are drawn on the HUD at their projected position and size.
   let bursts = []; // bosses blowing up: { p, t, color }
+  let rockets = []; // missiles in flight: { from, to: { me } | { cpu } | { remote } | { obj }, dmg, t, T (ms of flight), own (the pilot fired it) }
   let arcade = false, objs = [], booms = [], score = 0, coins = 0, tut = null; // tut: the tutorial under way
   let maxHp = 100, shieldLeft = 4; // shieldLeft: the hits the outer shield still takes // grows with the life boosters found over big cities
   let run = { flags: 0, caps: 0, bosses: 0 }; // collected in this flight, for the scoreboard
@@ -544,7 +545,10 @@
           OGE.ask({ title: T('Nave destruida'), ok: T('Reintentar'), help: `${score} ${T('puntos')} · ${coins} ${T('monedas')}. ${adv && !canPay ? `${T('Con')} ${CONTINUE} ${T('monedas podrías continuar sin perder las banderas.')} ` : ''}${T('¿Lo intentas otra vez?')}`, fields: how, extra: donateLink() }).then((v) => { lostAsk = false; if (!on) return;
             if (!v) { if (adv) advForget(); return stop(msg, true); } // giving up an adventure stage also leaves its flags to do again
             if (adv && v.how === 'pay' && coins >= CONTINUE) coins -= CONTINUE; // paid: the flight goes on from here with all it had
-            else { score = coins = 0; if (adv) advRestart(); }
+            else if (adv) { score = coins = 0; advRestart(); }
+            else { const a = Math.random() * 2 * Math.PI, d = (300e3 + Math.random() * 500e3) / scene.globe.ellipsoid.maximumRadius; // free play: the penalty is the place. 300 to 800 km away, any way
+              s.lat = clamp(s.lat + d * Math.cos(a), rad(-80), rad(80)); s.lon = C.Math.negativePiToPi(s.lon + (d * Math.sin(a)) / Math.cos(s.lat)); s.alt = Math.max(s.alt, 6000); s.pitch = s.roll = 0;
+              objs = []; OGE.toast(T('Reapareces en otro punto del mapa.')); }
             hp = maxHp; shields = 0; shieldLeft = 4; bombs = 2; incoming = []; objs = objs.filter((o) => o.kind !== 'enemy'); graceT = performance.now() + 5000; paused = false; last = performance.now(); }); };
         return setTimeout(ask, 600);
       }
@@ -744,6 +748,17 @@
       if (bd < 40 + slack * 1.5) { if (!rolling && !b.off) hurt(b.dmg || 8); return false; }
       return now - b.t < 8000;
     });
+    rockets = rockets.filter((r) => {
+      const tp = rocketAim(r.to), k = Math.min(1, (now - r.t) / r.T); if (!tp) return false;
+      r.p = C.Cartesian3.lerp(r.from, tp, Math.pow(k, 1.4), r.p || new C.Cartesian3()); r.k = k; r.tp = tp;
+      if (r.to.me && now > (r.beepT || 0)) { r.beepT = now + Math.max(80, r.T * (1 - k) * 0.22); beep(k > 0.6 ? 1560 : 1170, 60, 0.3); } // the alarm, faster and higher as it closes
+      if (k < 1) return true;
+      if (r.to.me) { if (rolling) { OGE.toast(T('¡Misil esquivado!')); sfx('roll'); } else { booms.push({ p: tp, t: now }); hurt(r.dmg); } }
+      else if (r.to.cpu) { cpuHit(r.to.cpu); if (r.own) { OGE.toast(`🚀 ${T('¡Misil en el blanco!')} ${r.to.cpu.name}`); sfx('down'); } }
+      else if (r.to.obj) { const i = objs.indexOf(r.to.obj); if (i >= 0) { objs.splice(i, 1); booms.push({ p: tp, t: now }); score += pts(100); sfx('down'); } }
+      else booms.push({ p: tp, t: now }); // the other player's own game decides whether it hit
+      return false;
+    });
     if (on && !tut && $('layerPlanes').checked && performance.now() > (liveT || 0)) liveEnemies(); // real aircraft nearby join as tougher enemies
     aisStep();
     while (on && !tut && objs.filter((o) => !['boss', 'crest', 'life', 'octo', 'aa', 'ship'].includes(o.kind)).length < 10) spawn();
@@ -827,6 +842,21 @@
       g.restore();
     }
     booms = booms.filter((b) => now - b.t < 550);
+    let warn = false;
+    for (const r of rockets) { if (!r.p) continue;
+      const cam = viewer.camera, dir = C.Cartesian3.subtract(r.tp, r.p, new C.Cartesian3()), v = C.Cartesian3.subtract(r.p, cam.positionWC, new C.Cartesian3()), d = C.Cartesian3.magnitude(v), front = C.Cartesian3.dot(v, cam.directionWC) > 0, q = front ? toWin(scene, r.p) : null;
+      if (q && C.Cartesian3.magnitude(dir) > 1) { C.Cartesian3.normalize(dir, dir);
+        const R0 = C.Cartesian3.cross(dir, C.Cartesian3.normalize(r.p, new C.Cartesian3()), new C.Cartesian3()); if (C.Cartesian3.magnitude(R0) < 1e-3) C.Cartesian3.cross(dir, C.Cartesian3.UNIT_X, R0); C.Cartesian3.normalize(R0, R0);
+        const ax = { P: r.p, U: dir, R: R0, F: C.Cartesian3.cross(R0, dir, new C.Cartesian3()) }, sc = meshScale(r.p, clamp((900 / d) * f, 16, 70), h), tail = toWin(scene, shipPoint(ax, 0, -56 * sc, 0)); // the mesh's own up is its nose
+        if (tail) glow(g, tail.x, tail.y, 9, '#ffb300');
+        drawMesh(ROCKET, ax, { h: '#f4f4f6', s: '#b9bcc6', d: '#6d7180', w: '#d0302a' }, false, sc, null, true); }
+      if (!r.to.me) continue;
+      warn = true; g.save(); g.strokeStyle = g.fillStyle = now % 300 < 170 ? '#ff2d2d' : '#ffd60a'; g.lineWidth = 3;
+      if (q && q.x > 0 && q.y > 0 && q.x < w && q.y < h) g.strokeRect(q.x - 22, q.y - 22, 44, 44); // in view: boxed
+      else { const a = Math.atan2(-C.Cartesian3.dot(v, cam.upWC), C.Cartesian3.dot(v, cam.rightWC)), rr = Math.min(w, h) / 2 - 46; // out of view: an arrow at the edge, towards where it comes from
+        g.translate(w / 2 + Math.cos(a) * rr, h / 2 + Math.sin(a) * rr); g.rotate(a); g.beginPath(); g.moveTo(20, 0); g.lineTo(-12, -14); g.lineTo(-12, 14); g.closePath(); g.fill(); }
+      g.restore(); }
+    if (warn && now % 400 < 260) { g.save(); g.fillStyle = '#ff2d2d'; g.strokeStyle = '#000'; g.lineWidth = 4; g.textAlign = 'center'; g.font = '800 26px sans-serif'; const msg = `${T('¡MISIL!')} ${T('Barrel roll (R) para esquivarlo')}`; g.strokeText(msg, w / 2, h * 0.22); g.fillText(msg, w / 2, h * 0.22); g.restore(); }
     for (const b of booms) { // an explosion: balls of fire rising, a shock ring on the ground, sparks that fall back, smoke. small: a shot that met the ground
       const q = toWin(scene, b.p), k = (now - b.t) / (b.small ? 420 : 550);
       if (!q || k > 1) continue;
@@ -937,7 +967,7 @@
     run = { flags: 0, caps: 0, bosses: 0 };
     p2 = mpMode === 'local' && arcade ? { x: -0.65, y: 0.55, z: 200, hp: 100, score: 0, tilt: 0 } : null; // the second local player starts beside the first
     music(arcade); if (arcade) atlasLoop(false); else atlasMusic(); // a flight that is not arcade keeps the atlas piece
-    objs = []; booms = []; bursts = []; score = coins = 0;
+    objs = []; booms = []; bursts = []; rockets = []; score = coins = 0;
     const la = OGE.lookAt(), c = la ? la.carto : viewer.camera.positionCartographic; // above the look-at point, not from orbit
     const ground = scene.globe.getHeight(c) || 0;
     s = { lon: c.longitude, lat: c.latitude, alt: ground + A.agl, heading: viewer.camera.heading, pitch: 0, roll: 0, v: A.v0, vs: 0,
@@ -1198,19 +1228,18 @@
     objs = objs.filter((o) => !['itembox', 'gate', 'zip', 'scoin'].includes(o.kind));
     const course = race.course = []; // every object of the course, by its place along it (f); only the stretch around the pilot is put in play (courseStep)
     const fit = race.fit || ((pt) => pt), at = (f, side = 0, up = 3000) => { const [lon, lat, hd] = pathAt(f), [x, y] = fit([lon + (side * Math.cos(hd)) / Math.cos(rad(lat)), lat - side * Math.sin(hd)]), gh = scene.globe.getHeight(C.Cartographic.fromDegrees(x, y)); return { lon: x, lat: y, up, lifted: gh !== undefined, p: C.Cartesian3.fromDegrees(x, y, (gh || 0) + up) }; };
-    const ng = Math.max(3, Math.min(400, Math.round(race.pathLen / 30000))); // a ring about every 30 km, however long the race
+    const ng = Math.max(3, Math.min(400, Math.round(race.pathLen / 50000))); // a ring about every 50 km, however long the race. Between two rings, each a quarter of the way on: speed coins, a boost ring, a row of balloons, so nothing crowds anything else
     race.gates = race.rings === false ? null : [];
-    if (race.gates) for (let i = 1; i <= ng; i++) { const g0 = { kind: 'gate', n: i, f: i / (ng + 1), size: 3000, next: 1e15, ...at(i / (ng + 1)) }; race.gates.push(g0); course.push(g0); } // pass them in order
+    if (race.gates) for (let i = 1; i <= ng; i++) { const g0 = { kind: 'gate', n: i, f: i / (ng + 1), size: 5000, next: 1e15, ...at(i / (ng + 1)) }; race.gates.push(g0); course.push(g0); } // pass them in order
     race.nextGate = 0; race.missed = 0;
-    for (let i = 0; i < ng; i++) { const f = (i + 0.5) / (ng + 1); course.push({ kind: 'zip', f, size: 1800, next: 1e15, ...at(f, (i % 2 ? 1 : -1) * 0.004) }); } // boost rings, a little off the line
-    for (let i = 0; i < ng * 2; i++) { const f = (i + 0.25) / (ng * 2 + 1); course.push({ kind: 'scoin', f, size: 350, next: 1e15, ...at(f, ((i % 3) - 1) * 0.01) }); } // speed coins
+    for (let i = 0; i < ng; i++) { const f = (i + 0.5) / (ng + 1); course.push({ kind: 'zip', f, size: 3000, next: 1e15, ...at(f, (i % 2 ? 1 : -1) * 0.004) }); } // boost rings, a little off the line
+    for (let i = 0; i <= ng; i++) for (const o of [-1, 1]) { const f = (i + 0.25) / (ng + 1); course.push({ kind: 'scoin', f, size: 450, next: 1e15, ...at(f, o * 0.02) }); } // speed coins, one on each side of the line
     race.coins = 0; race.vBase = race.vBase || A.vMax;
-    const n = Math.max(3, Math.min(400, Math.round(race.pathLen / 30000)));
-    for (let i = 1; i < n; i++) {
-      const [lon, lat, hd] = pathAt(i / n), side = Math.cos(rad(lat));
+    for (let i = 0; i <= ng; i++) { const bf = (i + 0.75) / (ng + 1);
+      const [lon, lat, hd] = pathAt(bf), side = Math.cos(rad(lat));
       for (const o of [-1, 0, 1]) { // across the route
-        const [x, y] = fit([lon + (o * 0.02 * Math.cos(hd)) / side, lat - o * 0.02 * Math.sin(hd)]), gh = scene.globe.getHeight(C.Cartographic.fromDegrees(x, y));
-        course.push({ kind: 'itembox', f: i / n, item: Object.keys(BALLOON)[(i + o + 3) % 4], lon: x, lat: y, up: 3000, lifted: gh !== undefined, p: C.Cartesian3.fromDegrees(x, y, (gh || 0) + 3000), size: 560, next: 1e15 });
+        const [x, y] = fit([lon + (o * 0.04 * Math.cos(hd)) / side, lat - o * 0.04 * Math.sin(hd)]), gh = scene.globe.getHeight(C.Cartographic.fromDegrees(x, y));
+        course.push({ kind: 'itembox', f: bf, item: Object.keys(BALLOON)[(i + o + 3) % 4], lon: x, lat: y, up: 3000, lifted: gh !== undefined, p: C.Cartesian3.fromDegrees(x, y, (gh || 0) + 3000), size: 700, next: 1e15 });
       }
     }
     courseStep(true);
@@ -1251,15 +1280,12 @@
       const p = C.Cartesian3.fromRadians(s.lon, s.lat, s.alt);
       objs.push({ kind: 'mine', own: true, p, size: 300, next: 1e15, until: performance.now() + 90000 });
       mpSend({ t: 'mine', lon: s.lon, lat: s.lat, alt: s.alt }); sfx('bombGet');
-    } else if (it === 'missile') { // homes in on the other player (online or on this screen); with nobody else, on the nearest enemy
-      sfx('warpUp');
-      setTimeout(() => {
-        if (remote && remote.p) { mpSend({ t: 'hit', n: 25 }); booms.push({ p: remote.p, t: performance.now() }); OGE.toast(`🚀 ${T('¡Misil en el blanco!')} ${remote.name || ''}`); }
-        else if (p2 && !p2.out) { p2Hurt(25); OGE.toast(`🚀 ${T('¡Misil en el blanco!')} ${T('Jugador 2')}`); }
-        else if (race && race.cpus.length && race.cpus.some((c) => c.f < 1)) { const me = myProgress(), c = race.cpus.filter((x) => x.f < 1).sort((x, y) => Math.abs(x.f - me) - Math.abs(y.f - me))[0]; cpuHit(c); OGE.toast(`🚀 ${T('¡Misil en el blanco!')} ${c.name}`); }
-        else { const cam = viewer.camera.positionWC, e = objs.filter((o) => o.kind === 'enemy').sort((x, y) => C.Cartesian3.distance(x.p, cam) - C.Cartesian3.distance(y.p, cam))[0]; if (e) { objs.splice(objs.indexOf(e), 1); booms.push({ p: e.p, t: performance.now() }); score += pts(100); } }
-        sfx('down');
-      }, 1200);
+    } else if (it === 'missile') { // flies to the other player (online), to the nearest rival of the race, or to the nearest enemy
+      const P = C.Cartesian3.fromRadians(s.lon, s.lat, s.alt); sfx('warpUp');
+      if (remote && remote.p) { fireRocket(P, { remote: true }, 0, true); mpSend({ t: 'missile' }); } // the other side flies it too, and can dodge it
+      else if (p2 && !p2.out) setTimeout(() => { p2Hurt(25); OGE.toast(`🚀 ${T('¡Misil en el blanco!')} ${T('Jugador 2')}`); sfx('down'); }, 1200);
+      else if (race && race.cpus.some((c) => c.f < 1)) { const me = myProgress(); fireRocket(P, { cpu: race.cpus.filter((x) => x.f < 1).sort((x, y) => Math.abs(x.f - me) - Math.abs(y.f - me))[0] }, 0, true); }
+      else { const cam = viewer.camera.positionWC, e = objs.filter((o) => o.kind === 'enemy').sort((x, y) => C.Cartesian3.distance(x.p, cam) - C.Cartesian3.distance(y.p, cam))[0]; if (e) fireRocket(P, { obj: e }, 0, true); }
     }
   }
 
@@ -1292,7 +1318,18 @@
     try { [a, b, ...via] = await Promise.all([geocode(v.from), geocode(v.to), ...String(v.via || '').split(',').map((x) => x.trim()).filter(Boolean).map(geocode)]); } catch (e) { return OGE.toast(e.message, true); }
     raceGo(v, a, b, via);
   }
+  let raceLine = null; // the limits of the race, drawn on the ground
+  function raceLimits(zone, others) { // zone: the countries allowed; others: the closed ones. No arguments: the line is taken away
+    if (raceLine) { scene.groundPrimitives.remove(raceLine); raceLine = null; }
+    if (!zone) return;
+    const rings = (c) => turf.flatten(c.f).features.flatMap((p) => p.geometry.coordinates), meets = (x, y) => x.box[0] <= y.box[2] && x.box[2] >= y.box[0] && x.box[1] <= y.box[3] && x.box[3] >= y.box[1], shared = new Set(), inst = [];
+    for (const o of others) if (zone.some((z) => meets(z, o))) for (const r of rings(o)) for (const p of r) shared.add(p[0] + ',' + p[1]); // neighbours share their border points exactly: those are the land borders, the rest is coast
+    const add = (run) => { if (run.length >= 4) inst.push(new C.GeometryInstance({ geometry: new C.GroundPolylineGeometry({ positions: C.Cartesian3.fromDegreesArray(run), width: 3 }), attributes: { color: C.ColorGeometryInstanceAttribute.fromColor(C.Color.ORANGERED) } })); };
+    for (const z of zone) for (const r of rings(z)) { let run = []; for (const p of r) { if (shared.has(p[0] + ',' + p[1])) run.push(p[0], p[1]); else { add(run); run = []; } } add(run); }
+    if (inst.length) raceLine = scene.groundPrimitives.add(new C.GroundPolylinePrimitive({ geometryInstances: inst, appearance: new C.PolylineColorAppearance() }));
+  }
   function raceGo(v, a, b, via = []) {
+    raceLimits();
     { const b0 = b, via0 = via; relaunch = () => raceGo(v, a, b0, via0); } // as it was asked for: the laps change b and via below
     mpGo({ mode: 'race', v, a: { lon: a.lon, lat: a.lat, name: a.name }, b: { lon: b.lon, lat: b.lat, name: b.name }, via: via.map((p) => ({ lon: p.lon, lat: p.lat, name: p.name })) });
     const laps = Math.max(1, +v.laps || 1); if (laps > 1) { via = [...via, { ...b }]; b = { ...a }; } // a circuit ends where it starts: the goal becomes the place where it turns back
@@ -1312,7 +1349,8 @@
     const repeat = (pts) => { let out = pts.slice(); for (let i = 1; i < laps; i++) out = out.concat(pts.slice(1)); return out; }; // the same loop once per lap
     const me = race, straight = lap1.length > 1 ? lap1 : [[a.lon, a.lat], [b.lon, b.lat]], grid = () => race.cpus.forEach((c, i) => { if (race.go) c.f = (500 + 350 * i) / race.pathLen; cpuPlace(c); }); // the grid: the rivals in a line ahead of the pilot, where the camera sees them
     const use = async (pts, note) => { const zone = (await zoneP) || (await homeOf(stops).then((h) => h && [h]).catch(() => null)), all = zone ? await countries() : []; if (race !== me) return; // the course is laid once it is known where it must keep to: the countries named, or the one every stop is in
-      const kept = zone ? keepIn(zone, all.filter((c) => !zone.includes(c) && c.f.properties.ADM0_A3 !== 'ATA'), pts) : { pts, fit: null };
+      const shut = zone ? all.filter((c) => !zone.includes(c) && c.f.properties.ADM0_A3 !== 'ATA') : [], kept = zone ? keepIn(zone, shut, pts) : { pts, fit: null };
+      if (zone) raceLimits(zone, shut);
       race.fit = kept.fit; setPath(repeat(kept.pts)); placeBoxes(); grid(); race.ready = true;
       if (race.go) { race.go = performance.now() + 3000; graceT = race.go + 3000; } // the three seconds are counted with the course in sight
       if (note) OGE.toast(`${T(note)}: ${Math.round(race.pathLen / 1000)} km`); };
@@ -1422,7 +1460,7 @@
         if (it === 'boost') c.boostT = now + 2600; else if (it === 'shield') c.shield = 1;
         else if (it === 'mine') objs.push({ kind: 'mine', by: c, p: P, size: 300, next: 1e15, until: now + 90000 });
         else { const ahead = [{ f: me, me: true }, ...race.cpus].filter((x) => x !== c && x.f < 1 && x.f > c.f && (x.f - c.f) * L < 6e4).sort((x, y) => x.f - y.f)[0]; // a missile, at whoever flies next in front
-          if (!ahead) c.items.unshift(it); else if (!ahead.me) cpuHit(ahead); else if (now > graceT) { OGE.toast(`${c.name} ${T('te lanzó un misil')}`); hurt(10); if (!race) return; } } // shot down, the race is over
+          if (!ahead) c.items.unshift(it); else if (!ahead.me) fireRocket(P, { cpu: ahead }); else if (now > graceT) { OGE.toast(`${c.name} ${T('te lanzó un misil')}`); fireRocket(P, { me: true }, 15); } }
       }
     }
   }
@@ -1778,7 +1816,7 @@
     for (const id of autoOn) { $(id).checked = false; $(id).dispatchEvent(new Event('change')); } autoOn = [];
     for (const id of autoOff) { $(id).checked = true; $(id).dispatchEvent(new Event('change')); } autoOff = [];
     engineHum(0); scene.globe.maximumScreenSpaceError = 2; OGE.fxForce = false; OGE.fxPick = null;
-    on = false; if (race && race.vBase) A.vMax = race.vBase; race = null; if (msg && adv) { adv = null; advShape = null; } tut = null; // a crash ends the stage
+    on = false; if (race && race.vBase) A.vMax = race.vBase; race = null; raceLimits(); if (msg && adv) { adv = null; advShape = null; } tut = null; // a crash ends the stage
     music(false); atlasMusic();
     if (arcade && !msg && score) msg = `Vuelo terminado: ${score} puntos y ${coins} monedas.`;
     if (arcade && (score || coins)) saveScore(score, coins);
@@ -1996,6 +2034,10 @@
       const [a0, a1] = at(12, -4, 5), [b0, b1] = at(24 + w * 0.4, -20, 3.5), tip = [c * (32 + w), -34 + Math.abs(w) * 0.5, sn * (32 + w)]; m.poly('s', a0, a1, b1, b0); m.poly('d', b0, b1, tip); }
     for (const e of [-1, 1]) { m.poly('e', [e * 9 - 5, 14, 22.5], [e * 9 + 5, 14, 22.5], [e * 9 + 5, 24, 22.5], [e * 9 - 5, 24, 22.5]); m.poly('m', [e * 9 - 2, 16, 23.2], [e * 9 + 2, 16, 23.2], [e * 9 + 2, 21, 23.2], [e * 9 - 2, 21, 23.2]); } // eyes
     const o = spit ? 5 : 2; m.poly('k', [-5, 6 - o, 22.6], [5, 6 - o, 22.6], [5, 6 + o, 22.6], [-5, 6 + o, 22.6]); });
+  const ROCKET = meshOf((m) => { lathe(m, [[62, 0.6], [44, 9], [-44, 9], [-52, 6]], 8, 'hs'); lathe(m, [[30, 9.4, 'w'], [22, 9.4, 'w']], 8, 'w'); // a missile, nose up: its body, a red band and four fins
+    for (const [x, z] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) m.poly('w', [x * 9, -28, z * 9], [x * 24, -54, z * 24], [x * 9, -50, z * 9]); });
+  const rocketAim = (to) => (to.me ? C.Cartesian3.fromRadians(s.lon, s.lat, s.alt) : to.cpu ? cpuPos(to.cpu) : to.remote ? remote && remote.p : to.obj.p); // where its target is now
+  function fireRocket(from, to, dmg = 0, own = false) { const tp = rocketAim(to); if (!tp) return; rockets.push({ from: C.Cartesian3.clone(from), to, dmg, own, t: performance.now(), T: clamp(C.Cartesian3.distance(from, tp) / 7, 1400, 3200) }); } // fast: a second and a half to three, by the distance
   const BOMB = meshOf((m) => { lathe(m, [[30, 5], [24, 19], [9, 30], [-9, 30], [-24, 19], [-30, 5]], 8, 'hs'); lathe(m, [[40, 7, 'w'], [29, 7, 'w']], 6, 'w'); m.poly('e', [-3, 40, 0], [3, 40, 0], [7, 51, 0], [0, 46, 0], [-7, 51, 0]); }); // the bomb pickup: a ball, its neck and a spark
   const HIVE = meshOf((m) => { // seven hexagonal cells; the middle one is the core
     const hex = (cx, cy, r, z) => Array.from({ length: 6 }, (_, j) => [cx + r * Math.cos((j * Math.PI) / 3 + Math.PI / 6), cy + r * Math.sin((j * Math.PI) / 3 + Math.PI / 6), z]);
@@ -2283,6 +2325,7 @@
       Object.assign(remote, { to: C.Cartesian3.fromRadians(m.lon, m.lat, m.alt), r: +m.r || 0, h: Number.isFinite(+m.h) ? +m.h : null, pt: +m.pt || 0, m: SHIPS[m.m] ? m.m : 'dardo', hp: m.hp, name: String(m.name || '?').slice(0, 24), skin: /^#[0-9a-f]{6}$/i.test(m.skin) ? m.skin : '#ff9f0a', t: performance.now() });
     } else if (m.t === 'shot' && remote) remote.shot = performance.now();
     else if (m.t === 'hit' && on && arcade && pvp()) hurt(Math.min(25, +m.n || 0));
+    else if (m.t === 'missile' && on && arcade && pvp() && remote && remote.p) fireRocket(remote.p, { me: true }, 25); // the other pilot's missile: it flies here from where that pilot is
     else if (m.t === 'mine' && on && Number.isFinite(+m.lon) && Number.isFinite(+m.lat) && Number.isFinite(+m.alt)) objs.push({ kind: 'mine', p: C.Cartesian3.fromRadians(+m.lon, +m.lat, +m.alt), size: 300, next: 1e15, until: performance.now() + 90000 });
     else if (m.t === 'go') mpJoin(m);
     else if (m.t === 'fin' && remote) OGE.toast(`${remote.name} ${T('llegó a la meta')}: ${fmtT(Math.max(0, +m.ms || 0))}`);
@@ -3013,5 +3056,5 @@
     if (OGE.body && /^adventure|^race/.test(v.mode)) { OGE.toast(T('La aventura y las carreras son de la Tierra: aquí, partida libre.')); v.mode = 'arcade'; }
     if (v.mode === 'adventure') { if (await pickSlot()) pickAdventure(); } else if (v.mode === 'race') raceMode(); else quickShip(v.mode);
   };
-  OGE.flight = { start, stop, maneuver, hitBoss, hurt, ships: SHIPS, state: () => s, flying: () => on, game: () => ({ score, coins, objs, hp, bombs, incoming, shields, regs, tut: tut && tut.i, p2, remote, race }) };
+  OGE.flight = { start, stop, maneuver, hitBoss, hurt, fireRocket, ships: SHIPS, state: () => s, flying: () => on, game: () => ({ score, coins, objs, hp, bombs, incoming, shields, regs, tut: tut && tut.i, p2, remote, race }) };
 })();
