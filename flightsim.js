@@ -1123,7 +1123,7 @@
       }
       if (d > R || s.alt > 1e5) continue; // flags are picked up flying past them, not from space
       if (race) { if (giveItem(Object.keys(BALLOON)[Math.floor(Math.random() * 4)])) race.used.add(r.id); continue; } // a full hand leaves the flag for later
-      gotReg.add(r.id); localStorage.setItem(regKey, JSON.stringify([...gotReg])); run.flags++;
+      gotReg.add(r.id); localStorage.setItem(regKey, JSON.stringify([...gotReg])); run.flags++; if (arcade) hp = Math.min(maxHp, hp + 10); // a flag caught mends the ship a little
       const all = (fn) => regs.filter(fn).every((x) => gotReg.has(x.id)), mine = regs.filter((x) => x.a3 === r.a3), n = mine.filter((x) => gotReg.has(x.id)).length;
       if (arcade) score += 100;
       sfx(n === mine.length ? 'achieve' : 'flag'); // a completed country (or continent, or the world) is an achievement
