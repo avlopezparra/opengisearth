@@ -524,6 +524,14 @@
     n *= DIFF[diff].hurt;
     hp -= n; hit = performance.now(); beep(200, 80, 0.25);
     if (race && race.coins) { race.coins = Math.max(0, race.coins - 2); A.vMax = race.vBase * (1 + 0.04 * race.coins); } // a hit costs speed coins
+    if (hp <= 0 && race && !race.go) { // nobody is out of a race: the ship blows up and comes back at the last ring it went through (or at the start), without its speed coins
+      booms.push({ p: C.Cartesian3.fromRadians(s.lon, s.lat, s.alt), t: performance.now() }); [520, 390, 290].forEach((f, i) => setTimeout(() => beep(f, f * 0.55, 0.35), i * 190));
+      const gt = race.gates && race.gates[race.nextGate - 1], f = gt ? gt.f : race.gates ? 0 : Math.max(0, myProgress() - 5000 / race.pathLen), [lon, lat, hd] = pathAt(f);
+      s.lon = rad(lon); s.lat = rad(lat); s.heading = C.Math.zeroToTwoPi(hd); s.pitch = s.roll = 0; s.alt = (scene.globe.getHeight(C.Cartographic.fromDegrees(lon, lat)) || 0) + 3000; s.v = A.v0 || 600;
+      hp = maxHp; shields = 0; shieldLeft = 4; incoming = []; boost = null; race.coins = 0; A.vMax = race.vBase; graceT = performance.now() + 3000;
+      race.myT = 0; race.myIdx = Math.max(0, race.cum.findIndex((d) => d >= f * race.pathLen)); // its place in the race is looked for from there again
+      OGE.toast(T('Nave destruida: vuelves al último aro.')); return;
+    }
     if (hp <= 0) {
       mpSend({ t: 'dead' });
       [520, 390, 290, 200, 110].forEach((f, i) => setTimeout(() => beep(f, f * 0.55, 0.35), i * 190)); // falling notes: the ship is lost
@@ -1183,19 +1191,19 @@
   function placeBoxes() { // the course along the race path: a row of three balloons every few km, numbered gates, boost rings and speed coins
     objs = objs.filter((o) => !['itembox', 'gate', 'zip', 'scoin'].includes(o.kind));
     const course = race.course = []; // every object of the course, by its place along it (f); only the stretch around the pilot is put in play (courseStep)
-    const at = (f, side = 0, up = 3000) => { const [lon, lat, hd] = pathAt(f), x = lon + (side * Math.cos(hd)) / Math.cos(rad(lat)), y = lat - side * Math.sin(hd), gh = scene.globe.getHeight(C.Cartographic.fromDegrees(x, y)); return { lon: x, lat: y, up, lifted: gh !== undefined, p: C.Cartesian3.fromDegrees(x, y, (gh || 0) + up) }; };
-    const ng = Math.max(3, Math.min(400, Math.round(race.pathLen / 12000))); // a ring about every 12 km, however long the race
+    const fit = race.fit || ((pt) => pt), at = (f, side = 0, up = 3000) => { const [lon, lat, hd] = pathAt(f), [x, y] = fit([lon + (side * Math.cos(hd)) / Math.cos(rad(lat)), lat - side * Math.sin(hd)]), gh = scene.globe.getHeight(C.Cartographic.fromDegrees(x, y)); return { lon: x, lat: y, up, lifted: gh !== undefined, p: C.Cartesian3.fromDegrees(x, y, (gh || 0) + up) }; };
+    const ng = Math.max(3, Math.min(400, Math.round(race.pathLen / 30000))); // a ring about every 30 km, however long the race
     race.gates = race.rings === false ? null : [];
-    if (race.gates) for (let i = 1; i <= ng; i++) { const g0 = { kind: 'gate', n: i, f: i / (ng + 1), size: 1400, next: 1e15, ...at(i / (ng + 1)) }; race.gates.push(g0); course.push(g0); } // pass them in order
+    if (race.gates) for (let i = 1; i <= ng; i++) { const g0 = { kind: 'gate', n: i, f: i / (ng + 1), size: 3000, next: 1e15, ...at(i / (ng + 1)) }; race.gates.push(g0); course.push(g0); } // pass them in order
     race.nextGate = 0; race.missed = 0;
-    for (let i = 0; i < ng; i++) { const f = (i + 0.5) / (ng + 1); course.push({ kind: 'zip', f, size: 800, next: 1e15, ...at(f, (i % 2 ? 1 : -1) * 0.004) }); } // boost rings, a little off the line
-    for (let i = 0; i < ng * 3; i++) { const f = (i + 0.25) / (ng * 3 + 1); course.push({ kind: 'scoin', f, size: 350, next: 1e15, ...at(f, ((i % 3) - 1) * 0.006) }); } // speed coins
+    for (let i = 0; i < ng; i++) { const f = (i + 0.5) / (ng + 1); course.push({ kind: 'zip', f, size: 1800, next: 1e15, ...at(f, (i % 2 ? 1 : -1) * 0.004) }); } // boost rings, a little off the line
+    for (let i = 0; i < ng * 2; i++) { const f = (i + 0.25) / (ng * 2 + 1); course.push({ kind: 'scoin', f, size: 350, next: 1e15, ...at(f, ((i % 3) - 1) * 0.01) }); } // speed coins
     race.coins = 0; race.vBase = race.vBase || A.vMax;
-    const n = Math.max(3, Math.min(400, Math.round(race.pathLen / 12000)));
+    const n = Math.max(3, Math.min(400, Math.round(race.pathLen / 30000)));
     for (let i = 1; i < n; i++) {
       const [lon, lat, hd] = pathAt(i / n), side = Math.cos(rad(lat));
       for (const o of [-1, 0, 1]) { // across the route
-        const x = lon + (o * 0.012 * Math.cos(hd)) / side, y = lat - o * 0.012 * Math.sin(hd), gh = scene.globe.getHeight(C.Cartographic.fromDegrees(x, y));
+        const [x, y] = fit([lon + (o * 0.02 * Math.cos(hd)) / side, lat - o * 0.02 * Math.sin(hd)]), gh = scene.globe.getHeight(C.Cartographic.fromDegrees(x, y));
         course.push({ kind: 'itembox', f: i / n, item: Object.keys(BALLOON)[(i + o + 3) % 4], lon: x, lat: y, up: 3000, lifted: gh !== undefined, p: C.Cartesian3.fromDegrees(x, y, (gh || 0) + 3000), size: 560, next: 1e15 });
       }
     }
@@ -1258,6 +1266,7 @@
   const fmtT = (ms) => { const t = Math.round(ms / 1000); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
   const raceKm = () => { const c = viewer.camera.positionCartographic; return C.Cartesian3.distance(C.Cartesian3.fromRadians(c.longitude, c.latitude, 0), C.Cartesian3.fromDegrees(race.to.lon, race.to.lat, 0)) / 1000; };
   async function raceMode() {
+    countries(); // the borders a course keeps to, fetched while the form is filled in
     const last = (() => { try { return JSON.parse(localStorage.getItem('oge.raceLast')) || {}; } catch { return {}; } })();
     const v = await OGE.ask({ title: '🏁 Carrera entre ciudades', ok: 'Despegar',
       help: 'Vuela de una ciudad a otra lo más rápido que puedas. La meta se marca en la pantalla y en el minimapa; se guarda tu mejor tiempo de cada ruta.',
@@ -1269,7 +1278,7 @@
         { id: 'via', label: 'Metas intermedias: ciudades por las que pasar (separadas por comas)', type: 'text', value: last.via || '' },
         { id: 'rings', label: 'Aros numerados que hay que pasar en orden (desmárcalo para correr sin aros)', type: 'checkbox', value: last.rings ?? true },
         { id: 'flags', label: 'Banderas que dan un objeto al pasar por ellas (desmárcalo para correr sin banderas)', type: 'checkbox', value: last.flags ?? true },
-        { id: 'laps', label: 'Vueltas (2 o más: circuito que vuelve a la salida)', type: 'select', value: String(last.laps ?? 1), options: [1, 2, 3, 4, 5].map((n) => [String(n), n === 1 ? '1 (de una ciudad a otra)' : String(n)]) }] });
+        { id: 'laps', label: 'Vueltas (2 o más: circuito por las ciudades intermedias y la meta, que vuelve a la salida)', type: 'select', value: String(last.laps ?? 1), options: [1, 2, 3, 4, 5].map((n) => [String(n), n === 1 ? '1 (de una ciudad a otra)' : String(n)]) }] });
     if (!v || !v.from || !v.to) return;
     localStorage.setItem('oge.raceLast', JSON.stringify(v));
     let a, b;
@@ -1278,9 +1287,9 @@
     raceGo(v, a, b, via);
   }
   function raceGo(v, a, b, via = []) {
-    relaunch = () => raceGo(v, a, b, via);
+    { const b0 = b, via0 = via; relaunch = () => raceGo(v, a, b0, via0); } // as it was asked for: the laps change b and via below
     mpGo({ mode: 'race', v, a: { lon: a.lon, lat: a.lat, name: a.name }, b: { lon: b.lon, lat: b.lat, name: b.name }, via: via.map((p) => ({ lon: p.lon, lat: p.lat, name: p.name })) });
-    const laps = Math.max(1, +v.laps || 1); if (laps > 1) b = { ...a }; // a circuit ends where it starts
+    const laps = Math.max(1, +v.laps || 1); if (laps > 1) { via = [...via, { ...b }]; b = { ...a }; } // a circuit ends where it starts: the goal becomes the place where it turns back
     b.p = C.Cartesian3.fromDegrees(b.lon, b.lat, 1500);
     const hd = bearing(a, b);
     viewer.camera.setView({ destination: C.Cartesian3.fromDegrees(a.lon, a.lat, 3000), orientation: { heading: hd, pitch: rad(-10), roll: 0 } });
@@ -1289,16 +1298,19 @@
     s.heading = hd;
     race = { laps, via, key: `${v.from}|${v.to}|${v.maxWarp}|${v.lands}|${v.via || ''}|${laps}${v.route === 'line' ? '|line' : ''}${v.rings === false ? '|norings' : ''}`.toLowerCase(), from: a, to: b, t0: performance.now(), km: raceKmFrom(a, b), cpus: [], maxWarp: Math.min(10, +v.maxWarp || 10), rings: v.rings !== false, flags: v.flags !== false, used: new Set(), others: null };
     if (warp > race.maxWarp) setWarp(race.maxWarp);
-    if (v.lands && v.lands.trim()) raceLands(v.lands); // only these countries (the sea and Antarctica stay open)
+    const zoneP = v.lands && v.lands.trim() ? raceLands(v.lands).catch(() => null) : Promise.resolve(null); // only these countries (the sea and Antarctica stay open)
     const mine = ['oge.insignia', 'oge.insigniaR', 'oge.finFlag', 'oge.finFlagR'].map((k) => localStorage.getItem(k) || '').join(' '), lands = CPU_LANDS.filter((n) => !mine.includes('_of_' + n + '.')), pool = Object.keys(SHIPS).filter((k) => SHIPS[k] !== shipModel()); // other ships than the pilot's, other flags than the pilot wears
     if (!p2 && !remote) race.cpus = Array.from({ length: +v.cpus || 0 }, (_, i) => ({ // rivals: each one a pilot flying its own ship (cpuStep)
       name: CPU_NAMES[i], color: CPU_COLORS[i], model: pool[i % pool.length], marks: { i: subImg('Roundel_of_' + lands[i % lands.length] + '.svg'), j: subImg('Flag_of_' + lands[i % lands.length] + '.svg') }, f: 0, side: ((i % 2 ? 1 : -1) * (1 + Math.floor(i / 2))) * 0.0015, speed: A.vMax * race.maxWarp * (0.8 + Math.random() * 0.25), stunT: 0, itemT: performance.now() + 8000 + Math.random() * 10000, n: i, v: 0, items: [], coins: 0, shield: 0, boostT: 0, lon: a.lon, lat: a.lat, alt: 3000, hd: 0, pitch: 0, roll: 0 }));
     const stops = laps > 1 ? [a, ...via, a] : [a, ...via, b], lap1 = stops.map((p) => [p.lon, p.lat]);
     const repeat = (pts) => { let out = pts.slice(); for (let i = 1; i < laps; i++) out = out.concat(pts.slice(1)); return out; }; // the same loop once per lap
     const me = race, straight = lap1.length > 1 ? lap1 : [[a.lon, a.lat], [b.lon, b.lat]], grid = () => race.cpus.forEach((c, i) => { if (race.go) c.f = (500 + 350 * i) / race.pathLen; cpuPlace(c); }); // the grid: the rivals in a line ahead of the pilot, where the camera sees them
-    const use = async (pts, note) => { const home = await homeOf(stops).catch(() => null); if (race !== me) return; // the course is laid once it is known whether it must keep to one country
-      setPath(repeat(home ? keepIn(home, pts) : pts)); placeBoxes(); grid(); if (note) OGE.toast(`${T(note)}: ${Math.round(race.pathLen / 1000)} km`); };
-    items = []; setPath(repeat(straight)); placeBoxes(); grid(); // the straight course at once; the proper one replaces it when it arrives
+    const use = async (pts, note) => { const zone = (await zoneP) || (await homeOf(stops).then((h) => h && [h]).catch(() => null)), all = zone ? await countries() : []; if (race !== me) return; // the course is laid once it is known where it must keep to: the countries named, or the one every stop is in
+      const kept = zone ? keepIn(zone, all.filter((c) => !zone.includes(c) && c.f.properties.ADM0_A3 !== 'ATA'), pts) : { pts, fit: null };
+      race.fit = kept.fit; setPath(repeat(kept.pts)); placeBoxes(); grid(); race.ready = true;
+      if (race.go) { race.go = performance.now() + 3000; graceT = race.go + 3000; } // the three seconds are counted with the course in sight
+      if (note) OGE.toast(`${T(note)}: ${Math.round(race.pathLen / 1000)} km`); };
+    items = []; setPath(repeat(straight)); Object.assign(race, { course: [], gates: null, nextGate: 0, missed: 0, coins: 0, vBase: race.vBase || A.vMax }); grid(); // the straight line to stand on; its rings and balloons are laid only with the proper course (use), never where it may not go
     if (v.route !== 'line') roadPath(stops).then((pts) => (pts ? use(pts, 'Ruta por carreteras y ferris') : use(straight))); else use(straight); // the rivals follow the roads, in the air
     race.go = performance.now() + 3000; race.boostOk = false; graceT = race.go + 3000; stopped = true; // the countdown holds everyone at the start
     const best = +localStorage.getItem('oge.race.' + race.key) || 0;
@@ -1312,6 +1324,7 @@
   function cpuPlace(c) { // on the route at its place along it, in its own lane, pointing down the course
     const [lon, lat, hd] = pathAt(c.f);
     Object.assign(c, { lon: lon + (c.side * Math.cos(hd)) / Math.cos(rad(lat)), lat: lat - c.side * Math.sin(hd), hd, pitch: 0, roll: 0, aim: null });
+    if (race.fit) [c.lon, c.lat] = race.fit([c.lon, c.lat]);
     c.alt = (groundAt(c.lon, c.lat) || 0) + 3000;
   }
   function cpuHit(c) { // a missile or a mine: its shield takes it, or it tumbles for a few seconds
@@ -1325,30 +1338,34 @@
     for (let i = from; i < to; i++) { const d = (P[i][0] - lo) ** 2 * cl + (P[i][1] - la) ** 2; if (d < bd) { bd = d; best = i; } }
     race.myT = now; race.myIdx = best; race.my = race.cum[best] / race.pathLen; return race.my;
   };
-  let landsP = null; // the country outlines (Natural Earth 1:50m) with their boxes, loaded once
-  const countries = () => landsP || (landsP = Promise.all(['shp', 'dbf'].map((x) => fetch(NE + '50m_cultural/ne_50m_admin_0_countries.' + x).then((r) => r.arrayBuffer()))).then(([s2, d2]) => shp.combine([shp.parseShp(s2), shp.parseDbf(d2)]).features.filter((f) => f.geometry).map((f) => ({ f, box: turf.bbox(f) }))).catch(() => { landsP = null; return []; }));
+  let landsP = null; // the country outlines (Natural Earth 1:50m, the game's own copy) with their boxes, loaded once
+  const countries = () => landsP || (landsP = fetch('data/countries50.json').then((r) => r.json()).then((d) => d.features.map((f) => ({ f, box: turf.bbox(f) }))).catch(() => { landsP = null; return []; }));
   async function homeOf(stops) { // the country every stop of a race is in, or null when the race crosses borders
     const all = await countries(), inside = (c, pt) => pt[0] >= c.box[0] && pt[0] <= c.box[2] && pt[1] >= c.box[1] && pt[1] <= c.box[3] && turf.booleanPointInPolygon(pt, c.f);
     const near = (c, p) => [[0, 0], [0.3, 0], [-0.3, 0], [0, 0.3], [0, -0.3]].some(([dx, dy]) => inside(c, [p.lon + dx, p.lat + dy])); // a harbour town may fall just off the simplified coast
     const home = all.find((c) => inside(c, [stops[0].lon, stops[0].lat])) || all.find((c) => near(c, stops[0]));
     return home && stops.every((p) => near(home, p)) ? home : null;
   }
-  function keepIn(home, pts) { // a course kept inside a country: a point every 15 km, and each one that falls outside (another country, or the sea) moved to the nearest spot just inside its border
-    const inside = (pt) => turf.booleanPointInPolygon(pt, home.f), lines = turf.flatten(home.f).features.flatMap((p) => { const l = turf.polygonToLine(p); return l.type === 'FeatureCollection' ? l.features : [l]; }), out = [];
-    const pull = (pt) => { let best = null; for (const l of lines) { const q = turf.nearestPointOnLine(l, pt); if (!best || q.properties.dist < best.properties.dist) best = q; }
-      const b = best.geometry.coordinates, dx = b[0] - pt[0], dy = b[1] - pt[1], m = Math.hypot(dx, dy) || 1, inn = [b[0] + (dx / m) * 0.15, b[1] + (dy / m) * 0.15]; return inside(inn) ? inn : b; };
-    for (let i = 0; i + 1 < pts.length; i++) { const a = pts[i], b = pts[i + 1], n = Math.max(1, Math.ceil(raceKmFrom({ lon: a[0], lat: a[1] }, { lon: b[0], lat: b[1] }) / 15));
-      for (let k = i ? 1 : 0; k <= n; k++) { const pt = [a[0] + ((b[0] - a[0]) * k) / n, a[1] + ((b[1] - a[1]) * k) / n], end = (!i && !k) || (i + 2 === pts.length && k === n); out.push(end || inside(pt) ? pt : pull(pt)); } } // the start and the finish stay where they are
-    return out;
+  function keepIn(zone, others, pts) { // zone: the countries allowed; others: the closed ones (as countries() gives them). The course follows the border on the inside wherever the roads or the straight line would cross it
+    const has = (list, pt) => list.some((c) => pt[0] >= c.box[0] && pt[0] <= c.box[2] && pt[1] >= c.box[1] && pt[1] <= c.box[3] && turf.booleanPointInPolygon(pt, c.f)), bad = (pt) => has(others, pt), segs = [];
+    for (const c of zone) for (const p of turf.flatten(c.f).features) for (const ring of p.geometry.coordinates) for (let i = 0; i + 1 < ring.length; i++) segs.push(ring[i][0], ring[i][1], ring[i + 1][0], ring[i + 1][1]); // the borders of the zone, as plain numbers: they are searched hundreds of times
+    const pull = (pt) => { const k = Math.cos(rad(pt[1])); let bd = Infinity, bx = pt[0], by = pt[1]; // the nearest point of those borders, on a flat map of the place
+      for (let i = 0; i < segs.length; i += 4) { const ax = segs[i], ay = segs[i + 1], dx = (segs[i + 2] - ax) * k, dy = segs[i + 3] - ay, px = (pt[0] - ax) * k, py = pt[1] - ay, u = Math.max(0, Math.min(1, (px * dx + py * dy) / (dx * dx + dy * dy || 1))), ex = px - dx * u, ey = py - dy * u, d = ex * ex + ey * ey;
+        if (d < bd) { bd = d; bx = ax + (segs[i + 2] - ax) * u; by = ay + (segs[i + 3] - ay) * u; } }
+      const m = Math.hypot((bx - pt[0]) * k, by - pt[1]) || 1, ux = ((bx - pt[0]) * k) / m, uy = (by - pt[1]) / m;
+      for (const far of [0.15, 0.06, 0.02]) { const inn = [bx + (ux * far) / k, by + uy * far]; if (has(zone, inn)) return inn; } // a little way in, so that the rings do not sit on the line itself
+      return [bx, by]; };
+    const km = (a, b) => raceKmFrom({ lon: a[0], lat: a[1] }, { lon: b[0], lat: b[1] }), out = [pts[0]];
+    const walk = (a, b, depth) => { if (depth > 10 || km(a, b) < 6) { out.push(b); return; } const m0 = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], m = bad(m0) ? pull(m0) : m0; walk(a, m, depth + 1); walk(m, b, depth + 1); };
+    for (let i = 0; i + 1 < pts.length; i++) { const b = pts[i + 1]; walk(out[out.length - 1], i + 2 === pts.length || !bad(b) ? b : pull(b), 0); } // the start and the finish stay where they are
+    return { pts: out, fit: (pt) => (bad(pt) ? pull(pt) : pt) }; // fit: a point beside the course, moved inside when it falls in a closed country
   }
-  async function raceLands(list) { // the countries named (by name or ISO code) are allowed; any other one turns the ship back, as in the adventure
-    try {
-      const [s2, d2] = await Promise.all([fetch(NE + '50m_cultural/ne_50m_admin_0_countries.shp').then((r) => r.arrayBuffer()), fetch(NE + '50m_cultural/ne_50m_admin_0_countries.dbf').then((r) => r.arrayBuffer())]);
-      const all = shp.combine([shp.parseShp(s2), shp.parseDbf(d2)]).features, cl = (v) => String(v ?? '').replace(/\0/g, '').trim().toLowerCase();
-      const want = list.split(',').map((x) => x.trim().toLowerCase()).filter(Boolean), ok = (f) => { const p = f.properties; return want.some((w) => [p.ADM0_A3, p.ISO_A3, p.ISO_A2, p.NAME, p.NAME_ES, p.NAME_EN, p.ADMIN].some((x) => cl(x) === w)); };
-      if (!all.some(ok)) return OGE.toast(T('No reconocí esos países: la carrera no tiene límites.'), true);
-      if (race) race.others = all.filter((f) => f.geometry && !ok(f) && cl(f.properties.ADM0_A3) !== 'ata').map((f) => ({ f, box: turf.bbox(f) }));
-    } catch { /* without the map of countries the race has no limits */ }
+  async function raceLands(list) { // the countries named (by name or ISO code) are allowed; any other one turns the ship back, as in the adventure. Resolves to the allowed ones, or null when none was recognised
+    const all = await countries(), cl = (x) => String(x ?? '').trim().toLowerCase();
+    const want = list.split(',').map((x) => x.trim().toLowerCase()).filter(Boolean), ok = (c) => { const p = c.f.properties; return want.some((w) => [p.ADM0_A3, p.ISO_A3, p.ISO_A2, p.NAME, p.NAME_ES, p.NAME_EN, p.ADMIN].some((x) => cl(x) === w)); };
+    if (!all.some(ok)) { OGE.toast(T('No reconocí esos países: la carrera no tiene límites.'), true); return null; }
+    if (race) race.others = all.filter((c) => !ok(c) && c.f.properties.ADM0_A3 !== 'ATA');
+    return all.filter(ok);
   }
   function borderStep(st, others) { // shared by the adventure and the races: inside a forbidden country, back to the last free point and turned around
     const now = performance.now();
@@ -1387,6 +1404,7 @@
       const gh = groundAt(c.lon, c.lat); if (gh !== undefined) c.gh = gh;
       const dz = clamp(Math.max(tz ?? (c.gh || 0) + 3000, (c.gh || 0) + 400) - c.alt, -step * 0.4, step * 0.4); // as high as what it goes for, and never into the ground
       c.alt += dz; c.pitch += ((stun ? 0 : Math.atan2(dz, step || 1)) - c.pitch) * Math.min(1, dt * 5);
+      if (race.others && now > (c.landT || 0)) { c.landT = now + 500; const pt = [c.lon, c.lat]; if (race.others.some((o) => pt[0] >= o.box[0] && pt[0] <= o.box[2] && pt[1] >= o.box[1] && pt[1] <= o.box[3] && turf.booleanPointInPolygon(pt, o.f))) cpuPlace(c); } // over a country closed to the race it is put back on the course
       const P = cpuPos(c);
       if (c.aim && C.Cartesian3.distance(P, c.aim.p) < c.aim.size * 1.5 + step) { const o = c.aim; c.aim = null; // through it. It stays for the pilot: the rivals start ahead and would leave nothing
         if (o.kind === 'itembox') c.items.push(o.item); else if (o.kind === 'zip') c.boostT = now + 2600; else if (o.kind === 'scoin') c.coins++; }
@@ -1405,6 +1423,7 @@
   function raceStep() {
     const now = performance.now(); courseStep();
     if (race.go) {
+      if (!race.ready && now - race.t0 < 12000) { race.go = Math.max(race.go, now + 3000); graceT = race.go + 3000; } // the countdown waits for the course (the roads, the borders), though not for ever
       const left = race.go - now;
       if (left > 0) { stopped = true; s.v = 0; { const gh = scene.globe.getHeight(new C.Cartographic(s.lon, s.lat)); if (gh !== undefined) s.alt = gh + 3000; } if (left < 2000 && left > 1000 && keys.has('e')) race.boostOk = true; const n = Math.ceil(left / 1000); if (n !== race.beep) { race.beep = n; beep(440, 160, 0.3); } return; } // 3 · 2 · 1; E held on the 2 earns a boost
       race.go = 0; stopped = false; race.t0 = now; beep(880, 300, 0.35); setWarp(race.maxWarp); s.v = A.vMax; s.throttle = 1; // go: flat out, at the top turbo allowed
@@ -1894,7 +1913,8 @@
     // A mark on top of a wing, at a share f of the way from its root to its tip: half as tall as k times the chord there, and no wider than lim times the span, so that two marks never meet. Its top towards the nose.
     const onWing = (q, f, k, c, wid = 1, lim = 1) => { const P = [...q.P].sort((x, y) => Math.abs(x[0]) - Math.abs(y[0])), lerp = (a, b, t) => a.map((x, j) => x + (b[j] - x) * t), half = (a, b) => lerp(a, b, 0.5);
       const root = P.slice(0, 2).sort((x, y) => y[2] - x[2]), tip = P.slice(2).sort((x, y) => y[2] - x[2]), front = lerp(root[0], tip[0], f), rear = lerp(root[1], tip[1], f), mid = half(front, rear), span = Math.hypot(...sub(half(tip[0], tip[1]), half(root[0], root[1])));
-      const n = q.n[1] < 0 ? q.n.map((x) => -x) : q.n, a = unit(sub(front, rear)), b = cross(n, a), room = Math.min(...q.P.map((p, j) => { const e = unit(sub(q.P[(j + 1) % 4], p)), d = sub(mid, p); return Math.hypot(...sub(d, e.map((x) => x * dot(d, e)))); })), // from its middle to the nearest edge of the wing
+      const n = q.n[1] < 0 ? q.n.map((x) => -x) : q.n, a = unit(sub([0, 0, 1], n.map((x) => x * n[2]))), b = cross(n, a), // upright towards the nose whatever the sweep of the wing (on a delta the chord line is slanted)
+        room = Math.min(...q.P.map((p, j) => { const e = unit(sub(q.P[(j + 1) % 4], p)), d = sub(mid, p); return Math.hypot(...sub(d, e.map((x) => x * dot(d, e)))); })), // from its middle to the nearest edge of the wing
         r = Math.min((k * Math.hypot(...sub(front, rear))) / 2, (lim * span) / wid, (room * 0.92) / (wid > 1 ? Math.hypot(1, wid) : 1)), at = (ka, kb) => mid.map((x, j) => x + (a[j] * ka + b[j] * kb * wid) * r);
       M.F.push([[at(1, -1), at(1, 1), at(-1, 1), at(-1, -1)].map((p) => M.V.push(p) - 1), c, q.fi, Math.sign(q.mid[0])]);
       M.F.push([[at(1, 1), at(1, -1), at(-1, -1), at(-1, 1)].map((p) => M.V.push(p) - 1), c, q.fi, Math.sign(q.mid[0])]); }; // and the same under the wing, turned over so that it reads right from below
@@ -2983,5 +3003,5 @@
     if (OGE.body && /^adventure|^race/.test(v.mode)) { OGE.toast(T('La aventura y las carreras son de la Tierra: aquí, partida libre.')); v.mode = 'arcade'; }
     if (v.mode === 'adventure') { if (await pickSlot()) pickAdventure(); } else if (v.mode === 'race') raceMode(); else quickShip(v.mode);
   };
-  OGE.flight = { start, stop, maneuver, hitBoss, ships: SHIPS, state: () => s, flying: () => on, game: () => ({ score, coins, objs, hp, bombs, incoming, shields, regs, tut: tut && tut.i, p2, remote, race }) };
+  OGE.flight = { start, stop, maneuver, hitBoss, hurt, ships: SHIPS, state: () => s, flying: () => on, game: () => ({ score, coins, objs, hp, bombs, incoming, shields, regs, tut: tut && tut.i, p2, remote, race }) };
 })();

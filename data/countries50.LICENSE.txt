@@ -1,0 +1,1 @@
+Country outlines: Natural Earth 1:50m Admin 0 - Countries (naturalearthdata.com), public domain. Trimmed to a few name fields, coordinates rounded to 3 decimals.
