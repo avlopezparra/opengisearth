@@ -548,7 +548,7 @@
       s.lon = rad(lon); s.lat = rad(lat); s.heading = C.Math.zeroToTwoPi(hd); s.pitch = s.roll = 0; s.alt = (scene.globe.getHeight(C.Cartographic.fromDegrees(lon, lat)) || 0) + 3000; s.v = A.v0 || 600;
       hp = maxHp; shields = 0; shieldLeft = 4; incoming = []; boost = null; race.coins = 0; A.vMax = race.vBase; graceT = performance.now() + 3000;
       race.myT = 0; race.myIdx = Math.max(0, race.cum.findIndex((d) => d >= f * race.pathLen)); // its place in the race is looked for from there again
-      OGE.toast(T('Nave destruida: vuelves al último aro.')); return;
+      race.safe = null; OGE.toast(T('Nave destruida: vuelves al último aro.')); return; // no limit crossed on the way back
     }
     if (hp <= 0) {
       mpSend({ t: 'dead' });
@@ -1408,14 +1408,31 @@
       inst.push(new C.GeometryInstance({ geometry: new C.GroundPolylineGeometry({ positions: C.Cartesian3.fromDegreesArray([a[0], a[1], b[0], b[1]]), width: 6 }), attributes: { color: C.ColorGeometryInstanceAttribute.fromColor(C.Color.fromCssColorString(i % 2 ? '#ffe600' : '#1e7bff')) } })); }
     if (inst.length) raceThread = scene.groundPrimitives.add(new C.GroundPolylinePrimitive({ geometryInstances: inst, appearance: new C.PolylineColorAppearance() }));
   }
-  function raceLimits(zone, others) { // zone: the countries allowed; others: the closed ones. No arguments: the line is taken away
+  let edgeP = null; // the land borders of the world at 1:10m, from the fork the atlas draws its borders with: loaded once, for the limits of the races
+  const edges = () => edgeP || (edgeP = Promise.all(['shp', 'dbf'].map((x) => fetch(NE + '10m_cultural/ne_10m_admin_0_boundary_lines_land.' + x).then((r) => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })))
+    .then(([a, b]) => shp.combine([shp.parseShp(a), shp.parseDbf(b)]).features.filter((f) => f.geometry)).catch(() => { edgeP = null; return null; }));
+  function raceLimits(zone, others, allow = []) { // zone: the countries allowed; others: the closed ones. No arguments: the line is taken away
     if (raceLine) { scene.groundPrimitives.remove(raceLine); raceLine = null; }
     if (!zone) return;
-    const rings = (c) => turf.flatten(c.f).features.flatMap((p) => p.geometry.coordinates), meets = (x, y) => x.box[0] <= y.box[2] && x.box[2] >= y.box[0] && x.box[1] <= y.box[3] && x.box[3] >= y.box[1], shared = new Set(), inst = [];
-    for (const o of others) if (zone.some((z) => meets(z, o))) for (const r of rings(o)) for (const p of r) shared.add(p[0] + ',' + p[1]); // neighbours share their border points exactly: those are the land borders, the rest is coast
-    const add = (run) => { if (run.length >= 4) inst.push(new C.GeometryInstance({ geometry: new C.GroundPolylineGeometry({ positions: C.Cartesian3.fromDegreesArray(run), width: 4 }), attributes: { color: C.ColorGeometryInstanceAttribute.fromColor(C.Color.ORANGERED) } })); };
-    for (const z of zone) for (const r of rings(z)) { let run = []; for (const p of r) { if (shared.has(p[0] + ',' + p[1])) run.push(p[0], p[1]); else { add(run); run = []; } } add(run); }
-    if (inst.length) raceLine = scene.groundPrimitives.add(new C.GroundPolylinePrimitive({ geometryInstances: inst, appearance: new C.PolylineColorAppearance() }));
+    const me = race, codes = new Set(zone.map((c) => String(c.f.properties.ADM0_A3))), cl = (v) => String(v ?? '').replace(/\0/g, '').trim();
+    const line = (flat, indef) => new C.GeometryInstance({ geometry: new C.GroundPolylineGeometry({ positions: C.Cartesian3.fromDegreesArray(flat), width: 4 }), attributes: { color: C.ColorGeometryInstanceAttribute.fromColor(indef ? C.Color.ORANGE : C.Color.ORANGERED) } });
+    const coarse = () => { // without the fine lines: the land borders of the game's own outlines (1:50m), where neighbours share their points
+      const rings = (c) => turf.flatten(c.f).features.flatMap((p) => p.geometry.coordinates), meets = (x, y) => x.box[0] <= y.box[2] && x.box[2] >= y.box[0] && x.box[1] <= y.box[3] && x.box[3] >= y.box[1], shared = new Set(), inst = [];
+      for (const o of others) if (zone.some((z) => meets(z, o))) for (const r of rings(o)) for (const p of r) shared.add(p[0] + ',' + p[1]); // neighbours share their border points exactly: those are the land borders, the rest is coast
+      const add = (run) => { if (run.length >= 4) inst.push(new C.GeometryInstance({ geometry: new C.GroundPolylineGeometry({ positions: C.Cartesian3.fromDegreesArray(run), width: 4 }), attributes: { color: C.ColorGeometryInstanceAttribute.fromColor(C.Color.ORANGERED) } })); };
+      for (const z of zone) for (const r of rings(z)) { let run = []; for (const p of r) { if (shared.has(p[0] + ',' + p[1])) run.push(p[0], p[1]); else { add(run); run = []; } } add(run); }
+      return inst; };
+    edges().then((list) => { if (race !== me || raceLine) return; const inst = [], segs = [];
+      if (list) for (const f of list) { const p = f.properties, l = codes.has(cl(p.ADM0_A3_L)), r = codes.has(cl(p.ADM0_A3_R)); if (l === r) continue; // a line with the zone on one side only: its edge
+        const indef = /Indefinite|Disputed|Line of control|Unrecognized/i.test(cl(p.FEATURECLA));
+        if (indef && allow.length) { const c = f.geometry.type === 'LineString' ? f.geometry.coordinates : f.geometry.coordinates[0], i = Math.floor((c.length - 1) / 2), a = c[i], b = c[Math.min(c.length - 1, i + 1)], k = Math.cos(rad(a[1])), dx = (b[0] - a[0]) * k, dy = b[1] - a[1], m = Math.hypot(dx, dy) || 1; // a line inside what the zone claims is no limit: on neither side is a closed country
+          const at = (s) => [(a[0] + b[0]) / 2 + ((-dy / m) * 0.01 * s) / k, (a[1] + b[1]) / 2 + (dx / m) * 0.01 * s], inA = (pt) => allow.some((o) => turf.booleanPointInPolygon(pt, o.f));
+          const out = inA(at(1)) ? cl(p.ADM0_A3_R) : inA(at(-1)) ? cl(p.ADM0_A3_L) : null; // the claimed area on the left: the country beyond is the one on the right, and the other way round
+          if (out && codes.has(out)) continue; } // undefined stretches (the Southern Patagonian Ice Field) in orange, as in the atlas
+        for (const c of f.geometry.type === 'LineString' ? [f.geometry.coordinates] : f.geometry.coordinates) if (c.length > 1) { inst.push(line(c.flat(), indef)); for (let n = 0; n + 1 < c.length; n++) segs.push(c[n][0], c[n][1], c[n + 1][0], c[n + 1][1]); } }
+      if (list) race.limitSegs = segs; // the same lines stop the pilot (limitStep)
+      else inst.push(...coarse());
+      if (inst.length) raceLine = scene.groundPrimitives.add(new C.GroundPolylinePrimitive({ geometryInstances: inst, appearance: new C.PolylineColorAppearance() })); });
   }
   function raceGo(v, a, b, via = []) {
     raceLimits(); raceTrail();
@@ -1438,8 +1455,9 @@
     const repeat = (pts) => { let out = pts.slice(); for (let i = 1; i < laps; i++) out = out.concat(pts.slice(1)); return out; }; // the same loop once per lap
     const me = race, straight = lap1.length > 1 ? lap1 : [[a.lon, a.lat], [b.lon, b.lat]], grid = () => race.cpus.forEach((c, i) => { if (race.go) c.f = (500 + 350 * i) / race.pathLen; cpuPlace(c); }); // the grid: the rivals in a line ahead of the pilot, where the camera sees them
     const use = async (pts, note) => { const zone = (await zoneP) || (await homeOf(stops).then((h) => h && [h]).catch(() => null)), all = zone ? await countries() : []; if (race !== me) return; // the course is laid once it is known where it must keep to: the countries named, or the one every stop is in
-      const shut = zone ? all.filter((c) => !zone.includes(c) && c.f.properties.ADM0_A3 !== 'ATA') : [], kept = zone ? keepIn(zone, shut, pts) : { pts, fit: null };
-      if (zone) raceLimits(zone, shut);
+      const allow = zone ? await claimsOf(zone) : []; if (race !== me) return; race.allow = allow; // what the zone claims is open to the race (borderStep reads it too)
+      const shut = zone ? all.filter((c) => !zone.includes(c) && c.f.properties.ADM0_A3 !== 'ATA') : [], kept = zone ? keepIn(zone, shut, pts, allow) : { pts: despike(pts), fit: null };
+      if (zone) raceLimits(zone, shut, allow);
       race.fit = kept.fit; setPath(repeat(kept.pts)); placeBoxes(); grid(); raceTrail(true); race.ready = true;
       if (race.go) { race.go = performance.now() + 3000; graceT = race.go + 3000; } // the three seconds are counted with the course in sight
       if (note) OGE.toast(`${T(note)}: ${Math.round(race.pathLen / 1000)} km`); };
@@ -1479,9 +1497,24 @@
     const home = all.find((c) => inside(c, [stops[0].lon, stops[0].lat])) || all.find((c) => near(c, stops[0]));
     return home && stops.every((p) => near(home, p)) ? home : null;
   }
+  function despike(pts, ok = () => true) { // ok(a, b): may the course go straight from a to b?
+    const out = pts.slice(), turn = (a, b, c) => { const k = Math.cos(rad(b[1])), ux = (b[0] - a[0]) * k, uy = b[1] - a[1], vx = (c[0] - b[0]) * k, vy = c[1] - b[1], m = Math.hypot(ux, uy) * Math.hypot(vx, vy);
+      return m ? (ux * vx + uy * vy) / m : 1; }; // the cosine of the change of direction: -1 is a full turn back
+    for (let pass = 0, done = false; !done && pass < 40; pass++) { done = true;
+      for (let i = 1; i + 1 < out.length; i++) { const tight = Math.hypot((out[i][0] - out[i - 1][0]) * Math.cos(rad(out[i][1])), out[i][1] - out[i - 1][1]) < 0.01; // closer than about 1 km to the one before
+        if ((tight || turn(out[i - 1], out[i], out[i + 1]) < -0.35) && ok(out[i - 1], out[i + 1])) { out.splice(i, 1); i--; done = false; } } } // a turn sharper than some 110 degrees
+    return out;
+  }
   const KEEP = 0.4; // degrees (some 44 km) a race course keeps from a border it may not cross
-  function keepIn(zone, others, pts) { // zone: the countries allowed; others: the closed ones (as countries() gives them). The course follows the border on the inside wherever the roads or the straight line would cross it
-    const has = (list, pt) => list.some((c) => pt[0] >= c.box[0] && pt[0] <= c.box[2] && pt[1] >= c.box[1] && pt[1] <= c.box[3] && turf.booleanPointInPolygon(pt, c.f)), bad = (pt) => has(others, pt), segs = [];
+  let claimP = null; // the disputed areas of the world (1:10m, the atlas's fork), loaded once
+  function claimsOf(zone) { // the disputed areas each of these countries claims or holds: by its code, or its name in the area's note
+    claimP = claimP || Promise.all(['shp', 'dbf'].map((x) => fetch(NE + '10m_cultural/ne_10m_admin_0_disputed_areas.' + x).then((r) => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })))
+      .then(([a, b]) => shp.combine([shp.parseShp(a), shp.parseDbf(b)]).features.filter((f) => f.geometry)).catch(() => { claimP = null; return []; });
+    const cl = (v) => String(v ?? '').replace(/\0/g, '').trim(), codes = zone.map((c) => cl(c.f.properties.ADM0_A3)), names = zone.flatMap((c) => [c.f.properties.NAME, c.f.properties.ADMIN, c.f.properties.NAME_EN].map(cl).filter(Boolean));
+    return claimP.then((all) => all.filter((d) => codes.includes(cl(d.properties.ADM0_A3)) || names.some((n) => cl(d.properties.NOTE_BRK).includes(n))).map((d) => ({ f: d, box: turf.bbox(d) })));
+  }
+  function keepIn(zone, others, pts, allow = []) { // zone: the countries allowed; others: the closed ones (as countries() gives them). The course follows the border on the inside wherever the roads or the straight line would cross it
+    const has = (list, pt) => list.some((c) => pt[0] >= c.box[0] && pt[0] <= c.box[2] && pt[1] >= c.box[1] && pt[1] <= c.box[3] && turf.booleanPointInPolygon(pt, c.f)), bad = (pt) => has(others, pt) && !has(allow, pt), segs = []; // closed: another country's, unless the zone claims it
     for (const c of zone) for (const p of turf.flatten(c.f).features) for (const ring of p.geometry.coordinates) for (let i = 0; i + 1 < ring.length; i++) segs.push(ring[i][0], ring[i][1], ring[i + 1][0], ring[i + 1][1]); // the borders of the zone, as plain numbers: they are searched hundreds of times
     const pull = (pt) => { const k = Math.cos(rad(pt[1])); let bd = Infinity, bx = pt[0], by = pt[1]; // the nearest point of those borders, on a flat map of the place
       for (let i = 0; i < segs.length; i += 4) { const ax = segs[i], ay = segs[i + 1], dx = (segs[i + 2] - ax) * k, dy = segs[i + 3] - ay, px = (pt[0] - ax) * k, py = pt[1] - ay, u = Math.max(0, Math.min(1, (px * dx + py * dy) / (dx * dx + dy * dy || 1))), ex = px - dx * u, ey = py - dy * u, d = ex * ex + ey * ey;
@@ -1502,7 +1535,8 @@
     const km = (a, b) => raceKmFrom({ lon: a[0], lat: a[1] }, { lon: b[0], lat: b[1] }), out = [pts[0]];
     const walk = (a, b, depth) => { if (depth > 10 || km(a, b) < 6) { out.push(b); return; } const m0 = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], m = tidy(m0); walk(a, m, depth + 1); walk(m, b, depth + 1); };
     for (let i = 0; i + 1 < pts.length; i++) { const b = pts[i + 1]; walk(out[out.length - 1], i + 2 === pts.length ? b : tidy(b), 0); } // the start and the finish stay where they are
-    return { pts: out, fit: (pt) => (bad(pt) ? pull(pt) : pt) }; // (what lies beside the course is already as far in as the course itself)
+    const okLine = (a, b) => { for (let k = 1; k < 8; k++) if (bad([a[0] + ((b[0] - a[0]) * k) / 8, a[1] + ((b[1] - a[1]) * k) / 8])) return false; return true; }; // a straight stretch that stays out of the closed countries
+    return { pts: despike(out, okLine), fit: (pt) => (bad(pt) ? pull(pt) : pt) }; // (what lies beside the course is already as far in as the course itself)
     // // fit: a point beside the course, moved inside when it falls in a closed country
   }
   async function raceLands(list) { // the countries named (by name or ISO code) are allowed; any other one turns the ship back, as in the adventure. Resolves to the allowed ones, or null when none was recognised
@@ -1511,6 +1545,18 @@
     if (!all.some(ok)) { OGE.toast(T('No reconocí esos países: la carrera no tiene límites.'), true); return null; }
     if (race) race.others = all.filter((c) => !ok(c) && c.f.properties.ADM0_A3 !== 'ATA');
     return all.filter(ok);
+  }
+  function limitStep() { // a race kept to some countries: turned back on crossing a limit drawn on the ground (1:10m), or inside a closed country well away from those lines
+    const now = performance.now(); if (now - (race.checkT || 0) < 150) return; race.checkT = now;
+    const here = [deg(s.lon), deg(s.lat)], from = race.safe || here, S = race.limitSegs, k = Math.cos(s.lat), o = (ax, ay, bx, by, cx, cy) => (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+    const x0 = Math.min(from[0], here[0]) - 0.3, x1 = Math.max(from[0], here[0]) + 0.3, y0 = Math.min(from[1], here[1]) - 0.3, y1 = Math.max(from[1], here[1]) + 0.3; let crossed = false, near = Infinity;
+    for (let i = 0; i < S.length; i += 4) { const ax = S[i], ay = S[i + 1], bx = S[i + 2], by = S[i + 3]; if (Math.max(ax, bx) < x0 || Math.min(ax, bx) > x1 || Math.max(ay, by) < y0 || Math.min(ay, by) > y1) continue;
+      if (!crossed && o(ax, ay, bx, by, from[0], from[1]) * o(ax, ay, bx, by, here[0], here[1]) < 0 && o(from[0], from[1], here[0], here[1], ax, ay) * o(from[0], from[1], here[0], here[1], bx, by) < 0) crossed = true;
+      const dx = (bx - ax) * k, dy = by - ay, px = (here[0] - ax) * k, py = here[1] - ay, u = Math.max(0, Math.min(1, (px * dx + py * dy) / (dx * dx + dy * dy || 1))); near = Math.min(near, Math.hypot(px - dx * u, py - dy * u)); }
+    const inn = (list) => (list || []).some((c) => here[0] >= c.box[0] && here[0] <= c.box[2] && here[1] >= c.box[1] && here[1] <= c.box[3] && turf.booleanPointInPolygon(here, c.f));
+    if (!crossed && !(near > 0.15 && inn(race.others) && !inn(race.allow))) { race.safe = here; return; } // some 15 km: nearer than that the coarse outline is not to be trusted
+    s.lon = rad(from[0]); s.lat = rad(from[1]); s.heading = C.Math.zeroToTwoPi(s.heading + Math.PI); boost = null;
+    if (now - (race.warned || 0) > 2500) { race.warned = now; OGE.toast(T('No puedes salir de los países de esta carrera.')); sfx('shieldBreak'); }
   }
   function borderStep(st, others) { // shared by the adventure and the races: inside a forbidden country, back to the last free point and turned around
     const now = performance.now();
@@ -1549,7 +1595,7 @@
       const gh = groundAt(c.lon, c.lat); if (gh !== undefined) c.gh = gh;
       const dz = clamp(Math.max(tz ?? (c.gh || 0) + 3000, (c.gh || 0) + 400) - c.alt, -step * 0.4, step * 0.4); // as high as what it goes for, and never into the ground
       c.alt += dz; c.pitch += ((stun ? 0 : Math.atan2(dz, step || 1)) - c.pitch) * Math.min(1, dt * 5);
-      if (race.others && now > (c.landT || 0)) { c.landT = now + 500; const pt = [c.lon, c.lat]; if (race.others.some((o) => pt[0] >= o.box[0] && pt[0] <= o.box[2] && pt[1] >= o.box[1] && pt[1] <= o.box[3] && turf.booleanPointInPolygon(pt, o.f))) cpuPlace(c); } // over a country closed to the race it is put back on the course
+      if (race.others && now > (c.landT || 0)) { c.landT = now + 500; const pt = [c.lon, c.lat]; const inn = (list) => (list || []).some((o) => pt[0] >= o.box[0] && pt[0] <= o.box[2] && pt[1] >= o.box[1] && pt[1] <= o.box[3] && turf.booleanPointInPolygon(pt, o.f)); if (inn(race.others) && !inn(race.allow)) cpuPlace(c); } // over a country closed to the race it is put back on the course
       const P = cpuPos(c);
       if (c.aim && C.Cartesian3.distance(P, c.aim.p) < c.aim.size * 1.5 + step) { const o = c.aim; c.aim = null; // through it. It stays for the pilot: the rivals start ahead and would leave nothing
         if (o.kind === 'itembox') c.items.push(o.item); else if (o.kind === 'zip') c.boostT = now + 2600; else if (o.kind === 'scoin') c.coins++; }
@@ -1575,7 +1621,7 @@
       if (race.boostOk) { boost = null; boostCd = 0; startBoost(); OGE.toast(T('¡Salida perfecta!')); }
     }
     { const dtc = Math.min(0.1, (now - (race.cpuT || now)) / 1000); race.cpuT = now; if (race.cpus.length) cpuStep(dtc); } // by the clock: at fewer frames a second the rivals must not fall behind
-    if (race.others) borderStep(race, race.others);
+    if (race.others) { if (race.limitSegs) limitStep(); else borderStep(race, race.others); }
     const ng = race.gates && race.gates[race.nextGate];
     if (ng && myProgress() > ng.f + 0.04) { race.nextGate++; race.missed++; race.t0 -= 5000; objs = objs.filter((o) => o !== ng); OGE.toast(`${T('Te saltaste el aro')} ${ng.n}: +5 s`); sfx('shieldBreak'); } // a skipped gate: 5 s penalty
     if (race.gates ? race.nextGate < race.gates.length : myProgress() < 0.9) return; // the gates first (laps and intermediate goals); without rings, most of the course flown
