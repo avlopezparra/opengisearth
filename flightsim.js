@@ -528,6 +528,7 @@
   function hurt(n) {
     if (tut || performance.now() < graceT) { hit = performance.now(); return; } // nothing hurts during the tutorial or the grace time
     if (landing === 'parked' && OGE.body) return; // landed (Z) and driving over the Moon or Mars: nothing hurts
+    if (landing === 'up') return; // lifting off the ground it cannot fight back yet: nothing hurts until it flies
     if (shields) { broke = hit = performance.now(); if (--shieldLeft > 0) return sfx('bossHit'); shields--; shieldLeft = 4; return sfx('shieldBreak'); } // a shield takes four hits and then breaks
     n *= DIFF[diff].hurt;
     hp -= n; hit = performance.now(); beep(200, 80, 0.25);
@@ -2604,7 +2605,7 @@
         s.heading = C.Math.zeroToTwoPi(s.heading + s.rud * clamp(v / 12, -1, 1) * 0.9 * dt);
         s.alt = gnd + 12; // closer to the ground, like a car
       }
-      else if (landing === 'up') { s.pitch = 0; s.alt += Math.max(300, (gnd + 3000 - s.alt) * 1.5) * dt; if (s.alt >= gnd + 3000) { landing = null; s.throttle = 0.5; s.v = Math.max(s.v, 400); } }
+      else if (landing === 'up') { s.pitch = 0; s.alt += Math.max(300, (gnd + 3000 - s.alt) * 1.5) * dt; if (s.alt >= gnd + 3000) { landing = null; s.throttle = 0.5; s.v = Math.max(s.v, 400); graceT = Math.max(graceT, performance.now() + 2000); } }
       viewer.camera.setView({ destination: C.Cartesian3.fromRadians(s.lon, s.lat, s.alt), orientation: { heading: s.heading, pitch: s.pitch, roll: 0 } });
     }
     if (arcade && on) arcadeStep(dt);
@@ -2994,6 +2995,7 @@
   hud.after(Object.assign(document.createElement('div'), { id: 'crt' }));
   const syncCrt = () => { const crt = localStorage.getItem('oge.crt') === '1'; document.body.classList.toggle('crt', crt); $('flyCrt').textContent = T('Filtro CRT') + ': ' + T(crt ? 'sí' : 'no'); $('flyCrt').classList.toggle('active', crt); };
   $('flyCrt').onclick = () => { localStorage.setItem('oge.crt', localStorage.getItem('oge.crt') === '1' ? '0' : '1'); syncCrt(); }; syncCrt();
+  for (const [id, txt] of [['flyClouds', 'Nubes: sí'], ['flyWx', 'Clima: el del lugar'], ['flyFull', 'Pantalla completa: no']]) if (!$(id) && $('flyCrt')) $('flyCrt').before(Object.assign(document.createElement('button'), { id, textContent: txt })); // a page kept by the browser from before these buttons existed still gets them: without them the whole game would not start
   const syncClouds = () => { const c = $('layerClouds').checked; $('flyClouds').textContent = T('Nubes') + ': ' + T(c ? 'sí' : 'no'); $('flyClouds').classList.toggle('active', c); }; // the atlas layer of yesterday's clouds, at hand during the flight
   $('flyClouds').onclick = () => { $('layerClouds').click(); localStorage.setItem('oge.flyClouds', $('layerClouds').checked ? '1' : '0'); }; // the game starts with them unless they were turned off here
   $('layerClouds').addEventListener('change', syncClouds); syncClouds(); $('flyClouds').hidden = !!OGE.body;
