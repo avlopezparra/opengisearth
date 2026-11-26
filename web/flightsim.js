@@ -1894,12 +1894,13 @@
     // A mark on top of a wing, at a share f of the way from its root to its tip: half as tall as k times the chord there, and no wider than lim times the span, so that two marks never meet. Its top towards the nose.
     const onWing = (q, f, k, c, wid = 1, lim = 1) => { const P = [...q.P].sort((x, y) => Math.abs(x[0]) - Math.abs(y[0])), lerp = (a, b, t) => a.map((x, j) => x + (b[j] - x) * t), half = (a, b) => lerp(a, b, 0.5);
       const root = P.slice(0, 2).sort((x, y) => y[2] - x[2]), tip = P.slice(2).sort((x, y) => y[2] - x[2]), front = lerp(root[0], tip[0], f), rear = lerp(root[1], tip[1], f), mid = half(front, rear), span = Math.hypot(...sub(half(tip[0], tip[1]), half(root[0], root[1])));
-      const n = q.n[1] < 0 ? q.n.map((x) => -x) : q.n, a = unit(sub(front, rear)), b = cross(n, a), r = Math.min((k * Math.hypot(...sub(front, rear))) / 2, (lim * span) / wid), at = (ka, kb) => mid.map((x, j) => x + (a[j] * ka + b[j] * kb * wid) * r);
+      const n = q.n[1] < 0 ? q.n.map((x) => -x) : q.n, a = unit(sub(front, rear)), b = cross(n, a), room = Math.min(...q.P.map((p, j) => { const e = unit(sub(q.P[(j + 1) % 4], p)), d = sub(mid, p); return Math.hypot(...sub(d, e.map((x) => x * dot(d, e)))); })), // from its middle to the nearest edge of the wing
+        r = Math.min((k * Math.hypot(...sub(front, rear))) / 2, (lim * span) / wid, (room * 0.92) / (wid > 1 ? Math.hypot(1, wid) : 1)), at = (ka, kb) => mid.map((x, j) => x + (a[j] * ka + b[j] * kb * wid) * r);
       M.F.push([[at(1, -1), at(1, 1), at(-1, 1), at(-1, -1)].map((p) => M.V.push(p) - 1), c, q.fi, Math.sign(q.mid[0])]);
       M.F.push([[at(1, 1), at(1, -1), at(-1, -1), at(-1, 1)].map((p) => M.V.push(p) - 1), c, q.fi, Math.sign(q.mid[0])]); }; // and the same under the wing, turned over so that it reads right from below
     // Where the roundel (i) and the flag (j) go, ship by ship (spot): 'wing', on top of each wing; 'upper', on the slanted upper plate of the hull on each side; 'top', on the plates along the top of the hull behind the canopy.
     const wings = quads.filter((q) => q.c === 's').slice(0, 2), outward = (q) => (q.n[1] < 0 ? q.n.map((x) => -x) : q.n);
-    const upper = (e) => quads.filter((q) => q.c === 'h' && q.mid[0] * e > 0 && q.mid[1] > 0 && Math.abs(q.n[1]) > 0.3 && Math.abs(q.n[0]) > 0.3).sort((x, y) => y.area - x.area)[0];
+    const upper = (e) => { const side = quads.filter((q) => q.c === 'h' && q.mid[0] * e > 0 && q.mid[1] > 0 && Math.abs(q.n[1]) > 0.3 && Math.abs(q.n[0]) > 0.3).sort((x, y) => y.mid[2] - x.mid[2]); return side[1] || side[0]; }; // nose to tail: the first lies beside the canopy, the one behind it is in plain view
     const along = quads.filter((q) => q.c === 'h' && q.mid[1] > 0 && Math.abs(q.n[0]) < 0.2 && Math.abs(q.n[1]) > 0.7).sort((x, y) => y.mid[2] - x.mid[2]), tops = (along.length > 2 ? along.slice(1) : along).slice(0, 2); // nose to tail; of three or more, the first lies under the canopy
     const place = (c, where) => {
       if (where === 'upper') for (const e of [-1, 1]) { const q = upper(e); if (q) put(q, outward(q), c === 'j' ? [0, 1, 0] : [0, 0, 1], 0.9, 1, c, e, c === 'j' ? 1.5 : 1); } // a flag lies along the fuselage, its top towards the top of the hull
@@ -1909,7 +1910,7 @@
     if (wings.length === 2 && spot.i === 'wing') for (const q of wings) onWing(q, 0.5, 0.62, 'i', 1, 0.3); else place('i', spot.i === 'wing' ? 'upper' : spot.i);
     if (wings.length === 2 && spot.j === 'wing') for (const q of wings) onWing(q, 0.5, 0.36, 'j', 1.5, 0.3); else place('j', spot.j === 'wing' ? 'upper' : spot.j);
   };
-  const SPOTS = { halcon: { i: 'wing', j: 'top' }, flecha: { i: 'wing', j: 'top' }, tridente: { i: 'wing', j: 'upper' }, manta: { i: 'wing', j: 'top' } }; // the ships whose wings cannot carry both marks without one hiding the other
+  const SPOTS = { halcon: { i: 'wing', j: 'upper' }, flecha: { i: 'wing', j: 'upper' }, tridente: { i: 'wing', j: 'upper' }, manta: { i: 'wing', j: 'upper' } }; // the ships whose wings cannot carry both marks without one hiding the other
   for (const k in SHIPS) insignia(SHIPS[k].mesh, SPOTS[k] || { i: 'wing', j: 'wing' });
   const worn = {}; // the images the pilot wears, by the localStorage key that names each; only from Wikimedia
   const wornImg = (key) => { const u = localStorage.getItem(key) || ''; if (!worn[key] || worn[key].u !== u) worn[key] = { u, im: /^https:\/\/[a-z]+\.wikimedia\.org\//.test(u) ? Object.assign(new Image(), { src: u }) : null }; return worn[key].im; };
@@ -2982,5 +2983,5 @@
     if (OGE.body && /^adventure|^race/.test(v.mode)) { OGE.toast(T('La aventura y las carreras son de la Tierra: aquí, partida libre.')); v.mode = 'arcade'; }
     if (v.mode === 'adventure') { if (await pickSlot()) pickAdventure(); } else if (v.mode === 'race') raceMode(); else quickShip(v.mode);
   };
-  OGE.flight = { start, stop, maneuver, hitBoss, state: () => s, flying: () => on, game: () => ({ score, coins, objs, hp, bombs, incoming, shields, regs, tut: tut && tut.i, p2, remote, race }) };
+  OGE.flight = { start, stop, maneuver, hitBoss, ships: SHIPS, state: () => s, flying: () => on, game: () => ({ score, coins, objs, hp, bombs, incoming, shields, regs, tut: tut && tut.i, p2, remote, race }) };
 })();
