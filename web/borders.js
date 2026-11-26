@@ -26,18 +26,25 @@
 
   // --- Borders: lines clamped to the ground (GroundPolyline), they follow the terrain instead of ending up under the mountains ---
   lazy($('borders'), async () => {
-    const gj = await loadShp('10m_cultural/ne_10m_admin_0_boundary_lines_land'), instances = [];
-    for (const f of gj.features) {
-      const disputed = /Disputed|Indefinite|Line of control|Unrecognized/i.test(f.properties.FEATURECLA || '');
-      for (const p of f.geometry.type === 'LineString' ? [f.geometry.coordinates] : f.geometry.coordinates) {
-        if (p.length < 2) continue;
-        instances.push(new C.GeometryInstance({
-          geometry: new C.GroundPolylineGeometry({ positions: C.Cartesian3.fromDegreesArray(p.flatMap(([lon, lat]) => [lon, lat])), width: 2.5 }),
-          attributes: { color: C.ColorGeometryInstanceAttribute.fromColor(disputed ? C.Color.ORANGE : C.Color.YELLOW) }, // disputed: orange
-        }));
-      }
-    }
-    return viewer.scene.groundPrimitives.add(new C.GroundPolylinePrimitive({ geometryInstances: instances, appearance: new C.PolylineColorAppearance() }));
+    const line = (flat, disputed) => new C.GeometryInstance({ geometry: new C.GroundPolylineGeometry({ positions: C.Cartesian3.fromDegreesArray(flat), width: 2.5 }),
+      attributes: { color: C.ColorGeometryInstanceAttribute.fromColor(disputed ? C.Color.ORANGE : C.Color.YELLOW) } }); // disputed: orange
+    const draw = (instances) => viewer.scene.groundPrimitives.add(new C.GroundPolylinePrimitive({ geometryInstances: instances, appearance: new C.PolylineColorAppearance() }));
+    const layer = { prim: null, get show() { return !!this.prim && this.prim.show; }, set show(v) { if (this.prim) this.prim.show = v; } }; // whichever set of lines is on the map now
+    const fine = async () => { const gj = await loadShp('10m_cultural/ne_10m_admin_0_boundary_lines_land'), instances = [];
+      for (const f of gj.features) { const disputed = /Disputed|Indefinite|Line of control|Unrecognized/i.test(f.properties.FEATURECLA || '');
+        for (const p of f.geometry.type === 'LineString' ? [f.geometry.coordinates] : f.geometry.coordinates) if (p.length >= 2) instances.push(line(p.flatMap(([lon, lat]) => [lon, lat]), disputed)); }
+      return draw(instances); };
+    try { // the app's own outlines: a point that belongs to two countries is on a land border; each stretch is drawn once
+      const fc = await (await fetch('data/countries50.json')).json(), rings = fc.features.map((f) => (f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates).flat()), owners = new Map(), done = new Set(), instances = [];
+      rings.forEach((rs, c) => { for (const r of rs) for (const p of r) { const k = p[0] + ',' + p[1], o = owners.get(k); if (o === undefined) owners.set(k, c); else if (o !== c) owners.set(k, -1); } }); // -1: shared
+      for (const rs of rings) for (const r of rs) { let run = [];
+        for (let n = 0; n + 1 < r.length; n++) { const a = r[n][0] + ',' + r[n][1], b = r[n + 1][0] + ',' + r[n + 1][1], seg = a < b ? a + '|' + b : b + '|' + a;
+          if (owners.get(a) === -1 && owners.get(b) === -1 && !done.has(seg)) { done.add(seg); if (!run.length) run.push(r[n][0], r[n][1]); run.push(r[n + 1][0], r[n + 1][1]); } else { if (run.length >= 4) instances.push(line(run)); run = []; } }
+        if (run.length >= 4) instances.push(line(run)); }
+      layer.prim = draw(instances);
+      fine().then((p) => { p.show = layer.prim.show; viewer.scene.groundPrimitives.remove(layer.prim); layer.prim = p; }).catch(() => {}); // without the download the first lines stay
+    } catch { layer.prim = await fine(); } // no outlines of its own: the download, as before
+    return layer;
   }, 'las fronteras');
 
   // Labels that are not clipped against the terrain (the mountains used to "eat" the letters);
