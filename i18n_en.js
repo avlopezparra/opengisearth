@@ -541,6 +541,7 @@
     'K: ver los controles': 'K: show the controls',
     'Hecho por Alejandro Víctor López Parra @avlopezparra (github)': 'Made by Alejandro Víctor López Parra @avlopezparra (GitHub)',
     'Modo de juego': 'Game mode',
+    'No puedes salir de los países de esta carrera.': 'You cannot leave the countries of this race.',
     'Pantalla dividida: 2 jugadores, con mandos o el teclado numérico': 'Split screen: 2 players, with pads or the numpad',
     'Juego en pantalla dividida': 'Game on the split screen',
     'Carrera: la última configurada, sin rivales de la CPU': 'Race: the last one set up, without computer rivals',
