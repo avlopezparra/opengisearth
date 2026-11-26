@@ -177,6 +177,7 @@
   let style = STYLE.main;
   function fmTone(k, midi, t, dur) { // a carrier sine whose frequency is swung by a modulator sine: bright at the attack, mellower after
     let [ratio, i0, i1, dec, vol, cents] = FM[k]; i0 *= style.idx; i1 *= style.idx; dec *= style.dec; if (k === 'bass') ratio = style.bass;
+    if (tune && tune.mix && tune.mix[k]) vol *= tune.mix[k]; // a theme may turn one of its parts up or down (a harmony of many voices at once)
     const f = 440 * 2 ** ((midi - 69) / 12) * 2 ** (cents / 1200);
     const car = audio.createOscillator(), mod = audio.createOscillator(), depth = audio.createGain(), v = audio.createGain();
     car.frequency.value = f; mod.frequency.value = f * ratio;
