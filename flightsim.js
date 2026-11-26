@@ -76,6 +76,10 @@
         const q = toW(scene, o.wp || o.p); if (!q || q.x < 0 || q.y < 0 || q.x > cw || q.y > ch) continue;
         const sc = Math.hypot(q.x - acx, q.y - acy) + d / 200 + (wall ? 400 : 0); if (sc < bestS) { bestS = sc; bestQ = q; }
       }
+      if (race && !race.go) for (const c of race.cpus) { if (c.f >= 1) continue; const p = cpuPos(c), d = C.Cartesian3.distance(p, camP); // the rivals of the race, after the enemies
+        if (d > 6e4 || C.Cartesian3.dot(C.Cartesian3.subtract(p, camP, new C.Cartesian3()), viewer.camera.directionWC) <= 0) continue;
+        const q = toW(scene, p); if (!q || q.x < 0 || q.y < 0 || q.x > cw || q.y > ch) continue;
+        const sc = Math.hypot(q.x - acx, q.y - acy) + d / 200 + 150; if (sc < bestS) { bestS = sc; bestQ = q; } }
       if ($('layerSats').checked) { const occ = new C.EllipsoidalOccluder(C.Ellipsoid.WGS84, camP); // satellites too (shooting one gives life back): those near and in sight, after an enemy as close to the middle
         for (const sat of OGE.satellites()) { if (!sat.p || OGE.satHidden.has(sat.name) || C.Cartesian3.distance(sat.p, camP) > 2.5e6 || !occ.isPointVisible(sat.p)) continue;
           if (C.Cartesian3.dot(C.Cartesian3.subtract(sat.p, camP, new C.Cartesian3()), viewer.camera.directionWC) <= 0) continue;
@@ -116,6 +120,9 @@
     }
     if (!best) best = bossHit; // shots at the enemies around a boss go to those enemies, not to the boss
     if (!best && armour) { booms.push({ p: C.Cartesian3.clone(armour.p), t: performance.now(), small: true }); sfx('shieldBreak'); } // nothing but a spark
+    if (!best && race && !race.go) for (const c of race.cpus) { if (c.f >= 1) continue; const cp = cpuPos(c); C.Cartesian3.subtract(cp, ray.origin, to); const d = C.Cartesian3.magnitude(to);
+      if (d < 6e4 && Math.acos(clamp(C.Cartesian3.dot(to, ray.direction) / d, -1, 1)) < Math.atan(500 / d) + rad(1)) { booms.push({ p: cp, t: performance.now(), small: true }); sfx('bossHit'); // a rival in the way of the shot
+        if (!c.shield) c.stunT = Math.max(c.stunT, performance.now() + (power > 1 ? 2500 : 1200)); break; } } // slowed for a second or so (a missile: four); its shield takes the shot whole
     const occ = new C.EllipsoidalOccluder(C.Ellipsoid.WGS84, cam.positionWC);
     if (!best && $('layerSats').checked) for (const sat of OGE.satellites()) { // a satellite hit gives life back and disappears until the page is reloaded
       if (!sat.p || OGE.satHidden.has(sat.name) || !occ.isPointVisible(sat.p)) continue; // the Earth in between stops the laser
@@ -590,7 +597,7 @@
     if (!o.from && !tut && !canCharge()) { localStorage.setItem('oge.charge', '1'); OGE.toast(T('Nueva habilidad: rayo cargado. Mantén el disparo y suéltalo para lanzarlo.')); }
     objs.splice(objs.indexOf(o), 1); gain(pts(o.from ? 300 : 1000)); if (!o.from) run.bosses++; flash = performance.now(); sfx('boss');
     if (o.type === 'face') objs = objs.filter((x) => { if (x.from !== o) return true; booms.push({ p: x.p, t: performance.now() }); return false; }); // its hands fall with it
-    if (o.fin) { localStorage.setItem(SK('oge.adventure.final.' + advCont), '1'); gain(pts(4000)); const prize = Object.values(SHIPS).find((m) => m.lock === advCont); OGE.toast(`${T(o.name)} ${T('ha caído.')} ${T('¡Completaste la aventura de')} ${T(advCont)}!${prize ? ` ${T('Nave desbloqueada')}: ${prize.name}.` : ''}`); sfx('achieve'); adv = null; }
+    if (o.fin) { const was = champion(); localStorage.setItem(SK('oge.adventure.final.' + advCont), '1'); if (!was && champion()) setTimeout(() => OGE.toast(T('¡Todos los jefes finales vencidos! Turbo ×200 desbloqueado.')), 6000); gain(pts(4000)); const prize = Object.values(SHIPS).find((m) => m.lock === advCont); OGE.toast(`${T(o.name)} ${T('ha caído.')} ${T('¡Completaste la aventura de')} ${T(advCont)}!${prize ? ` ${T('Nave desbloqueada')}: ${prize.name}.` : ''}`); sfx('achieve'); adv = null; }
     if (o.cap) { // the practice boss of the tutorial guards no capital
       const c = o.cap; dropCrest(c); owe(c, true);
       OGE.toast(`${T('Jefe derrotado: recoge el escudo de')} ${landOf(c)}.`);
@@ -635,7 +642,7 @@
   }
   function arcadeStep(dt) {
     if (auto) return; // the autopilot brings its own enemies
-    if (A.ship && s.alt > 1e5 && warp > 100) { if (objs.length || incoming.length) { objs = objs.filter((o) => o.kind === 'boss' || o.kind === 'crest'); incoming = []; } return; } // hyper turbo: nothing to dodge or collect on the way (it would run into everything); at the turbo of the air, space has its enemies and prizes too
+    if (A.ship && s.alt > 1e5 && warp > 200) { if (objs.length || incoming.length) { objs = objs.filter((o) => o.kind === 'boss' || o.kind === 'crest'); incoming = []; } return; } // hyper turbo: nothing to dodge or collect on the way (it would run into everything); at the turbo of the air, space has its enemies and prizes too
     if (!tut && !race && performance.now() > aaT) aaSites();
     if (tune && arcade) { const BT = (adv && adv.final && window.OGE_FINAL_THEME) || window.OGE_BOSS_THEME, near = BT && objs.some((o) => o.kind === 'boss' && C.Cartesian3.distance(o.p, viewer.camera.positionWC) < 1e5), base = (OGE.body === 'moon' && window.OGE_MOON_THEME) || (OGE.body === 'mars' && window.OGE_MARS_THEME) || (adv && window.OGE_ADV_THEME) || (race && window.OGE_RACE_THEME) || (s.alt > (tune === window.OGE_SPACE_THEME ? SPACE * 0.8 : SPACE) && window.OGE_SPACE_THEME) || TH, want = near ? BT : base; if (want !== tune) music(true, want); } // Boss Fight OpenStarshipEarth while a boss is close
     const cam = viewer.camera, t = new C.Cartesian3(), far = reach() * 2.5, eff = s.v * warp, slack = eff * 0.03, now = performance.now(); // slack: distance covered in one frame
@@ -820,6 +827,11 @@
         g.strokeStyle = 'rgba(110,55,0,.5)'; g.beginPath(); g.arc(q.x, q.y, pr - lw * 0.25, 0.4, 2.2); g.stroke(); // the shade inside
         g.lineCap = 'butt'; g.strokeStyle = 'rgba(122,66,0,.7)'; g.lineWidth = Math.max(1, lw * 0.16); for (let n = 0; n < 8; n++) { const a = now / 2500 + (n * Math.PI) / 4, c = Math.cos(a), sn = Math.sin(a); g.beginPath(); g.moveTo(q.x + c * (pr - lw / 2), q.y + sn * (pr - lw / 2)); g.lineTo(q.x + c * (pr + lw / 2), q.y + sn * (pr + lw / 2)); g.stroke(); } // its eight segments, turning slowly
         if (o.kind === 'gate') { g.globalAlpha = 1; g.shadowBlur = 0; g.fillStyle = '#fff'; g.textAlign = 'center'; g.font = `800 ${Math.round(Math.max(12, pr * 0.45))}px sans-serif`; g.fillText(String(o.n), q.x, q.y - pr - 8); } // the gate's number over it
+        if (o.kind === 'gate' && race && race.gates) { // where the course goes on from this ring: an arrow in its middle, towards the next ring (or the finish). When that lies straight on, the arrow points up: ahead
+          const nx = race.gates[o.n] ? race.gates[o.n].p : race.to.p, cam = viewer.camera, v = C.Cartesian3.subtract(nx, o.p, new C.Cartesian3()), x = C.Cartesian3.dot(v, cam.rightWC), y = C.Cartesian3.dot(v, cam.upWC);
+          const a = Math.hypot(x, y) / (C.Cartesian3.magnitude(v) || 1) < 0.2 ? -Math.PI / 2 : Math.atan2(-y, x), sz = pr * 0.3;
+          g.save(); g.translate(q.x, q.y); g.rotate(a); g.shadowBlur = 0; g.globalAlpha = race.gates[race.nextGate] === o ? 0.7 : 0.35; g.fillStyle = '#34c759'; g.strokeStyle = '#0b3d1c'; g.lineWidth = Math.max(1.5, sz * 0.08); g.lineJoin = 'round';
+          g.beginPath(); g.moveTo(sz, 0); g.lineTo(sz * 0.1, -sz * 0.6); g.lineTo(sz * 0.1, -sz * 0.24); g.lineTo(-sz * 0.8, -sz * 0.24); g.lineTo(-sz * 0.8, sz * 0.24); g.lineTo(sz * 0.1, sz * 0.24); g.lineTo(sz * 0.1, sz * 0.6); g.closePath(); g.fill(); g.stroke(); g.restore(); }
       }
       else if (o.kind === 'coin') drawMesh(COIN, foeAxes(o.p, now / 260 + (o.p.x % 6)), { h: '#ffcf1a', d: '#b87400', w: '#fff1a0' }, false, meshScale(o.p, Math.max(6, pr) * 1.25, h), '#ffd60a'); // a thick gold coin with a star on each face, spinning
       else if (o.kind === 'shield') { const R = Math.max(8, pr), br = R * (1.35 + 0.06 * Math.sin(now / 300)), gr = g.createRadialGradient(q.x - br * 0.3, q.y - br * 0.35, br * 0.1, q.x, q.y, br); gr.addColorStop(0, 'rgba(255,255,255,.55)'); gr.addColorStop(0.4, 'rgba(90,180,255,.18)'); gr.addColorStop(1, 'rgba(10,132,255,.5)');
@@ -869,7 +881,7 @@
       else { const a = Math.atan2(-C.Cartesian3.dot(v, cam.upWC), C.Cartesian3.dot(v, cam.rightWC)), rr = Math.min(w, h) / 2 - 46; // out of view: an arrow at the edge, towards where it comes from
         g.translate(w / 2 + Math.cos(a) * rr, h / 2 + Math.sin(a) * rr); g.rotate(a); g.beginPath(); g.moveTo(20, 0); g.lineTo(-12, -14); g.lineTo(-12, 14); g.closePath(); g.fill(); }
       g.restore(); }
-    if (warn && now % 400 < 260) { g.save(); g.fillStyle = '#ff2d2d'; g.strokeStyle = '#000'; g.lineWidth = 4; g.textAlign = 'center'; g.font = '800 26px sans-serif'; const msg = `${T('¡MISIL!')} ${T('Barrel roll (R) para esquivarlo')}`; g.strokeText(msg, w / 2, h * 0.22); g.fillText(msg, w / 2, h * 0.22); g.restore(); }
+    if (warn && now % 400 < 260) { g.save(); g.fillStyle = '#ff2d2d'; g.strokeStyle = '#000'; g.lineWidth = 4; g.textAlign = 'center'; g.font = '800 26px sans-serif'; const msg = T('¡MISIL!'); g.strokeText(msg, w / 2, h * 0.22); g.fillText(msg, w / 2, h * 0.22); g.restore(); }
     for (const b of booms) { // an explosion: balls of fire rising, a shock ring on the ground, sparks that fall back, smoke. small: a shot that met the ground
       const q = toWin(scene, b.p), k = (now - b.t) / (b.small ? 420 : 550);
       if (!q || k > 1) continue;
@@ -1092,7 +1104,8 @@
     }
   }
   OGE.minimap.extra = (mg) => {
-    if (race && race.path && race.path.length > 1) { mg.save(); mg.strokeStyle = 'rgba(52,199,89,.85)'; mg.lineWidth = 1.5; mg.beginPath(); race.path.forEach(([x, y], i) => { const [px, py] = OGE.minimap.xy(x, y); if (i) mg.lineTo(px, py); else mg.moveTo(px, py); }); mg.stroke(); mg.restore(); } // the race route
+    if (race && race.path && race.path.length > 1) { mg.save(); mg.lineJoin = 'round'; mg.beginPath(); let was = null; for (const [x, y] of race.path) { const [px, py] = OGE.minimap.xy(x, y); if (was && Math.abs(px - was) < 120) mg.lineTo(px, py); else mg.moveTo(px, py); was = px; } // a jump across the map is the far side of the world: no line there
+      mg.strokeStyle = 'rgba(0,0,0,.6)'; mg.lineWidth = 5; mg.stroke(); mg.strokeStyle = '#ff2bd6'; mg.lineWidth = 3; mg.stroke(); mg.restore(); } // the race route, in the colour of the thread on the ground
     if (race && race.gates) { mg.save(); race.gates.slice(race.nextGate, race.nextGate + 12).forEach((gt, i) => { const [px, py] = OGE.minimap.xy(gt.lon, gt.lat); mg.fillStyle = i ? 'rgba(255,214,10,.5)' : '#ffd60a'; mg.strokeStyle = '#3a2600'; mg.beginPath(); mg.arc(px, py, i ? 2.5 : 4.5, 0, 7); mg.fill(); if (!i) mg.stroke(); }); mg.restore(); } // the rings left to pass: the next one bigger
     const edge = (x, y, color) => { // a point inside the map, or an arrow on its edge pointing to it
       const W = 240, H = 120, cx = W / 2, cy = H / 2;
@@ -1311,12 +1324,51 @@
   const bearing = (a, b) => Math.atan2((b.lon - a.lon) * Math.cos(rad(a.lat)), b.lat - a.lat); // flat approximation, good enough to steer
   const fmtT = (ms) => { const t = Math.round(ms / 1000); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
   const raceKm = () => { const c = viewer.camera.positionCartographic; return C.Cartesian3.distance(C.Cartesian3.fromRadians(c.longitude, c.latitude, 0), C.Cartesian3.fromDegrees(race.to.lon, race.to.lat, 0)) / 1000; };
+  // A cup is a string of races flown one after the other: each gives points by the order of arrival and the most points wins it. Eight come with the game; the pilot can write another.
+  const CUPS = [
+    { id: 'andes', name: 'Copa Andes', races: [['Arica', 'Antofagasta'], ['Santiago de Chile', 'Concepción, Chile'], ['La Paz, Bolivia', 'Cusco'], ['Bogotá', 'Quito']] },
+    { id: 'atlantico', name: 'Copa Atlántico', races: [['Río de Janeiro', 'São Paulo'], ['Buenos Aires', 'Córdoba, Argentina'], ['Montevideo', 'Porto Alegre'], ['Salvador, Brasil', 'Recife']] },
+    { id: 'norte', name: 'Copa Norteamérica', races: [['Ciudad de México', 'Guadalajara, México'], ['Los Ángeles', 'San Francisco, California'], ['Nueva York', 'Washington D. C.'], ['Toronto', 'Montreal']] },
+    { id: 'europa', name: 'Copa Europa', races: [['Madrid', 'Barcelona'], ['París', 'Londres'], ['Roma', 'Milán'], ['Berlín', 'Varsovia']] },
+    { id: 'africa', name: 'Copa África', races: [['El Cairo', 'Luxor'], ['Nairobi', 'Mombasa'], ['Johannesburgo', 'Durban'], ['Lagos, Nigeria', 'Abuya']] },
+    { id: 'asia', name: 'Copa Asia', races: [['Tokio', 'Osaka'], ['Seúl', 'Busan'], ['Bangkok', 'Nom Pen'], ['Pekín', 'Shanghái']] },
+    { id: 'oceania', name: 'Copa Oceanía', races: [['Sídney', 'Melbourne'], ['Auckland', 'Wellington'], ['Brisbane', 'Sídney'], ['Adelaida', 'Melbourne']] },
+    { id: 'mundial', name: 'Copa Mundial', races: [['Lisboa', 'Madrid'], ['Estambul', 'Atenas'], ['Dubái', 'Mascate'], ['Singapur', 'Yakarta']] },
+  ], CUP_PTS = [15, 12, 10, 8, 7, 6, 5, 4, 3, 2, 1];
+  let cup = null; // the cup under way: { id, name, races, i (the race being flown), pts: { pilot: points }, v (the settings of its races), pending (a race is over and its results are due) }
+  const cupsDone = () => CUPS.filter((c) => localStorage.getItem('oge.cup.' + c.id)).length; // how many of the eight have been flown to the end
+  async function cupNext() {
+    const [from, to] = cup.races[cup.i]; let a, b;
+    try { [a, b] = await Promise.all([geocode(from), geocode(to)]); } catch (e) { cup = null; return OGE.toast(e.message, true); }
+    OGE.toast(`${T(cup.name)} · ${T('carrera')} ${cup.i + 1}/${cup.races.length}`);
+    raceGo({ ...cup.v, from, to, via: '', laps: 1 }, a, b, []);
+  }
+  async function raceOver(rows, title) { // the order of arrival; in a cup also the points of the race and the standings so far, and then the next race
+    const mk = (tag, txt) => Object.assign(document.createElement(tag), { textContent: txt }), box = document.createElement('div');
+    const table = (head, body) => { const t = document.createElement('table'); t.style.cssText = 'width:100%;border-collapse:collapse;margin-top:8px;font-size:13px';
+      const tr = (cells, tag) => { const r = document.createElement('tr'); for (const c of cells) { const e = mk(tag, c); e.style.cssText = 'padding:3px 6px;text-align:left;border-bottom:1px solid rgba(128,128,128,.35)'; r.append(e); } return r; };
+      t.append(tr(head, 'th'), ...body.map((b) => tr(b, 'td'))); return t; };
+    if (cup) rows.forEach((r, i) => { r.pts = CUP_PTS[i] || 0; cup.pts[r.name] = (cup.pts[r.name] || 0) + r.pts; });
+    box.append(table([T('Puesto'), T('Piloto'), T('Tiempo'), ...(cup ? [T('Puntos')] : [])], rows.map((r, i) => [String(i + 1), r.name, (r.late ? '≈ ' : '') + fmtT(r.ms), ...(cup ? ['+' + r.pts] : [])])));
+    const total = cup && Object.entries(cup.pts).sort((x, y) => y[1] - x[1]), last = cup && cup.i + 1 >= cup.races.length;
+    if (cup) box.append(mk('h3', `${T(cup.name)}: ${T('clasificación')}`), table([T('Puesto'), T('Piloto'), T('Puntos')], total.map(([n, p], i) => [String(i + 1), n, String(p)])));
+    const v = await OGE.ask({ title: cup ? `${T(cup.name)} · ${T('carrera')} ${cup.i + 1}/${cup.races.length}: ${title}` : `${T('Resultados')}: ${title}`, ok: cup && !last ? 'Siguiente carrera' : 'Cerrar', fields: [], extra: box });
+    if (!cup) return;
+    cup.pending = false;
+    if (!last) { if (!v) { cup = null; return OGE.toast(T('Copa abandonada.')); } cup.i++; return cupNext(); }
+    const place = 1 + total.findIndex(([n]) => n === T('Tú')), { id, name } = cup, before = cupsDone(); cup = null;
+    if (id !== 'custom') { const key = 'oge.cup.' + id, best = +localStorage.getItem(key) || 99; if (place < best) localStorage.setItem(key, String(place)); } // the best place reached in each cup is kept
+    sfx('achieve'); OGE.toast(`${T(name)}: ${T('terminaste en el puesto')} ${place}.`);
+    const prize = Object.values(SHIPS).find((m) => m.cups && m.cups > before && m.cups <= cupsDone()); if (prize) setTimeout(() => OGE.toast(`${T('Nave desbloqueada')}: ${T(prize.name)}`), 2500);
+  }
   async function raceMode() {
     countries(); // the borders a course keeps to, fetched while the form is filled in
     const last = (() => { try { return JSON.parse(localStorage.getItem('oge.raceLast')) || {}; } catch { return {}; } })();
     const v = await OGE.ask({ title: '🏁 Carrera entre ciudades', ok: 'Despegar',
       help: 'Vuela de una ciudad a otra lo más rápido que puedas. La meta se marca en la pantalla y en el minimapa; se guarda tu mejor tiempo de cada ruta.',
-      fields: [{ id: 'from', label: 'Salida', type: 'text', value: last.from || 'Santiago de Chile' }, { id: 'to', label: 'Meta', type: 'text', value: last.to || 'Valparaíso' },
+      fields: [{ id: 'cup', label: 'Qué correr', type: 'select', value: last.cup || '', options: [['', T('Carrera suelta: la salida y la meta de abajo')], ...CUPS.map((c) => [c.id, `${T(c.name)}${localStorage.getItem('oge.cup.' + c.id) ? ' ✓' : ''}: ${c.races.map((r) => r.map((x) => x.split(',')[0]).join(' → ')).join(' · ')}`]), ['custom', T('Copa personalizada: las carreras que escribas abajo')]] },
+        { id: 'cupRaces', label: 'Copa personalizada: una carrera por línea, «Salida - Meta»', type: 'textarea', rows: 4, value: last.cupRaces || 'Santiago de Chile - Valparaíso, Chile\nValparaíso, Chile - La Serena, Chile\nLa Serena, Chile - Copiapó\nCopiapó - Antofagasta' },
+        { id: 'from', label: 'Salida', type: 'text', value: last.from || 'Santiago de Chile' }, { id: 'to', label: 'Meta', type: 'text', value: last.to || 'Valparaíso' },
         { id: 'cpus', label: 'Rivales de la CPU (si no hay otros jugadores)', type: 'select', value: String(last.cpus ?? 5), options: Array.from({ length: 13 }, (_, i) => [String(i), i ? String(i) : 'Ninguno']) },
         { id: 'maxWarp', label: 'Turbo máximo', type: 'select', value: String(Math.min(10, last.maxWarp ?? 2)), options: WARPS.filter((x) => x <= 10).map((x) => [String(x), '×' + x]) }, // the higher ones are for crossing the world, not for a course
         { id: 'route', label: 'Ruta de la carrera', type: 'select', value: last.route === 'line' ? 'line' : 'road', options: [['road', 'Por carreteras y ferris (OpenStreetMap)'], ['line', 'Línea recta entre las ciudades']] },
@@ -1325,25 +1377,39 @@
         { id: 'rings', label: 'Aros numerados que hay que pasar en orden (desmárcalo para correr sin aros)', type: 'checkbox', value: last.rings ?? true },
         { id: 'flags', label: 'Banderas que dan un objeto al pasar por ellas (desmárcalo para correr sin banderas)', type: 'checkbox', value: last.flags ?? true },
         { id: 'laps', label: 'Vueltas (2 o más: circuito por las ciudades intermedias y la meta, que vuelve a la salida)', type: 'select', value: String(last.laps ?? 1), options: [1, 2, 3, 4, 5].map((n) => [String(n), n === 1 ? '1 (de una ciudad a otra)' : String(n)]) }] });
-    if (!v || !v.from || !v.to) return;
+    if (!v) return;
     localStorage.setItem('oge.raceLast', JSON.stringify(v));
+    cup = null;
+    if (v.cup) { const known = CUPS.find((c) => c.id === v.cup), races = known ? known.races : String(v.cupRaces || '').split('\n').map((l) => l.split(/\s+-\s+/).map((x) => x.trim())).filter((r) => r.length === 2 && r[0] && r[1]).slice(0, 8);
+      if (!races.length) return OGE.toast(T('La copa personalizada necesita carreras: una por línea, «Salida - Meta».'), true);
+      cup = { id: known ? known.id : 'custom', name: known ? known.name : 'Copa personalizada', races, i: 0, pts: {}, v }; return cupNext(); }
+    if (!v.from || !v.to) return;
     let a, b;
     let via = [];
     try { [a, b, ...via] = await Promise.all([geocode(v.from), geocode(v.to), ...String(v.via || '').split(',').map((x) => x.trim()).filter(Boolean).map(geocode)]); } catch (e) { return OGE.toast(e.message, true); }
     raceGo(v, a, b, via);
   }
   let raceLine = null; // the limits of the race, drawn on the ground
+  let raceThread = null; // the course itself, as a thread on the ground
+  function raceTrail(show) { // no argument: the thread is taken away
+    if (raceThread) { scene.groundPrimitives.remove(raceThread); raceThread = null; }
+    if (!show || !race || !race.path || race.path.length < 2) return;
+    const lap = 1 / (race.laps || 1), n = Math.max(2, Math.min(1500, Math.round((race.pathLen * lap) / 8000))), inst = []; // a piece every 8 km or so: one lap is enough, the others run over it
+    for (let i = 0; i < n; i++) { const a = pathAt((i / n) * lap), b = pathAt(((i + 1) / n) * lap); if (a[0] === b[0] && a[1] === b[1]) continue;
+      inst.push(new C.GeometryInstance({ geometry: new C.GroundPolylineGeometry({ positions: C.Cartesian3.fromDegreesArray([a[0], a[1], b[0], b[1]]), width: 6 }), attributes: { color: C.ColorGeometryInstanceAttribute.fromColor(C.Color.fromCssColorString(i % 2 ? '#00e5ff' : '#ff2bd6')) } })); }
+    if (inst.length) raceThread = scene.groundPrimitives.add(new C.GroundPolylinePrimitive({ geometryInstances: inst, appearance: new C.PolylineColorAppearance() }));
+  }
   function raceLimits(zone, others) { // zone: the countries allowed; others: the closed ones. No arguments: the line is taken away
     if (raceLine) { scene.groundPrimitives.remove(raceLine); raceLine = null; }
     if (!zone) return;
     const rings = (c) => turf.flatten(c.f).features.flatMap((p) => p.geometry.coordinates), meets = (x, y) => x.box[0] <= y.box[2] && x.box[2] >= y.box[0] && x.box[1] <= y.box[3] && x.box[3] >= y.box[1], shared = new Set(), inst = [];
     for (const o of others) if (zone.some((z) => meets(z, o))) for (const r of rings(o)) for (const p of r) shared.add(p[0] + ',' + p[1]); // neighbours share their border points exactly: those are the land borders, the rest is coast
-    const add = (run) => { if (run.length >= 4) inst.push(new C.GeometryInstance({ geometry: new C.GroundPolylineGeometry({ positions: C.Cartesian3.fromDegreesArray(run), width: 3 }), attributes: { color: C.ColorGeometryInstanceAttribute.fromColor(C.Color.ORANGERED) } })); };
+    const add = (run) => { if (run.length >= 4) inst.push(new C.GeometryInstance({ geometry: new C.GroundPolylineGeometry({ positions: C.Cartesian3.fromDegreesArray(run), width: 4 }), attributes: { color: C.ColorGeometryInstanceAttribute.fromColor(C.Color.ORANGERED) } })); };
     for (const z of zone) for (const r of rings(z)) { let run = []; for (const p of r) { if (shared.has(p[0] + ',' + p[1])) run.push(p[0], p[1]); else { add(run); run = []; } } add(run); }
     if (inst.length) raceLine = scene.groundPrimitives.add(new C.GroundPolylinePrimitive({ geometryInstances: inst, appearance: new C.PolylineColorAppearance() }));
   }
   function raceGo(v, a, b, via = []) {
-    raceLimits();
+    raceLimits(); raceTrail();
     { const b0 = b, via0 = via; relaunch = () => raceGo(v, a, b0, via0); } // as it was asked for: the laps change b and via below
     mpGo({ mode: 'race', v, a: { lon: a.lon, lat: a.lat, name: a.name }, b: { lon: b.lon, lat: b.lat, name: b.name }, via: via.map((p) => ({ lon: p.lon, lat: p.lat, name: p.name })) });
     const laps = Math.max(1, +v.laps || 1); if (laps > 1) { via = [...via, { ...b }]; b = { ...a }; } // a circuit ends where it starts: the goal becomes the place where it turns back
@@ -1365,7 +1431,7 @@
     const use = async (pts, note) => { const zone = (await zoneP) || (await homeOf(stops).then((h) => h && [h]).catch(() => null)), all = zone ? await countries() : []; if (race !== me) return; // the course is laid once it is known where it must keep to: the countries named, or the one every stop is in
       const shut = zone ? all.filter((c) => !zone.includes(c) && c.f.properties.ADM0_A3 !== 'ATA') : [], kept = zone ? keepIn(zone, shut, pts) : { pts, fit: null };
       if (zone) raceLimits(zone, shut);
-      race.fit = kept.fit; setPath(repeat(kept.pts)); placeBoxes(); grid(); race.ready = true;
+      race.fit = kept.fit; setPath(repeat(kept.pts)); placeBoxes(); grid(); raceTrail(true); race.ready = true;
       if (race.go) { race.go = performance.now() + 3000; graceT = race.go + 3000; } // the three seconds are counted with the course in sight
       if (note) OGE.toast(`${T(note)}: ${Math.round(race.pathLen / 1000)} km`); };
     items = []; setPath(repeat(straight)); Object.assign(race, { course: [], gates: null, nextGate: 0, missed: 0, coins: 0, vBase: race.vBase || A.vMax }); grid(); // the straight line to stand on; its rings and balloons are laid only with the proper course (use), never where it may not go
@@ -1404,6 +1470,7 @@
     const home = all.find((c) => inside(c, [stops[0].lon, stops[0].lat])) || all.find((c) => near(c, stops[0]));
     return home && stops.every((p) => near(home, p)) ? home : null;
   }
+  const KEEP = 0.4; // degrees (some 44 km) a race course keeps from a border it may not cross
   function keepIn(zone, others, pts) { // zone: the countries allowed; others: the closed ones (as countries() gives them). The course follows the border on the inside wherever the roads or the straight line would cross it
     const has = (list, pt) => list.some((c) => pt[0] >= c.box[0] && pt[0] <= c.box[2] && pt[1] >= c.box[1] && pt[1] <= c.box[3] && turf.booleanPointInPolygon(pt, c.f)), bad = (pt) => has(others, pt), segs = [];
     for (const c of zone) for (const p of turf.flatten(c.f).features) for (const ring of p.geometry.coordinates) for (let i = 0; i + 1 < ring.length; i++) segs.push(ring[i][0], ring[i][1], ring[i + 1][0], ring[i + 1][1]); // the borders of the zone, as plain numbers: they are searched hundreds of times
@@ -1411,12 +1478,23 @@
       for (let i = 0; i < segs.length; i += 4) { const ax = segs[i], ay = segs[i + 1], dx = (segs[i + 2] - ax) * k, dy = segs[i + 3] - ay, px = (pt[0] - ax) * k, py = pt[1] - ay, u = Math.max(0, Math.min(1, (px * dx + py * dy) / (dx * dx + dy * dy || 1))), ex = px - dx * u, ey = py - dy * u, d = ex * ex + ey * ey;
         if (d < bd) { bd = d; bx = ax + (segs[i + 2] - ax) * u; by = ay + (segs[i + 3] - ay) * u; } }
       const m = Math.hypot((bx - pt[0]) * k, by - pt[1]) || 1, ux = ((bx - pt[0]) * k) / m, uy = (by - pt[1]) / m;
-      for (const far of [0.15, 0.06, 0.02]) { const inn = [bx + (ux * far) / k, by + uy * far]; if (has(zone, inn)) return inn; } // a little way in, so that the rings do not sit on the line itself
+      for (const far of [KEEP, 0.25, 0.15, 0.06, 0.02]) { const inn = [bx + (ux * far) / k, by + uy * far]; if (has(zone, inn)) return inn; } // well inside, so that the rings do not sit on the line itself
       return [bx, by]; };
+    const shared = new Set(), land = []; // the land borders of the zone: the stretches of its outline whose points a closed country shares (the coast is not a limit)
+    for (const o of others) if (zone.some((z) => z.box[0] <= o.box[2] && z.box[2] >= o.box[0] && z.box[1] <= o.box[3] && z.box[3] >= o.box[1])) for (const p of turf.flatten(o.f).features) for (const ring of p.geometry.coordinates) for (const q of ring) shared.add(q[0] + ',' + q[1]);
+    for (let i = 0; i < segs.length; i += 4) if (shared.has(segs[i] + ',' + segs[i + 1]) && shared.has(segs[i + 2] + ',' + segs[i + 3])) land.push(segs[i], segs[i + 1], segs[i + 2], segs[i + 3]);
+    const clear = (pt) => { const k = Math.cos(rad(pt[1])); let bd = Infinity, bx = 0, by = 0; // a point inside but close to a land border: pushed away from it, to KEEP degrees
+      for (let i = 0; i < land.length; i += 4) { const ax = land[i], ay = land[i + 1], dx = (land[i + 2] - ax) * k, dy = land[i + 3] - ay, px = (pt[0] - ax) * k, py = pt[1] - ay, u = Math.max(0, Math.min(1, (px * dx + py * dy) / (dx * dx + dy * dy || 1))), ex = px - dx * u, ey = py - dy * u, d = ex * ex + ey * ey;
+        if (d < bd) { bd = d; bx = ax + (land[i + 2] - ax) * u; by = ay + (land[i + 3] - ay) * u; } }
+      const d = Math.sqrt(bd); if (d >= KEEP || d < 1e-6) return pt;
+      for (const far of [KEEP, 0.25]) { if (far <= d) break; const inn = [bx + (((pt[0] - bx) * k) / d) * far / k, by + ((pt[1] - by) / d) * far]; if (has(zone, inn)) return inn; }
+      return pt; };
+    const tidy = (pt) => (bad(pt) ? pull(pt) : clear(pt));
     const km = (a, b) => raceKmFrom({ lon: a[0], lat: a[1] }, { lon: b[0], lat: b[1] }), out = [pts[0]];
-    const walk = (a, b, depth) => { if (depth > 10 || km(a, b) < 6) { out.push(b); return; } const m0 = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], m = bad(m0) ? pull(m0) : m0; walk(a, m, depth + 1); walk(m, b, depth + 1); };
-    for (let i = 0; i + 1 < pts.length; i++) { const b = pts[i + 1]; walk(out[out.length - 1], i + 2 === pts.length || !bad(b) ? b : pull(b), 0); } // the start and the finish stay where they are
-    return { pts: out, fit: (pt) => (bad(pt) ? pull(pt) : pt) }; // fit: a point beside the course, moved inside when it falls in a closed country
+    const walk = (a, b, depth) => { if (depth > 10 || km(a, b) < 6) { out.push(b); return; } const m0 = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], m = tidy(m0); walk(a, m, depth + 1); walk(m, b, depth + 1); };
+    for (let i = 0; i + 1 < pts.length; i++) { const b = pts[i + 1]; walk(out[out.length - 1], i + 2 === pts.length ? b : tidy(b), 0); } // the start and the finish stay where they are
+    return { pts: out, fit: (pt) => (bad(pt) ? pull(pt) : pt) }; // (what lies beside the course is already as far in as the course itself)
+    // // fit: a point beside the course, moved inside when it falls in a closed country
   }
   async function raceLands(list) { // the countries named (by name or ISO code) are allowed; any other one turns the ship back, as in the adventure. Resolves to the allowed ones, or null when none was recognised
     const all = await countries(), cl = (x) => String(x ?? '').trim().toLowerCase();
@@ -1468,7 +1546,7 @@
         if (o.kind === 'itembox') c.items.push(o.item); else if (o.kind === 'zip') c.boostT = now + 2600; else if (o.kind === 'scoin') c.coins++; }
       for (const o of objs) if (o.kind === 'mine' && o.by !== c && C.Cartesian3.distance(P, o.p) < o.size + step) { o.until = 0; cpuHit(c); } // a mine somebody else left
       const [plon, plat, phd] = pathAt(c.f); // its place in the race: how far along the route it really is
-      c.f = Math.min(1, c.f + clamp(((c.lon - plon) * cl * Math.sin(phd) + (c.lat - plat) * Math.cos(phd)) * M, 0, step * 4 + 1) / L); if (c.f > 1 - 100 / L) c.f = 1;
+      c.f = Math.min(1, c.f + clamp(((c.lon - plon) * cl * Math.sin(phd) + (c.lat - plat) * Math.cos(phd)) * M, 0, step * 4 + 1) / L); if (c.f > 1 - 100 / L) { c.f = 1; c.ms = now - race.t0; }
       if (c.items.length && now > c.itemT && !stun) { // what it carries, used now and then
         c.itemT = now + 2500 + Math.random() * 5000; const it = c.items.shift();
         if (it === 'boost') c.boostT = now + 2600; else if (it === 'shield') c.shield = 1;
@@ -1500,8 +1578,10 @@
     mpSend({ t: 'fin', ms });
     OGE.toast(`🏁 ${T('¡Llegaste a')} ${race.to.name}! ${T('Tiempo')}: ${fmtT(ms)}` + (place ? ` · ${T('Puesto')} ${place}/${race.cpus.length + 1}` : '') + (rec ? ` · ${T('¡Nuevo récord!')}` : ` · ${T('Mejor tiempo')}: ${fmtT(best)}`));
     sfx('achieve');
+    const rows = [{ name: T('Tú'), ms }, ...race.cpus.map((c) => (c.f >= 1 && c.ms != null ? { name: c.name, ms: c.ms } : { name: c.name, ms: ms + 1 + (((1 - c.f) * race.pathLen) / Math.max(1, c.speed)) * 1000, late: true }))].sort((x, y) => x.ms - y.ms); // a rival still on its way: the time it would make at its pace
+    const title = `${race.from.name} → ${race.to.name}`; if (cup) cup.pending = true;
     race = null;
-    setTimeout(() => { if (on) stop(); }, 3000);
+    setTimeout(() => { if (on) stop(); raceOver(rows, title); }, 3000);
   }
   function drawRace(g, w, text) { // the goal: a flag where it is on the screen, and an arrow at the top pointing to it
     const h = hud.clientHeight;
@@ -1830,7 +1910,7 @@
     for (const id of autoOn) { $(id).checked = false; $(id).dispatchEvent(new Event('change')); } autoOn = [];
     for (const id of autoOff) { $(id).checked = true; $(id).dispatchEvent(new Event('change')); } autoOff = [];
     engineHum(0); scene.globe.maximumScreenSpaceError = 2; OGE.fxForce = false; OGE.fxPick = null; if (!matchMedia('(pointer: coarse)').matches) fsSet(false);
-    on = false; if (race && race.vBase) A.vMax = race.vBase; race = null; raceLimits(); if (msg && adv) { adv = null; advShape = null; } tut = null; // a crash ends the stage
+    on = false; if (race && race.vBase) A.vMax = race.vBase; race = null; raceLimits(); raceTrail(); if (cup && !cup.pending) cup = null; if (msg && adv) { adv = null; advShape = null; } tut = null; // a crash ends the stage
     music(false); atlasMusic();
     if (arcade && !msg && score) msg = `Vuelo terminado: ${score} puntos y ${coins} monedas.`;
     if (arcade && (score || coins)) saveScore(score, coins);
@@ -1951,11 +2031,12 @@
     ['medusa', 'Medusa', 'Europa', [62, 9, 50, 18, 9, 12, 10]], ['anteo', 'Anteo', 'Magreb', [52, 12, 40, 12, 4, 16, 0]], ['bida', 'Bida', 'Sahel', [80, 6.5, 30, 38, 3, 10, 6]], ['mokele', 'Mokele-mbembe', 'África subsahariana', [56, 12, 52, 20, 7, 20, 0]],
     ['adamastor', 'Adamastor', 'África del Sur', [66, 10, 58, 30, 12, 14, 8]], ['tiamat', 'Tiamat', 'Medio Oriente', [70, 8, 48, 40, 6, 22, 0]], ['kempir', 'Zhalmauyz', 'Asia central', [50, 9, 38, 6, 14, 12, 12]], ['makara', 'Makara', 'Asia del Sur', [64, 11, 46, 26, -5, 16, 8]],
     ['orochi', 'Orochi', 'Asia oriental', [84, 7, 36, 44, 4, 12, 0]], ['bakunawa', 'Bakunawa', 'Sudeste asiático', [68, 8, 54, 36, 10, 0, 10]], ['bunyip', 'Bunyip', 'Oceanía', [48, 11, 44, 16, 6, 18, 6]], ['kraken', 'Kraken', 'Ultramar', [60, 9, 62, 28, -8, 14, 8]]]) SHIPS[k] = forged(name, lock, p);
+  for (const [k, name, cups, p] of [['bolido', 'Bólido', 4, [74, 8, 32, 48, 2, 16, 6]], ['centella', 'Centella', 8, [58, 10, 66, 22, 9, 10, 12]]]) SHIPS[k] = Object.assign(forged(name, null, p), { cups }); // the prizes of the cups: shown once that many cups have been flown
   // A ship drawn pitched nose-up by an angle about its tail, where the flame leaves: the camera behind sees more of its top. The same point may be shared by several faces: each is turned once.
   const tilted = (md, a) => { const c = Math.cos(a), sn = Math.sin(a), seen = new Set(), rot = (p) => { if (seen.has(p)) return; seen.add(p); const y = p[1], z = p[2] - md.tail; p[1] = y * c + z * sn; p[2] = md.tail - y * sn + z * c; }; md.mesh.V.forEach(rot); rot(md.tip); };
   tilted(SHIPS.condor, rad(10));
   tilted(SHIPS.dardo, rad(9)); // the first ship too: seen from behind its wings lay almost edge-on, hiding the flags and roundels on them
-  const shipOpen = (m) => !m.lock || [1, 2, 3].some((n) => localStorage.getItem(SK('oge.adventure.final.' + m.lock, n))), shipOpts = () => Object.entries(SHIPS).filter(([, m]) => shipOpen(m)).map(([k, m]) => [k, m.name]); // a locked ship shows once its campaign's final boss has fallen
+  const shipOpen = (m) => (!m.lock || [1, 2, 3].some((n) => localStorage.getItem(SK('oge.adventure.final.' + m.lock, n)))) && (!m.cups || cupsDone() >= m.cups), shipOpts = () => Object.entries(SHIPS).filter(([, m]) => shipOpen(m)).map(([k, m]) => [k, m.name]); // a locked ship shows once its campaign's final boss has fallen
   const shipModel = (id) => SHIPS[id] || SHIPS[localStorage.getItem('oge.shipModel')] || SHIPS.dardo;
   const mixHex = (a, b, k) => '#' + [1, 3, 5].map((i) => Math.round(parseInt(a.slice(i, i + 2), 16) * (1 - k) + parseInt(b.slice(i, i + 2), 16) * k).toString(16).padStart(2, '0')).join('');
   const hex = (c, d) => (/^#[0-9a-f]{6}$/i.test(c || '') ? c : d), hull1 = () => hex(localStorage.getItem('oge.hull1'), '#ff7300'); // the pilot's hull: orange unless chosen
@@ -2255,7 +2336,7 @@
     const px = (h / 2 / Math.tan((cam.frustum.fovy || rad(60)) / 2)) / Math.max(60, chase ? chase.d : 380); // pixels per metre at the ship
     drawMesh(md.mesh, ax, { ...shipCol(skin(1), hull1()), ...wornCol() }, performance.now() - hit < 200, 1, null, true);
     const tail = toWin(scene, shipPoint(ax, 0, 1, md.tail));
-    const drive = landing === 'parked', lv = drive ? GWARPS.indexOf(gWarp) * 2 : Math.max(0, [...WARPS, ...HYPER].indexOf(warp)), gas = drive ? Math.min(1, Math.abs(s.taxi || 0) / 300) : s.throttle; // the ground turbo has fewer levels: every other colour
+    const drive = landing === 'parked', lv = drive ? GWARPS.indexOf(gWarp) * 2 : Math.max(0, [...WARPS, ...HYPER].indexOf(warp === 200 ? 100 : warp)), gas = drive ? Math.min(1, Math.abs(s.taxi || 0) / 300) : s.throttle; // the ground turbo has fewer levels: every other colour
     if (tail && (drive ? gas > 0.02 : !landing)) { const fr = px * (9 + 12 * gas + 3.5 * lv + (boost ? 8 : 0)) * (drive ? 0.6 : 1) * (0.9 + 0.1 * Math.sin(performance.now() / (40 - 2 * lv))); glow(g, tail.x, tail.y, fr, FLAME[lv]); if (lv > 2) glow(g, tail.x, tail.y, fr * (0.25 + 0.04 * lv), '#ffffff'); } // the engine flame: bigger with the gas, and bigger, hotter and with a white core as the turbo rises
     const mid = toWin(scene, ax.P);
     if (mid && man && man.type === 'roll') { const k = (performance.now() - man.t0) / man.dur; g.save(); g.globalAlpha = 0.35; glow(g, mid.x, mid.y, px * 58, '#7fd4ff'); g.globalAlpha = 1; g.strokeStyle = 'rgba(225,245,255,.85)'; g.lineWidth = 3; g.lineCap = 'round';
@@ -2584,7 +2665,7 @@
     if (A.ship && s.alt > SPACE && !spaceMsg) { spaceMsg = true; OGE.toast(`${T('Fuera de la atmósfera.')} ${T('Piloto automático, con hiperturbo:')} ${DEST.map((d, i) => `${i + 1} ${T(PLACES[d])}`).join(' · ')} · ${DEST.length + 1} ${T('la superficie')}`); }
     if (deep) { if (auto) autoStep(dt); else spaceStep(dt, man ? pe : s.pitch); if (!man) pe = s.pitch; }
     else {
-      if (warp > 100) setWarp(100); // flown by hand: no hyper turbo
+      if (warp > 200) setWarp(100); // flown by hand: no hyper turbo
       glide(horiz);
     }
     s.heading = C.Math.zeroToTwoPi(s.heading);
@@ -2852,7 +2933,8 @@
   document.addEventListener('keyup', (e) => { const k = e.key.toLowerCase(); keys.delete(k); if (k === 'b') letGo(); }, true);
   window.addEventListener('blur', () => { keys.clear(); charge = 0; });
   const SPACE = 1e5, DEEP = 2e6, HYPER = [1000, 10000, 50000]; // DEEP: above it the flight is a straight line and the ship turns freely // out of the atmosphere: turbo levels only for space, enough to reach the Moon in under a minute
-  const levels = () => WARPS; // by hand the turbo ends at ×100 everywhere: the hyper turbo is the autopilot's
+  const champion = () => [1, 2, 3].some((n) => Object.keys(FINALS).every((k) => localStorage.getItem(SK('oge.adventure.final.' + k, n)))); // every campaign's final boss beaten in one saved game
+  const levels = () => (champion() ? [...WARPS, 200] : WARPS); // by hand the turbo ends at ×100, or at ×200 for a champion: the hyper turbo is the autopilot's
   const nextWarp = (d = 1) => { if (auto) return; // the autopilot keeps its own turbo
     if (on && landing === 'parked') { const v = GWARPS[clamp(GWARPS.indexOf(gWarp) + d, 0, GWARPS.length - 1)]; if (v !== gWarp) sfx(v > gWarp ? 'warpUp' : 'warpDown'); gWarp = v; return warpLabel(); }
     const L = levels(); setWarp(L[clamp(L.indexOf(warp) + d, 0, L.length - 1)]); }; // stops at both ends
