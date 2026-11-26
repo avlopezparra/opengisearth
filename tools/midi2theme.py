@@ -3,7 +3,7 @@
 A theme is { title, bpm, unit: 24, beats, lead, harmony, bass, drums }: each part a flat list of start, length (both in 1/24 of a beat) and MIDI pitch.
 The MIDI channels are dealt into the parts by hand, since only the composer knows which voice carries the tune; channel 10 is always the drums.
 
-Run:  python -I tools/midi2theme.py song.mid web/moon_theme.js OGE_MOON_THEME "Title" --lead 6,1 --harmony 0,4,5 --bass 3
+Run:  python -I tools/midi2theme.py song.mid web/moon_theme.js OGE_MOON_THEME "Title" --lead 6,1 --harmony 0,4,5 --bass 3 [--mix harmony=0.6]
 """
 import json, struct, sys
 
@@ -48,7 +48,10 @@ def notes_of(path):
 
 def main():
     src, out, var, title = sys.argv[1:5]
-    opt = {sys.argv[k][2:]: [int(x) for x in sys.argv[k + 1].split(',') if x] for k in range(5, len(sys.argv) - 1, 2)}
+    args, mix = sys.argv[5:], {}
+    if '--mix' in args:  # --mix harmony=0.6: that part plays at 0.6 of its usual volume in this theme
+        i = args.index('--mix'); mix = {k: float(v) for k, v in (x.split('=') for x in args[i + 1].split(','))}; del args[i:i + 2]
+    opt = {args[k][2:]: [int(x) for x in args[k + 1].split(',') if x] for k in range(0, len(args) - 1, 2)}
     div, bpm, notes = notes_of(src)
     unit = lambda ticks: round(ticks * 24 / div)
     theme = {'title': title, 'bpm': round(bpm), 'unit': 24}
@@ -57,6 +60,7 @@ def main():
     for part, chans in [('lead', opt.get('lead', [])), ('harmony', opt.get('harmony', [])), ('bass', opt.get('bass', [])), ('drums', [9])]:
         rows = sorted((unit(s), max(1, unit(ln)), p) for s, ln, p, ch in notes if ch in chans)
         theme[part] = [x for row in rows for x in row]
+    if mix: theme['mix'] = mix
     with open(out, 'w', encoding='utf-8', newline='') as f:
         f.write(f"// {title}: note data converted from the user's own MIDI (tools/midi2theme.py). Per part: start, length (in 1/24 of a beat) and MIDI pitch, flattened.\n")
         f.write(f'window.{var} = ' + json.dumps(theme, ensure_ascii=False, separators=(',', ':')) + ';\n')
