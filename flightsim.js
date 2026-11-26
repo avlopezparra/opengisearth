@@ -910,11 +910,11 @@
     if (A.ship) OGE.minimap.zoom(99); // the starship starts with the minimap zoomed all the way in
     if (A.ship && OGE.minimap.open) OGE.minimap.open(); // every world has its map
     arcade = !!A.ship && !!useArcade;
-    autoOn = !arcade || OGE.body ? [] : ['layerSats', ...(window.__TAURI__ ? ['layerPlanes'] : [])].filter((id) => $(id) && !$(id).checked); // for this flight only: nearby satellites, region names to find the way, live aircraft (desktop)
+    autoOn = !arcade || OGE.body ? [] : ['layerSats', ...(window.__TAURI__ ? ['layerPlanes'] : []), ...(localStorage.getItem('oge.flyClouds') !== '0' ? ['layerClouds'] : [])].filter((id) => $(id) && !$(id).checked); // for this flight only: nearby satellites, region names to find the way, live aircraft (desktop)
     if (autoOn.includes('layerSats') && $('layerSatsNear')) { $('layerSatsNear').checked = true; $('layerSatsNear').dispatchEvent(new Event('change')); } // only the nearby ones: light
     for (const id of autoOn) { $(id).checked = true; $(id).dispatchEvent(new Event('change')); }
     OGE.fxForce = !!arcade && !OGE.body; // rain, snow and storms of the place show in the game
-    autoOff = !arcade ? [] : ['layerRegionNames', 'layerFlags', 'layerFlagsDep'].filter((id) => $(id) && $(id).checked); // the atlas labels and flags confuse in the game: off for the flight
+    autoOff = !arcade ? [] : ['layerRegionNames', 'layerFlags', 'layerFlagsDep', ...(localStorage.getItem('oge.flyClouds') === '0' ? ['layerClouds'] : [])].filter((id) => $(id) && $(id).checked); // the atlas labels and flags confuse in the game: off for the flight
     for (const id of autoOff) { $(id).checked = false; $(id).dispatchEvent(new Event('change')); } // live satellites and aircraft join the arcade
     if (!document.body.classList.contains('noside')) { sideWas = true; OGE.hideSide(true); } // more room for the flight; it comes back afterwards
     stopped = false;
@@ -1714,6 +1714,9 @@
   async function shipStyle() { // the pilot's ship: its model, the colour of its wings and of its hull
     const live = !!(p2 || ws || remote), was = paused; if (on && !live) paused = true; // in a multiplayer game the others keep flying: no pause
     if (!subMap) try { subMap = await (await fetch('data/subflags.json')).json(); subAsked = true; } catch { /* only the national flags, then */ }
+    if (!regs) { loadRegs().catch(() => {}); for (let k = 0; !regs && k < 30; k++) await new Promise((r) => setTimeout(r, 200)); } // opened from the title screen, before any flight: the flags collected are fetched now (not for ever: the list then has only what the ship wears)
+    if (!on) syncRegs();
+    const decal = Object.assign(document.createElement('button'), { type: 'button', textContent: T('Elegir decal de las alas (escudos ganados)'), style: 'display:block;margin-top:10px', onclick: () => showArms() });
     const flagOpts = [], seen = new Set(), add = (u, label) => { if (u && !seen.has(u)) { seen.add(u); flagOpts.push([u, label]); } }; // every flag collected: the country's, and the region's own where it has one
     for (const r of regs || []) { if (!gotReg.has(r.id)) continue; add(r.img && r.img.src, r.country); if (subMap && subMap[r.id]) add('https://commons.wikimedia.org/wiki/Special:FilePath/' + encodeURIComponent(subMap[r.id]) + '?width=250', `${r.name} (${r.country})`); }
     flagOpts.sort((x, y) => x[1].localeCompare(y[1]));
@@ -1722,7 +1725,7 @@
       fields: [{ id: 'model', label: 'Estilo de nave', type: 'select', value: SHIPS[localStorage.getItem('oge.shipModel')] ? localStorage.getItem('oge.shipModel') : 'dardo', options: shipOpts(), after: shipPreview },
         ...tintFields('wing', 'Color de las alas', 'Alas: código hex (con «Personalizado»)', skin(1)), ...tintFields('hull', 'Color del fuselaje', 'Fuselaje: código hex (con «Personalizado»)', hull1()),
         { id: 'fin', label: 'Bandera en la nave (de tus banderas recolectadas)', type: 'select', preview: true, value: localStorage.getItem('oge.finFlag') || '', options: [['', 'Sin bandera'], ...flagOpts] },
-        { id: 'finR', label: 'Bandera del lado derecho, si quieres otra', type: 'select', preview: true, value: localStorage.getItem('oge.finFlagR') || '', options: [['', 'La misma que la izquierda'], ...flagOpts] }] });
+        { id: 'finR', label: 'Bandera del lado derecho, si quieres otra', type: 'select', preview: true, value: localStorage.getItem('oge.finFlagR') || '', options: [['', 'La misma que la izquierda'], ...flagOpts] }], extra: decal });
     if (on && !live) { paused = was; last = performance.now(); }
     if (!v) return;
     if (SHIPS[v.model]) localStorage.setItem('oge.shipModel', v.model);
@@ -1906,7 +1909,7 @@
     if (wings.length === 2 && spot.i === 'wing') for (const q of wings) onWing(q, 0.5, 0.62, 'i', 1, 0.3); else place('i', spot.i === 'wing' ? 'upper' : spot.i);
     if (wings.length === 2 && spot.j === 'wing') for (const q of wings) onWing(q, 0.5, 0.36, 'j', 1.5, 0.3); else place('j', spot.j === 'wing' ? 'upper' : spot.j);
   };
-  const SPOTS = { halcon: { i: 'top', j: 'upper' }, flecha: { i: 'wing', j: 'top' }, tridente: { i: 'wing', j: 'upper' }, manta: { i: 'wing', j: 'upper' } }; // the ships whose wings cannot carry both marks without one hiding the other
+  const SPOTS = { halcon: { i: 'wing', j: 'top' }, flecha: { i: 'wing', j: 'top' }, tridente: { i: 'wing', j: 'upper' }, manta: { i: 'wing', j: 'top' } }; // the ships whose wings cannot carry both marks without one hiding the other
   for (const k in SHIPS) insignia(SHIPS[k].mesh, SPOTS[k] || { i: 'wing', j: 'wing' });
   const worn = {}; // the images the pilot wears, by the localStorage key that names each; only from Wikimedia
   const wornImg = (key) => { const u = localStorage.getItem(key) || ''; if (!worn[key] || worn[key].u !== u) worn[key] = { u, im: /^https:\/\/[a-z]+\.wikimedia\.org\//.test(u) ? Object.assign(new Image(), { src: u }) : null }; return worn[key].im; };
@@ -2882,6 +2885,9 @@
   hud.after(Object.assign(document.createElement('div'), { id: 'crt' }));
   const syncCrt = () => { const crt = localStorage.getItem('oge.crt') === '1'; document.body.classList.toggle('crt', crt); $('flyCrt').textContent = T('Filtro CRT') + ': ' + T(crt ? 'sí' : 'no'); $('flyCrt').classList.toggle('active', crt); };
   $('flyCrt').onclick = () => { localStorage.setItem('oge.crt', localStorage.getItem('oge.crt') === '1' ? '0' : '1'); syncCrt(); }; syncCrt();
+  const syncClouds = () => { const c = $('layerClouds').checked; $('flyClouds').textContent = T('Nubes') + ': ' + T(c ? 'sí' : 'no'); $('flyClouds').classList.toggle('active', c); }; // the atlas layer of yesterday's clouds, at hand during the flight
+  $('flyClouds').onclick = () => { $('layerClouds').click(); localStorage.setItem('oge.flyClouds', $('layerClouds').checked ? '1' : '0'); }; // the game starts with them unless they were turned off here
+  $('layerClouds').addEventListener('change', syncClouds); syncClouds(); $('flyClouds').hidden = !!OGE.body;
   $('layerSun').addEventListener('change', syncSun); syncSun(); $('flySun').hidden = !!OGE.body; // the other worlds are drawn without sunlight
   // OpenStarshipEarth: drop straight down to the ground and lift off again
   $('flyLand').onclick = () => { if (!on || !A.ship) return OGE.toast('Aterrizar y despegar son de la OpenStarshipEarth.'); landing = landing ? null : 'down'; sfx(landing ? 'land' : 'liftoff'); };
@@ -2923,7 +2929,7 @@
     const big = (text, fn) => Object.assign(document.createElement('button'), { type: 'button', textContent: T(text), onclick: fn }), pm = Object.assign(document.createElement('div'), { id: 'flyPause', hidden: true });
     hud.after(pm);
     pm.addEventListener('click', (e) => { const b = e.target.closest('button'); if (b && (b.classList.contains('autoDest') || /\d+ (monedas|coins)/.test(b.textContent))) resumeFlight(); }, true); // what is bought or set going needs the flight running
-    pm.append(Object.assign(document.createElement('h3'), { textContent: T('Pausa') }), big('Continuar (Intro)', () => resumeFlight()), big('Controles (K)', () => showKeys($('flyKeys').hidden)), big('Salir del vuelo (Esc)', () => { resumeFlight(); stop(); }), $('flyScores'), $('flyFlags'), $('flyArms'), $('flyColors'), $('flyMp'), $('flyReset'), $('flyShip'), $('flySun'), $('flyCrt'), $('flyThird'), Object.assign(document.createElement('button'), { type: 'button', textContent: T('Comprar escudo: 10 monedas (G)'), onclick: () => { if (pad.menu) padMenu(false); buyShield(); } }), Object.assign(document.createElement('button'), { type: 'button', textContent: T('Comprar bomba: 15 monedas (5)'), onclick: () => { if (pad.menu) padMenu(false); buyBomb(); } }), Object.assign(document.createElement('button'), { type: 'button', textContent: T('Reparar la nave: 20 monedas (7)'), onclick: () => { if (pad.menu) padMenu(false); buyRepair(); } }), Object.assign(document.createElement('button'), { type: 'button', textContent: T('Escudo antiasteroides: 20 monedas la capa (6)'), onclick: () => { if (pad.menu) padMenu(false); buyRockShield(); } }),
+    pm.append(Object.assign(document.createElement('h3'), { textContent: T('Pausa') }), big('Continuar (Intro)', () => resumeFlight()), big('Controles (K)', () => showKeys($('flyKeys').hidden)), big('Salir del vuelo (Esc)', () => { resumeFlight(); stop(); }), $('flyScores'), $('flyFlags'), $('flyArms'), $('flyColors'), $('flyMp'), $('flyReset'), $('flyShip'), $('flySun'), $('flyClouds'), $('flyCrt'), $('flyThird'), Object.assign(document.createElement('button'), { type: 'button', textContent: T('Comprar escudo: 10 monedas (G)'), onclick: () => { if (pad.menu) padMenu(false); buyShield(); } }), Object.assign(document.createElement('button'), { type: 'button', textContent: T('Comprar bomba: 15 monedas (5)'), onclick: () => { if (pad.menu) padMenu(false); buyBomb(); } }), Object.assign(document.createElement('button'), { type: 'button', textContent: T('Reparar la nave: 20 monedas (7)'), onclick: () => { if (pad.menu) padMenu(false); buyRepair(); } }), Object.assign(document.createElement('button'), { type: 'button', textContent: T('Escudo antiasteroides: 20 monedas la capa (6)'), onclick: () => { if (pad.menu) padMenu(false); buyRockShield(); } }),
       ...[...DEST, 'down'].map((d) => Object.assign(document.createElement('button'), { type: 'button', className: 'autoDest', textContent: `${T('Piloto automático')} → ${T(PLACES[d] || 'la superficie')}`, onclick: () => { if (pad.menu) padMenu(false); autopilot(d); } }))); // the autopilot can be chosen here as well as with 1, 2, 3 $('flyKeys').style.right = $('flyRules').style.right = '12px'; // no column of buttons beside them // the few actions without a key live in the K panel
   } else { $('flyBtns').classList.add('touch'); document.body.classList.add('touchdev'); } // on a phone the stick steers (left half of the screen): the right column keeps the touch actions and the speed
   $('flyThird').onclick = () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'y' }));
@@ -2953,10 +2959,12 @@
       const modes = MODES.map(([id, name, what]) => mk('button', { type: 'button', className: 'mode', onclick: () => { out = { mode: id, model: model.value, diff: dif.value }; dlg.close(); } }, mk('b', { textContent: name }), mk('span', { textContent: what })));
       form.append(mk('img', { src: 'starship/icon.svg', alt: '' }), mk('h1', { textContent: 'OpenStarshipEarth' }), ...modes,
         mk('div', { className: 'row' }, mk('label', { textContent: 'Nave' }, model), mk('label', { textContent: 'Dificultad' }, dif)),
+        mk('button', { type: 'button', className: 'quit', textContent: 'Personalizar nave', onclick: async (e) => { const b = e.currentTarget; b.disabled = true; await shipStyle(); b.disabled = false; if (SHIPS[localStorage.getItem('oge.shipModel')]) model.value = localStorage.getItem('oge.shipModel'); } }), // greyed while the flags collected arrive // colours, flags and decals, before the game starts
         mk('button', { type: 'button', className: 'quit', textContent: 'Salir', onclick: () => dlg.close() }), mk('p', { className: 'small', textContent: 'Hecho por Alejandro Víctor López Parra @avlopezparra (github)' }));
       dlg.replaceChildren(form); form.querySelector('.row').after(shipPreview(model)); // once the list is in the form: the preview reads its ship from it
       dlg.onkeydown = (e) => { const k = e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? -1 : 0, i = modes.indexOf(document.activeElement); if (k && i >= 0) { e.preventDefault(); modes[(i + k + modes.length) % modes.length].focus(); } }; // the arrows walk the modes
       dlg.onclose = () => resolve(out);
+      if (!regs) loadRegs().catch(() => {}); if (!caps) loadCaps(); if (!flagMap) OGE.flags().then((m) => { flagMap = m; }).catch(() => {}); // what the ship can wear, fetched while the menu is read
       dlg.showModal(); (modes[MODES.findIndex((m) => m[0] === localStorage.getItem('oge.shipMode'))] || modes[1]).focus(); // it opens on the mode played last
     });
   }
