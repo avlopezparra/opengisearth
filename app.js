@@ -362,12 +362,13 @@ Cesium.Ion.defaultAccessToken = ''; // no Cesium ion: open data only
     mg.fillStyle = '#0b1a2b'; mg.fillRect(0, 0, W, H);
     const world = BODY && BODIES[BODY].url; // the Moon and Mars: their own imagery, a finer level as the map zooms in
     if (world) {
-      const L = Math.min(BODIES[BODY].max, 2 + Math.max(0, Math.round(Math.log2(mmZoom / 2)))), n = 2 ** L, span = 180 / n; // 2n × n tiles of span degrees
+      const fine = Math.min(BODIES[BODY].max, 2 + Math.max(0, Math.round(Math.log2(mmZoom / 2))));
+      for (const L of fine > 2 ? [2, fine] : [2]) { const n = 2 ** L, span = 180 / n; // 2n × n tiles of span degrees. The coarse level first, under the fine one: while the fine tiles are on their way (or are missing) the map is not left blank
       const i0 = Math.floor((mmLon - 180 / mmZoom + 180) / span), i1 = Math.floor((mmLon + 180 / mmZoom + 180) / span), j0 = Math.max(0, Math.floor((90 - mmLat - 90 / mmZoom) / span)), j1 = Math.min(n - 1, Math.floor((90 - mmLat + 90 / mmZoom) / span));
       for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) { // only the tiles in the window; the columns wrap round the world
         const im = mmTile(((i % (2 * n)) + 2 * n) % (2 * n), j, L);
         if (im.complete && im.naturalWidth) mg.drawImage(im, W / 2 + ((span * i - 180 - mmLon) / 360) * W * mmZoom, H / 2 - ((90 - span * j - mmLat) / 180) * H * mmZoom, (span / 360) * W * mmZoom + 0.5, (span / 180) * H * mmZoom + 0.5);
-      }
+      } }
     } else for (let i = 0; i < 8; i++) for (let j = 0; j < 4; j++) {
       const y = H / 2 - ((90 - 45 * j - mmLat) / 180) * H * mmZoom;
       for (const x of [W / 2 + mmDx(-180 + 45 * i) * W * mmZoom, W / 2 + (mmDx(-180 + 45 * i) - 1) * W * mmZoom]) { // second copy: a tile cut by the wrap also shows at the other edge
