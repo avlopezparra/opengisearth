@@ -957,10 +957,7 @@
     ammo = A.gun ? 511 : 0;
     aimMouse = !!A.ship && !!useAim; mouse.x = hud.clientWidth / 2; mouse.y = hud.clientHeight / 2;
     requestAnimationFrame(() => { mouse.x = hud.clientWidth / 2; mouse.y = hud.clientHeight / 2; }); // once the HUD has its size: the aim starts centred
-    if (matchMedia('(pointer: coarse)').matches) { // touch devices: full screen and landscape
-      const de = document.documentElement, fs = de.requestFullscreen || de.webkitRequestFullscreen;
-      try { const pr = !document.fullscreenElement && fs && fs.call(de, { navigationUI: 'hide' }); Promise.resolve(pr).then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape')).catch(() => {}); } catch { /* not allowed here */ }
-    }
+    { const touch = matchMedia('(pointer: coarse)').matches; if (touch || fsWant()) fsSet(true).then(() => touch && screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape')).catch(() => {}); } // full screen unless it was turned off; a phone also turns on its side
     man = null; chase = null;
     loadCaps();
     loadRegs();
@@ -1828,7 +1825,7 @@
     if (sideWas) { sideWas = false; OGE.hideSide(false); }
     for (const id of autoOn) { $(id).checked = false; $(id).dispatchEvent(new Event('change')); } autoOn = [];
     for (const id of autoOff) { $(id).checked = true; $(id).dispatchEvent(new Event('change')); } autoOff = [];
-    engineHum(0); scene.globe.maximumScreenSpaceError = 2; OGE.fxForce = false; OGE.fxPick = null;
+    engineHum(0); scene.globe.maximumScreenSpaceError = 2; OGE.fxForce = false; OGE.fxPick = null; if (!matchMedia('(pointer: coarse)').matches) fsSet(false);
     on = false; if (race && race.vBase) A.vMax = race.vBase; race = null; raceLimits(); if (msg && adv) { adv = null; advShape = null; } tut = null; // a crash ends the stage
     music(false); atlasMusic();
     if (arcade && !msg && score) msg = `Vuelo terminado: ${score} puntos y ${coins} monedas.`;
@@ -3002,6 +2999,16 @@
   const syncWx = () => { const v = wxNow(); OGE.fxForce = !OGE.body && v !== 'off'; OGE.fxPick = v === 'real' || v === 'off' ? null : v; $('flyWx').textContent = T('Clima') + ': ' + T(WX[v]); $('flyWx').classList.toggle('active', v !== 'off'); if (OGE.fxAsk) OGE.fxAsk(); };
   $('flyWx').onclick = () => { const ks = Object.keys(WX); localStorage.setItem(wxKey(), ks[(ks.indexOf(wxNow()) + 1) % ks.length]); syncWx(); }; // each press, the next one
   $('flyWx').hidden = !!OGE.body;
+  const fsOn = () => !!(document.fullscreenElement || document.webkitFullscreenElement), fsWant = () => localStorage.getItem('oge.fullscreen') !== '0';
+  function fsSet(yes) { // resolves once the browser has done it, or at once when it will not (it only obeys right after a click or a key)
+    const de = document.documentElement;
+    try { if (yes && !fsOn()) { const fs = de.requestFullscreen || de.webkitRequestFullscreen; return Promise.resolve(fs && fs.call(de, { navigationUI: 'hide' })).catch(() => {}); }
+      if (!yes && fsOn()) (document.exitFullscreen || document.webkitExitFullscreen).call(document); } catch { /* not allowed here */ }
+    return Promise.resolve();
+  }
+  const syncFull = () => { $('flyFull').textContent = T('Pantalla completa') + ': ' + T(fsOn() ? 'sí' : 'no'); $('flyFull').classList.toggle('active', fsOn()); };
+  $('flyFull').onclick = () => { localStorage.setItem('oge.fullscreen', fsOn() ? '0' : '1'); fsSet(!fsOn()); };
+  document.addEventListener('fullscreenchange', syncFull); document.addEventListener('webkitfullscreenchange', syncFull); syncFull();
   $('layerSun').addEventListener('change', syncSun); syncSun(); $('flySun').hidden = !!OGE.body; // the other worlds are drawn without sunlight
   // OpenStarshipEarth: drop straight down to the ground and lift off again
   $('flyLand').onclick = () => { if (!on || !A.ship) return OGE.toast('Aterrizar y despegar son de la OpenStarshipEarth.'); landing = landing ? null : 'down'; sfx(landing ? 'land' : 'liftoff'); };
@@ -3043,7 +3050,7 @@
     const big = (text, fn) => Object.assign(document.createElement('button'), { type: 'button', textContent: T(text), onclick: fn }), pm = Object.assign(document.createElement('div'), { id: 'flyPause', hidden: true });
     hud.after(pm);
     pm.addEventListener('click', (e) => { const b = e.target.closest('button'); if (b && (b.classList.contains('autoDest') || /\d+ (monedas|coins)/.test(b.textContent))) resumeFlight(); }, true); // what is bought or set going needs the flight running
-    pm.append(Object.assign(document.createElement('h3'), { textContent: T('Pausa') }), big('Continuar (Intro)', () => resumeFlight()), big('Controles (K)', () => showKeys($('flyKeys').hidden)), big('Salir del vuelo (Esc)', () => { resumeFlight(); stop(); }), $('flyScores'), $('flyFlags'), $('flyArms'), $('flyColors'), $('flyMp'), $('flyReset'), $('flyShip'), $('flySun'), $('flyClouds'), $('flyWx'), $('flyCrt'), $('flyThird'), Object.assign(document.createElement('button'), { type: 'button', textContent: T('Comprar escudo: 10 monedas (G)'), onclick: () => { if (pad.menu) padMenu(false); buyShield(); } }), Object.assign(document.createElement('button'), { type: 'button', textContent: T('Comprar bomba: 15 monedas (5)'), onclick: () => { if (pad.menu) padMenu(false); buyBomb(); } }), Object.assign(document.createElement('button'), { type: 'button', textContent: T('Reparar la nave: 20 monedas (7)'), onclick: () => { if (pad.menu) padMenu(false); buyRepair(); } }), Object.assign(document.createElement('button'), { type: 'button', textContent: T('Escudo antiasteroides: 20 monedas la capa (6)'), onclick: () => { if (pad.menu) padMenu(false); buyRockShield(); } }),
+    pm.append(Object.assign(document.createElement('h3'), { textContent: T('Pausa') }), big('Continuar (Intro)', () => resumeFlight()), big('Controles (K)', () => showKeys($('flyKeys').hidden)), big('Salir del vuelo (Esc)', () => { resumeFlight(); stop(); }), $('flyScores'), $('flyFlags'), $('flyArms'), $('flyColors'), $('flyMp'), $('flyReset'), $('flyShip'), $('flySun'), $('flyClouds'), $('flyWx'), $('flyFull'), $('flyCrt'), $('flyThird'), Object.assign(document.createElement('button'), { type: 'button', textContent: T('Comprar escudo: 10 monedas (G)'), onclick: () => { if (pad.menu) padMenu(false); buyShield(); } }), Object.assign(document.createElement('button'), { type: 'button', textContent: T('Comprar bomba: 15 monedas (5)'), onclick: () => { if (pad.menu) padMenu(false); buyBomb(); } }), Object.assign(document.createElement('button'), { type: 'button', textContent: T('Reparar la nave: 20 monedas (7)'), onclick: () => { if (pad.menu) padMenu(false); buyRepair(); } }), Object.assign(document.createElement('button'), { type: 'button', textContent: T('Escudo antiasteroides: 20 monedas la capa (6)'), onclick: () => { if (pad.menu) padMenu(false); buyRockShield(); } }),
       ...[...DEST, 'down'].map((d) => Object.assign(document.createElement('button'), { type: 'button', className: 'autoDest', textContent: `${T('Piloto automático')} → ${T(PLACES[d] || 'la superficie')}`, onclick: () => { if (pad.menu) padMenu(false); autopilot(d); } }))); // the autopilot can be chosen here as well as with 1, 2, 3 $('flyKeys').style.right = $('flyRules').style.right = '12px'; // no column of buttons beside them // the few actions without a key live in the K panel
   } else { $('flyBtns').classList.add('touch'); document.body.classList.add('touchdev'); } // on a phone the stick steers (left half of the screen): the right column keeps the touch actions and the speed
   $('flyThird').onclick = () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'y' }));
