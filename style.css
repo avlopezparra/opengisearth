@@ -127,6 +127,9 @@ body.flying #globe, body.flying #mmBox, body.flying #flyTL, body.flying #flyActs
 #flyPause[hidden] { display: none; }
 #flyPause h3 { grid-column: 1 / -1; margin: 0 0 2px; text-align: center; font-size: 20px; }
 #flyPause button { padding: 14px 12px; font-size: 15px; }
+button#flyShip { background: linear-gradient(rgba(255, 255, 255, .6), rgba(255, 255, 255, .1) 48%, rgba(255, 255, 255, 0) 52%), linear-gradient(#ffb347, #e07a00) !important; border-color: #b85f00 !important; } /* the ship: orange */
+button#flyFlags { background: linear-gradient(rgba(255, 255, 255, .6), rgba(255, 255, 255, .1) 48%, rgba(255, 255, 255, 0) 52%), linear-gradient(#b98cf5, #7a3fd0) !important; border-color: #5f2cab !important; } /* the flags: violet */
+button#flyArms { background: linear-gradient(rgba(255, 255, 255, .6), rgba(255, 255, 255, .1) 48%, rgba(255, 255, 255, 0) 52%), linear-gradient(#5fd6c4, #159a86) !important; border-color: #0f7a6a !important; } /* the decals: teal */
 #shipMenu { width: min(520px, 94vw); max-height: 94vh; box-sizing: border-box; padding: 16px 20px; text-align: center; color: #eaf4ff !important; border: 2px solid #ff9a1f; border-radius: 18px; background: radial-gradient(120% 90% at 50% 0%, #1d4f86 0%, #0b2240 55%, #050d1c 100%) !important; box-shadow: 0 16px 50px rgba(0,0,0,.6); backdrop-filter: none; }
 #shipMenu::backdrop { background: rgba(3, 10, 24, .72); backdrop-filter: blur(3px); }
 #shipMenu img { width: 88px; height: 88px; }
@@ -145,6 +148,7 @@ body.flying #globe, body.flying #mmBox, body.flying #flyTL, body.flying #flyActs
   #shipMenu .mode { margin: 0; padding: 8px 12px; font-size: 16px; } #shipMenu .mode span { font-size: 12px; } #shipMenu .row { margin-top: 2px; } #shipMenu .shipPreview { height: 64px; } #shipMenu .quit { margin: 0; } #shipMenu .small { margin: 0; }
 }
 #shipMenu .small { color: #cfe4ff; opacity: .6; margin: 8px 0 0; }
+.pick3 { flex-basis: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; } .pick3 button { padding: 12px 8px; font-size: 14px; white-space: normal; } /* one of three, as boxes */
 .shipPreview { display: block; margin: 4px auto 8px; max-width: 100%; }
 
 /* Map compass, under Cesium's home/help buttons */

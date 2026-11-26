@@ -541,6 +541,8 @@
     'K: ver los controles': 'K: show the controls',
     'Hecho por Alejandro Víctor López Parra @avlopezparra (github)': 'Made by Alejandro Víctor López Parra @avlopezparra (GitHub)',
     'Modo de juego': 'Game mode',
+    'Las dos alas': 'Both wings', 'Solo el ala izquierda': 'Left wing only', 'Solo el ala derecha': 'Right wing only',
+    'Nueva habilidad: rayo cargado. Mantén el disparo y suéltalo para lanzarlo.': 'New ability: the charged shot. Hold fire and let go to loose it.',
     'Reapareces en otro punto del mapa.': 'You come back somewhere else on the map.',
     '¡Misil esquivado!': 'Missile dodged!',
     '¡MISIL!': 'MISSILE!',
