@@ -1028,7 +1028,9 @@
         towns = kept; // by population: where cities crowd together the biggest one keeps the booster (Hong Kong, not Macau)
       } catch { /* the small list stays */ }
       OGE.flags().then((m) => { flagMap = m; }).catch(() => {}); // flags and coats of arms by country
-      caps = all.filter((f) => +f.properties.adm0cap === 1).map((f) => {
+      const MAIN = { BOL: 'La Paz' }, one = new Map(), rank = (f) => (MAIN[clean(f.properties.adm0_a3)] === clean(f.properties.name) ? 2e9 : 0) + (/alt/i.test(clean(f.properties.featurecla)) ? 0 : 1e9) + (+f.properties.pop_max || 0);
+      for (const f of all) { if (+f.properties.adm0cap !== 1) continue; const k = clean(f.properties.adm0_a3), was = one.get(k); if (!was || rank(f) > rank(was)) one.set(k, f); } // a country with several capitals has its boss in one: the one named above, else the capital proper, else the larger
+      caps = [...one.values()].map((f) => {
         const [lon, lat] = f.geometry.coordinates;
         return { name: clean(f.properties.name), a3: clean(f.properties.adm0_a3), lon, lat, cont: CONT[cont.get(clean(f.properties.adm0_a3))] || 'Islas oceánicas', p: C.Cartesian3.fromDegrees(lon, lat, 1500) };
       });
@@ -1243,16 +1245,17 @@
     race.gates = race.rings === false ? null : [];
     if (race.gates) for (let i = 1; i <= ng; i++) { const g0 = { kind: 'gate', n: i, f: i / (ng + 1), size: 5000, next: 1e15, ...at(i / (ng + 1)) }; race.gates.push(g0); course.push(g0); } // pass them in order
     race.nextGate = 0; race.missed = 0;
-    for (let i = 0; i < ng; i++) { const f = (i + 0.5) / (ng + 1); course.push({ kind: 'zip', f, size: 3000, next: 1e15, ...at(f, (i % 2 ? 1 : -1) * 0.004) }); } // boost rings, a little off the line
-    for (let i = 0; i <= ng; i++) for (const o of [-1, 1]) { const f = (i + 0.25) / (ng + 1); course.push({ kind: 'scoin', f, size: 450, next: 1e15, ...at(f, o * 0.02) }); } // speed coins, one on each side of the line
-    race.coins = 0; race.vBase = race.vBase || A.vMax;
-    for (let i = 0; i <= ng; i++) { const bf = (i + 0.75) / (ng + 1);
-      const [lon, lat, hd] = pathAt(bf), side = Math.cos(rad(lat));
-      for (const o of [-1, 0, 1]) { // across the route
-        const [x, y] = fit([lon + (o * 0.04 * Math.cos(hd)) / side, lat - o * 0.04 * Math.sin(hd)]), gh = scene.globe.getHeight(C.Cartographic.fromDegrees(x, y));
-        course.push({ kind: 'itembox', f: bf, item: Object.keys(BALLOON)[(i + o + 3) % 4], lon: x, lat: y, up: 3000, lifted: gh !== undefined, p: C.Cartesian3.fromDegrees(x, y, (gh || 0) + 3000), size: 700, next: 1e15 });
-      }
+    const ITEMS = Object.keys(BALLOON);
+    for (let i = 0; i <= ng; i++) { const st = 1 / (ng + 1), f0 = i * st, side = (i % 2 ? 1 : -1) * 0.012; // one stretch, from a numbered ring to the next
+      for (let k = 0; k < 3; k++) { const f = f0 + (0.3 + 0.05 * k) * st; course.push({ kind: 'scoin', f, size: 450, next: 1e15, ...at(f, side * (0.35 + 0.3 * k), 3150 + 220 * k) }); } // three coins in a line that drifts aside and climbs: following them finds the boost ring
+      { const f = f0 + 0.47 * st; course.push({ kind: 'zip', f, size: 3000, next: 1e15, ...at(f, side, 3800) }); } // the boost ring, off the line and higher up, now to one side, now to the other
+      if (i % 2) { for (let k = 0; k < 3; k++) { const f = f0 + (0.7 + 0.05 * k) * st; course.push({ kind: 'scoin', f, size: 450, next: 1e15, ...at(f, 0, 3000) }); } continue; } // every other stretch: coins straight down the line instead of balloons
+      const bf = f0 + 0.75 * st, [lon, lat, hd] = pathAt(bf), cl = Math.cos(rad(lat)), a = ITEMS[(i / 2) % 4], b = ITEMS[(i / 2 + 1) % 4];
+      [-0.045, -0.015, 0.015, 0.045].forEach((o, k) => { // a row of four balloons across the route, well apart: two kinds, the same at both ends
+        const [x, y] = fit([lon + (o * Math.cos(hd)) / cl, lat - o * Math.sin(hd)]), gh = scene.globe.getHeight(C.Cartographic.fromDegrees(x, y));
+        course.push({ kind: 'itembox', f: bf, item: k === 0 || k === 3 ? a : b, lon: x, lat: y, up: 3000, lifted: gh !== undefined, p: C.Cartesian3.fromDegrees(x, y, (gh || 0) + 3000), size: 700, next: 1e15 }); });
     }
+    race.coins = 0; race.vBase = race.vBase || A.vMax;
     courseStep(true);
   }
   function courseStep(force) { // a long race has thousands of rings, balloons and coins: only those within 90 km of the pilot along the course are in play
@@ -1951,6 +1954,7 @@
   // A ship drawn pitched nose-up by an angle about its tail, where the flame leaves: the camera behind sees more of its top. The same point may be shared by several faces: each is turned once.
   const tilted = (md, a) => { const c = Math.cos(a), sn = Math.sin(a), seen = new Set(), rot = (p) => { if (seen.has(p)) return; seen.add(p); const y = p[1], z = p[2] - md.tail; p[1] = y * c + z * sn; p[2] = md.tail - y * sn + z * c; }; md.mesh.V.forEach(rot); rot(md.tip); };
   tilted(SHIPS.condor, rad(10));
+  tilted(SHIPS.dardo, rad(9)); // the first ship too: seen from behind its wings lay almost edge-on, hiding the flags and roundels on them
   const shipOpen = (m) => !m.lock || [1, 2, 3].some((n) => localStorage.getItem(SK('oge.adventure.final.' + m.lock, n))), shipOpts = () => Object.entries(SHIPS).filter(([, m]) => shipOpen(m)).map(([k, m]) => [k, m.name]); // a locked ship shows once its campaign's final boss has fallen
   const shipModel = (id) => SHIPS[id] || SHIPS[localStorage.getItem('oge.shipModel')] || SHIPS.dardo;
   const mixHex = (a, b, k) => '#' + [1, 3, 5].map((i) => Math.round(parseInt(a.slice(i, i + 2), 16) * (1 - k) + parseInt(b.slice(i, i + 2), 16) * k).toString(16).padStart(2, '0')).join('');

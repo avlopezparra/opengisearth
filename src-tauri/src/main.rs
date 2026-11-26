@@ -1,9 +1,13 @@
 // No console in release.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::net::{IpAddr, Ipv4Addr, TcpListener, UdpSocket};
+use std::collections::HashMap;
+use std::io::{Read, Write};
+use std::net::{IpAddr, Ipv4Addr, TcpListener, TcpStream, UdpSocket};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{channel, Sender};
 use std::sync::{Arc, Mutex};
+use tauri::Manager;
 use std::time::{Duration, Instant};
 use tungstenite::Message;
 
@@ -170,6 +174,156 @@ fn open_release() -> Result<(), String> {
     std::process::Command::new(opener).arg(URL).spawn().map(|_| ()).map_err(|e| e.to_string())
 }
 
+/// The requests of the MCP server that wait for the page's answer, by their number.
+type Pending = Arc<Mutex<HashMap<u64, Sender<String>>>>;
+
+/// The MCP server: an HTTP endpoint on this computer only. It knows nothing of the protocol: every JSON-RPC message an AI
+/// assistant posts is handed to the page (web/mcp.js), and what the page replies is sent back.
+#[derive(Default)]
+struct Mcp {
+    stop: Option<Arc<AtomicBool>>,
+    url: String,
+    token: Arc<Mutex<String>>,
+    pending: Pending,
+}
+
+/// A token is 16 to 64 letters and digits: nothing that could break out of a header.
+fn token_ok(token: &str) -> bool {
+    (16..=64).contains(&token.len()) && token.bytes().all(|b| b.is_ascii_alphanumeric())
+}
+
+/// Starts the MCP server on the given port of this computer (any free one if it is taken) and returns its address.
+/// Called again while it runs, it only changes the token.
+fn mcp_listen(mcp: &mut Mcp, port: u16, token: String, window: tauri::WebviewWindow) -> Result<String, String> {
+    if !token_ok(&token) {
+        return Err("invalid token".into());
+    }
+    *mcp.token.lock().unwrap() = token;
+    if mcp.stop.is_some() {
+        return Ok(mcp.url.clone());
+    }
+    let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, port)).or_else(|_| TcpListener::bind((Ipv4Addr::LOCALHOST, 0))).map_err(|e| e.to_string())?;
+    listener.set_nonblocking(true).map_err(|e| e.to_string())?;
+    let stop = Arc::new(AtomicBool::new(false));
+    mcp.url = format!("http://127.0.0.1:{}/mcp", listener.local_addr().map_err(|e| e.to_string())?.port());
+    mcp.stop = Some(stop.clone());
+    let (token, pending, next) = (mcp.token.clone(), mcp.pending.clone(), Arc::new(AtomicU64::new(1)));
+    std::thread::spawn(move || {
+        while !stop.load(Ordering::SeqCst) {
+            let Ok((stream, _)) = listener.accept() else {
+                std::thread::sleep(Duration::from_millis(40));
+                continue;
+            };
+            let (token, pending, next, window) = (token.clone(), pending.clone(), next.clone(), window.clone());
+            std::thread::spawn(move || {
+                let token = token.lock().unwrap().clone();
+                // The page answers through mcp_reply. While it is still loading it says so itself, so the assistant does not wait in vain.
+                mcp_serve(stream, &token, &pending, &next, &|id, hex| {
+                    let script = format!(
+                        "window.OGE&&OGE.mcp?OGE.mcp.handle({id},'{hex}'):window.__TAURI__.core.invoke('mcp_reply',{{id:{id},body:'{{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{{\"code\":-32002,\"message\":\"OpenGISEarth is still loading\"}}}}'}})"
+                    );
+                    window.eval(&script).is_ok()
+                });
+            });
+        }
+    });
+    Ok(mcp.url.clone())
+}
+
+#[tauri::command]
+fn mcp_start(port: u16, token: String, window: tauri::WebviewWindow, state: tauri::State<'_, Mutex<Mcp>>) -> Result<String, String> {
+    mcp_listen(&mut state.lock().unwrap(), port, token, window)
+}
+
+/// Stops the MCP server: nothing listens any more.
+#[tauri::command]
+fn mcp_stop(state: tauri::State<'_, Mutex<Mcp>>) {
+    if let Some(stop) = state.lock().unwrap().stop.take() {
+        stop.store(true, Ordering::SeqCst);
+    }
+}
+
+/// The address of the MCP server while it is on.
+#[tauri::command]
+fn mcp_status(state: tauri::State<'_, Mutex<Mcp>>) -> Option<String> {
+    let mcp = state.lock().unwrap();
+    mcp.stop.is_some().then(|| mcp.url.clone())
+}
+
+/// The page's answer to the request with that number.
+#[tauri::command]
+fn mcp_reply(id: u64, body: String, state: tauri::State<'_, Mutex<Mcp>>) {
+    let waiting = state.lock().unwrap().pending.lock().unwrap().remove(&id);
+    if let Some(tx) = waiting {
+        let _ = tx.send(body);
+    }
+}
+
+fn http_reply(stream: &mut TcpStream, status: &str, extra: &str, body: &str) {
+    let _ = write!(stream, "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n{extra}\r\n{body}", body.len());
+}
+
+/// One HTTP request of an MCP client. Only `POST /mcp` with the right bearer token reaches the page (`forward`, which
+/// gets the request's number and its body in hexadecimal); a browser page of another site is turned away by its Origin.
+fn mcp_serve(mut stream: TcpStream, token: &str, pending: &Pending, next: &AtomicU64, forward: &dyn Fn(u64, String) -> bool) {
+    const MAX_BODY: usize = 4 << 20;
+    let _ = stream.set_nonblocking(false);
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(15)));
+    let (mut buf, mut chunk) = (Vec::new(), [0u8; 4096]);
+    let head_end = loop {
+        if let Some(i) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+            break i + 4;
+        }
+        match stream.read(&mut chunk) {
+            Ok(n) if n > 0 && buf.len() < 32 << 10 => buf.extend_from_slice(&chunk[..n]),
+            _ => return,
+        }
+    };
+    let head = String::from_utf8_lossy(&buf[..head_end]).into_owned();
+    let mut first = head.split("\r\n").next().unwrap_or("").split(' ');
+    let (method, path) = (first.next().unwrap_or(""), first.next().unwrap_or(""));
+    let header = |name: &str| head.split("\r\n").skip(1).find_map(|l| l.split_once(':').filter(|(k, _)| k.trim().eq_ignore_ascii_case(name)).map(|(_, v)| v.trim().to_string()));
+    if path.split('?').next() != Some("/mcp") {
+        return http_reply(&mut stream, "404 Not Found", "", "");
+    }
+    if let Some(origin) = header("origin") {
+        if !["http://127.0.0.1", "http://localhost", "http://tauri.localhost", "https://tauri.localhost", "tauri://"].iter().any(|ok| origin.starts_with(ok)) {
+            return http_reply(&mut stream, "403 Forbidden", "", "");
+        }
+    }
+    let given = header("authorization").and_then(|v| v.strip_prefix("Bearer ").map(str::to_string)).unwrap_or_default();
+    // Compared without stopping at the first difference, so that the time taken says nothing about the token.
+    let same = given.len() == token.len() && given.bytes().zip(token.bytes()).fold(0u8, |d, (a, b)| d | (a ^ b)) == 0;
+    if !same {
+        return http_reply(&mut stream, "401 Unauthorized", "WWW-Authenticate: Bearer\r\n", "");
+    }
+    if method != "POST" {
+        return http_reply(&mut stream, "405 Method Not Allowed", "Allow: POST\r\n", "");
+    }
+    let Some(len) = header("content-length").and_then(|v| v.parse::<usize>().ok()).filter(|n| *n <= MAX_BODY) else {
+        return http_reply(&mut stream, "411 Length Required", "", "");
+    };
+    let mut body = buf[head_end..].to_vec();
+    while body.len() < len {
+        match stream.read(&mut chunk) {
+            Ok(n) if n > 0 => body.extend_from_slice(&chunk[..n]),
+            _ => return,
+        }
+    }
+    body.truncate(len);
+    let (id, (tx, rx)) = (next.fetch_add(1, Ordering::SeqCst), channel());
+    pending.lock().unwrap().insert(id, tx);
+    let hex: String = body.iter().map(|b| format!("{b:02x}")).collect();
+    // Two minutes: a geoprocessing tool on a large layer takes its time.
+    let answer = if forward(id, hex) { rx.recv_timeout(Duration::from_secs(120)).ok() } else { None };
+    pending.lock().unwrap().remove(&id);
+    match answer {
+        Some(body) if body.is_empty() => http_reply(&mut stream, "202 Accepted", "", ""),
+        Some(body) => http_reply(&mut stream, "200 OK", "", &body),
+        None => http_reply(&mut stream, "504 Gateway Timeout", "", ""),
+    }
+}
+
 fn client(id: usize, stream: std::net::TcpStream, peers: Peers) {
     let Ok(mut ws) = tungstenite::accept(stream) else { return };
     // A short read timeout lets this one thread both read the socket and write what the others relay.
@@ -201,7 +355,16 @@ fn client(id: usize, stream: std::net::TcpStream, peers: Peers) {
 fn main() {
     tauri::Builder::default()
         .manage(Mutex::new(Host::default()))
-        .invoke_handler(tauri::generate_handler![fetch_text, mp_host, mp_find, newer_than_mine, open_release])
+        .manage(Mutex::new(Mcp::default()))
+        .setup(|app| {
+            // OGE_MCP_TOKEN (and optionally OGE_MCP_PORT) start the MCP server with the program, for whoever launches it from a script.
+            if let (Ok(token), Some(window)) = (std::env::var("OGE_MCP_TOKEN"), app.get_webview_window("main")) {
+                let port = std::env::var("OGE_MCP_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(47778);
+                let _ = mcp_listen(&mut app.state::<Mutex<Mcp>>().lock().unwrap(), port, token, window);
+            }
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![fetch_text, mp_host, mp_find, newer_than_mine, open_release, mcp_start, mcp_stop, mcp_status, mcp_reply])
         .run(tauri::generate_context!())
         .expect("no se pudo iniciar OpenGISEarth");
 }
@@ -220,6 +383,40 @@ mod tests {
         let found = find(&[(Ipv4Addr::LOCALHOST, port)], Duration::from_millis(500)).unwrap();
         assert_eq!(found.len(), 1);
         assert!(found[0].starts_with("127.0.0.1:7777|AnaLuz y un"));
+    }
+
+    /// One raw HTTP request to the MCP endpoint and the status line and body that come back.
+    fn mcp_ask(port: u16, request: &str) -> String {
+        let mut s = TcpStream::connect((Ipv4Addr::LOCALHOST, port)).unwrap();
+        s.write_all(request.as_bytes()).unwrap();
+        let mut out = String::new();
+        s.read_to_string(&mut out).unwrap();
+        out
+    }
+
+    #[test]
+    fn the_mcp_endpoint_wants_its_token_and_hands_the_body_on() {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let pending: Pending = Arc::default();
+        std::thread::spawn(move || {
+            let next = AtomicU64::new(1);
+            for stream in listener.incoming().flatten() {
+                let echo = pending.clone();
+                // The "page" of the test answers with the hexadecimal it was given: an empty body is a notification.
+                mcp_serve(stream, "0123456789abcdef", &pending, &next, &move |id, hex| echo.lock().unwrap().remove(&id).map(|tx| tx.send(hex)).is_some());
+            }
+        });
+        let post = |auth: &str, body: &str| format!("POST /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\n{auth}Content-Length: {}\r\n\r\n{body}", body.len());
+        assert!(mcp_ask(port, &post("", "{}")).starts_with("HTTP/1.1 401"));
+        assert!(mcp_ask(port, &post("Authorization: Bearer 0123456789abcdeX\r\n", "{}")).starts_with("HTTP/1.1 401"));
+        let ok = mcp_ask(port, &post("authorization: Bearer 0123456789abcdef\r\n", "{}"));
+        assert!(ok.starts_with("HTTP/1.1 200") && ok.ends_with("7b7d"), "{ok}");
+        assert!(mcp_ask(port, &post("Authorization: Bearer 0123456789abcdef\r\n", "")).starts_with("HTTP/1.1 202"));
+        assert!(mcp_ask(port, &post("Authorization: Bearer 0123456789abcdef\r\nOrigin: https://example.com\r\n", "{}")).starts_with("HTTP/1.1 403"));
+        assert!(mcp_ask(port, "GET /mcp HTTP/1.1\r\nAuthorization: Bearer 0123456789abcdef\r\n\r\n").starts_with("HTTP/1.1 405"));
+        assert!(mcp_ask(port, "POST /other HTTP/1.1\r\nContent-Length: 0\r\n\r\n").starts_with("HTTP/1.1 404"));
+        assert!(token_ok("0123456789abcdef") && !token_ok("short") && !token_ok("0123456789abcde\"f"));
     }
 
     #[test]
