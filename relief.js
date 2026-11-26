@@ -195,6 +195,7 @@
   async function askWeatherHere() {
     const c = viewer.camera.positionCartographic, lon = C.Math.toDegrees(c.longitude), lat = C.Math.toDegrees(c.latitude);
     if (!(cbW.checked || OGE.fxForce) || c.height > 6e4) { fxKind = null; return; } // only close to the ground; the game shows the weather without the layer
+    if (OGE.fxPick) { fxKind = OGE.fxPick; fxLevel = 0.8; fxAt = null; return; } // chosen in the game's menu instead of the real weather
     if (fxAt && performance.now() - fxT < 3e5 && Math.hypot(lon - fxAt[0], lat - fxAt[1]) < 0.3) return;
     fxAt = [lon, lat]; fxT = performance.now();
     try {
@@ -204,6 +205,7 @@
     } catch { fxKind = null; }
   }
   setInterval(askWeatherHere, 5000);
+  OGE.fxAsk = () => { fxAt = null; askWeatherHere(); }; // the game's choice changed: at once, not at the next look
   cbW.addEventListener('change', () => { fxAt = null; askWeatherHere(); });
   (function frame() {
     requestAnimationFrame(frame);
